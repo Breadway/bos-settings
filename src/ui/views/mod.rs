@@ -1,5 +1,7 @@
 pub mod about;
+pub mod appearance;
 pub mod aur;
+pub mod autostart;
 pub mod bread;
 pub mod breadbar;
 pub mod breadbox;

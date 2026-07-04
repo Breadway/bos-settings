@@ -37,11 +37,13 @@ pub const SYSTEM_ITEMS: &[SidebarItem] = &[
     item("sound", "Sound", "audio-volume-high-symbolic"),
     item("power", "Power", "battery-good-symbolic"),
     item("datetime", "Date & Time", "preferences-system-time-symbolic"),
-    item_sub("hyprland", "Display", "hyprland.lua", "video-display-symbolic"),
+    item_sub("hyprland", "Display", "monitors.json", "video-display-symbolic"),
+    item_sub("autostart", "Startup Apps", "autostart.json", "system-run-symbolic"),
     item("users", "Users", "system-users-symbolic"),
 ];
 
 pub const PERSONALIZATION_ITEMS: &[SidebarItem] = &[
+    item_sub("appearance", "Appearance", "settings.json", "applications-graphics-symbolic"),
     item_sub("breadpaper", "Wallpaper", "breadpaper", "preferences-desktop-wallpaper-symbolic"),
     item_sub("breadbar", "Bar", "breadbar", "view-grid-symbolic"),
     item_sub("breadbox", "Launcher", "breadbox", "view-app-grid-symbolic"),

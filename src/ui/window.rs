@@ -10,7 +10,9 @@ use super::views;
 // initial selection, so the two can't independently drift out of sync.
 const DEFAULT_PAGE: &str = "about";
 
-pub fn build_ui(app: &Application) {
+/// `requested_page` comes from `--page <id>` (e.g. breadhelp's "Learn more"
+/// deep links) and overrides `DEFAULT_PAGE` when it names a real page.
+pub fn build_ui(app: &Application, requested_page: Option<String>) {
     let window = ApplicationWindow::builder()
         .application(app)
         .title("BOS Settings")
@@ -25,7 +27,8 @@ pub fn build_ui(app: &Application) {
     hpaned.set_shrink_start_child(false);
     hpaned.set_resize_start_child(false);
 
-    let (sidebar_box, list) = sidebar::build(DEFAULT_PAGE);
+    let initial_page = requested_page.as_deref().unwrap_or(DEFAULT_PAGE);
+    let (sidebar_box, list) = sidebar::build(initial_page);
 
     let stack = Stack::new();
     stack.set_hexpand(true);
@@ -51,8 +54,10 @@ pub fn build_ui(app: &Application) {
     stack.add_named(&views::breadpaper::build(), Some("breadpaper"));
     stack.add_named(&views::breadsearch::build(), Some("breadsearch"));
     stack.add_named(&views::hyprland::build(), Some("hyprland"));
+    stack.add_named(&views::appearance::build(), Some("appearance"));
+    stack.add_named(&views::autostart::build(), Some("autostart"));
 
-    stack.set_visible_child_name(DEFAULT_PAGE);
+    stack.set_visible_child_name(initial_page);
 
     {
         let stack = stack.clone();
