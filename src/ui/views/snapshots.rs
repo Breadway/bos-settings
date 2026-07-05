@@ -13,27 +13,28 @@ struct SnapshotRow {
     description: String,
 }
 
-fn list_snapshots() -> Vec<SnapshotRow> {
+/// `Err` carries snapper's trimmed stderr — distinct from `Ok(vec![])`
+/// (snapper works fine, there just aren't any snapshots yet), so the caller
+/// can tell a real failure from a legitimately empty list instead of
+/// collapsing both into the same generic "not configured yet" message.
+fn list_snapshots() -> Result<Vec<SnapshotRow>, String> {
     // NOTE: the real flag is --columns, not --output-cols (which snapper
     // rejects outright with "Unknown option") — confirmed against snapper
     // 0.13's own --help. With the wrong flag this always failed and the
     // panel silently showed "No snapshots found" on every install.
-    let Ok(output) = Command::new("snapper")
+    let output = Command::new("snapper")
         .args(["list", "--columns", "number,date,description"])
         .output()
-    else {
-        return Vec::new();
-    };
+        .map_err(|e| e.to_string())?;
     if !output.status.success() {
-        eprintln!(
-            "bos-settings: snapper list failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        );
-        return Vec::new();
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        eprintln!("bos-settings: snapper list failed: {stderr}");
+        return Err(stderr);
     }
 
     let text = String::from_utf8_lossy(&output.stdout);
-    text.lines()
+    Ok(text
+        .lines()
         .skip(2) // header + separator
         .filter_map(|line| {
             let mut cols = line.splitn(3, '|');
@@ -49,7 +50,7 @@ fn list_snapshots() -> Vec<SnapshotRow> {
                 description: cols.next()?.trim().to_string(),
             })
         })
-        .collect()
+        .collect())
 }
 
 /// Returns whether the list ended up empty, so callers can disable the
@@ -58,15 +59,39 @@ fn populate_list(list: &ListBox) -> bool {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
-    let snapshots = list_snapshots();
+    let snapshots = match list_snapshots() {
+        Ok(snapshots) => snapshots,
+        Err(stderr) => {
+            let lower = stderr.to_lowercase();
+            let (title, detail) = if lower.contains("no permission") {
+                (
+                    "No permission to read snapshots",
+                    "This user isn't allowed to run snapper. Check ALLOW_USERS in \
+                     /etc/snapper/configs/root — it should list your username.",
+                )
+            } else if lower.contains("unknown config") || lower.contains("no such file") {
+                (
+                    "Snapper isn't configured",
+                    "No snapper config exists for root yet, so nothing is being \
+                     snapshotted. This should be set up automatically at install.",
+                )
+            } else {
+                ("Couldn't read snapshots", stderr.as_str())
+            };
+            let row = ListBoxRow::new();
+            row.set_selectable(false);
+            row.set_child(Some(&w::empty_state("dialog-warning-symbolic", title, detail)));
+            list.append(&row);
+            return true;
+        }
+    };
     if snapshots.is_empty() {
         let row = ListBoxRow::new();
         row.set_selectable(false);
         row.set_child(Some(&w::empty_state(
             "document-open-recent-symbolic",
             "No snapshots yet",
-            "Snapshots are created automatically on every pacman transaction \
-             (snapper may not be configured yet).",
+            "Snapshots are created automatically on every pacman transaction.",
         )));
         list.append(&row);
         return true;
