@@ -36,6 +36,7 @@ pub fn build_ui(app: &Application, requested_page: Option<String>) {
 
     stack.add_named(&views::about::build(), Some("about"));
     stack.add_named(&views::network::build(), Some("network"));
+    stack.add_named(&views::bluetooth::build(), Some("bluetooth"));
     stack.add_named(&views::sound::build(), Some("sound"));
     stack.add_named(&views::datetime::build(), Some("datetime"));
     stack.add_named(&views::power::build(), Some("power"));
