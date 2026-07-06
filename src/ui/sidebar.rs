@@ -33,6 +33,7 @@ const fn item_sub(
 pub const SYSTEM_ITEMS: &[SidebarItem] = &[
     item("network", "Network", "network-wireless-symbolic"),
     item_sub("breadcrumbs", "Wi-Fi Profiles", "breadcrumbs", "network-workgroup-symbolic"),
+    item("bluetooth", "Bluetooth", "bluetooth-symbolic"),
     item("firewall", "Firewall", "security-high-symbolic"),
     item("sound", "Sound", "audio-volume-high-symbolic"),
     item("power", "Power", "battery-good-symbolic"),
