@@ -57,10 +57,7 @@ pub fn build() -> GBox {
         save_btn.connect_clicked(move |_| {
             let (start, end) = buf.bounds();
             let text = buf.text(&start, &end, false);
-            if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            match std::fs::write(&path, text.as_str()) {
+            match crate::config::atomic_write(&path, text.as_str()) {
                 Ok(()) => {
                     // breadbar has no systemd unit (it's launched directly by
                     // hyprland.lua's exec-once) — SIGHUP is its own documented
