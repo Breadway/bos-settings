@@ -41,10 +41,38 @@ pub fn load_doc(path: &Path) -> DocumentMut {
 
 /// Write the document back to disk, creating parent dirs as needed.
 pub fn save_doc(path: &Path, doc: &DocumentMut) -> Result<(), Box<dyn Error>> {
+    atomic_write(path, &doc.to_string())?;
+    Ok(())
+}
+
+/// Write `contents` to `path` atomically, backing up whatever was there
+/// before overwriting it.
+///
+/// Every config-writing view in this app (TOML via `save_doc` above, and the
+/// plain-JSON views — keybinds, autostart, appearance/settings.json,
+/// monitors.json, breadbar's CSS) should go through this instead of a bare
+/// `std::fs::write`: writing straight to the target path means a crash,
+/// power loss, or disk-full error mid-write can leave the file truncated or
+/// corrupted with no way back. Writing to a temp file in the *same*
+/// directory first, then `rename`-ing it over the target, avoids that — a
+/// rename within one filesystem is atomic, so the target either has the old
+/// complete contents or the new complete contents, never a partial write.
+/// Backing up the previous file first (best-effort — the write can still
+/// proceed if the backup fails, e.g. read-only source) means even a
+/// successful-but-wrong write is always recoverable from `<path>.bak`.
+pub fn atomic_write(path: &Path, contents: &str) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(path, doc.to_string())?;
+    if path.exists() {
+        let backup = PathBuf::from(format!("{}.bak", path.display()));
+        let _ = std::fs::copy(path, &backup);
+    }
+    let dir = path.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("config");
+    let tmp_path = dir.join(format!(".{file_name}.tmp.{}", std::process::id()));
+    std::fs::write(&tmp_path, contents)?;
+    std::fs::rename(&tmp_path, path)?;
     Ok(())
 }
 
@@ -209,5 +237,31 @@ password = \"secret\"  # keep me
         let items = vec!["a".to_string(), "b".to_string()];
         set_str_list(&mut doc, &["modules", "disable"], &items);
         assert_eq!(get_str_list(&doc, &["modules", "disable"]), items);
+    }
+
+    #[test]
+    fn atomic_write_backs_up_previous_contents_and_no_tmp_file_left_behind() {
+        let dir = std::env::temp_dir().join(format!("bos-settings-atomic-write-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        let backup = dir.join("config.toml.bak");
+
+        atomic_write(&path, "first").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "first");
+        assert!(!backup.exists(), "no backup should be made when there's nothing to back up yet");
+
+        atomic_write(&path, "second").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "second");
+        assert_eq!(std::fs::read_to_string(&backup).unwrap(), "first");
+
+        let leftover_tmp: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.contains(".tmp."))
+            .collect();
+        assert!(leftover_tmp.is_empty(), "temp file should be renamed away, not left behind: {leftover_tmp:?}");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

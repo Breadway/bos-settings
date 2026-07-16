@@ -64,11 +64,8 @@ fn load() -> Vec<MonitorRule> {
 
 fn save(rules: &[MonitorRule]) -> std::io::Result<()> {
     let path = config_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
     let file = MonitorsFile { monitors: rules.to_vec() };
-    std::fs::write(path, serde_json::to_string_pretty(&file).unwrap_or_default())
+    crate::config::atomic_write(&path, &serde_json::to_string_pretty(&file).unwrap_or_default())
 }
 
 fn get_live_monitors() -> Vec<(String, String)> {

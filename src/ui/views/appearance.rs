@@ -81,10 +81,7 @@ fn load() -> Appearance {
 
 fn save(a: &Appearance) -> std::io::Result<()> {
     let path = config_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(path, serde_json::to_string_pretty(a).unwrap_or_default())
+    crate::config::atomic_write(&path, &serde_json::to_string_pretty(a).unwrap_or_default())
 }
 
 /// "rgba(RRGGBBAA)" (Hyprland's format) <-> gdk::RGBA, so the color fields

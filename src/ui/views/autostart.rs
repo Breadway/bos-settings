@@ -56,11 +56,8 @@ fn load() -> Vec<Entry_> {
 
 fn save(entries: &[Entry_]) -> std::io::Result<()> {
     let path = config_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
     let file = AutostartFile { extra: entries.to_vec() };
-    std::fs::write(path, serde_json::to_string_pretty(&file).unwrap_or_default())
+    crate::config::atomic_write(&path, &serde_json::to_string_pretty(&file).unwrap_or_default())
 }
 
 fn rebuild(list: &ListBox, model: &Rc<RefCell<Vec<Entry_>>>) {
