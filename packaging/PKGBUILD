@@ -1,11 +1,11 @@
-# Maintainer: Breadway <rileyhorsham@gmail.com>
+# Maintainer: Breadway <plasticbread849@gmail.com>
 
 pkgname=bos-settings
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="System settings app for Bread OS"
 arch=('x86_64')
-url="https://github.com/Breadway/bos-settings"
+url="https://git.breadway.dev/Breadway/bos-settings"
 license=('MIT')
 # Some Rust deps (ring/mlua) build vendored C/asm into static archives; makepkg's
 # default -flto=auto emits GCC LTO bitcode the Rust (lld) link cannot read,

@@ -55,6 +55,7 @@ pub fn build_ui(app: &Application, requested_page: Option<String>) {
     stack.add_named(&views::breadpaper::build(), Some("breadpaper"));
     stack.add_named(&views::breadsearch::build(), Some("breadsearch"));
     stack.add_named(&views::hyprland::build(), Some("hyprland"));
+    stack.add_named(&views::keybinds::build(), Some("keybinds"));
     stack.add_named(&views::appearance::build(), Some("appearance"));
     stack.add_named(&views::autostart::build(), Some("autostart"));
 

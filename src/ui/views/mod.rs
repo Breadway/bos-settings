@@ -15,6 +15,7 @@ pub mod datetime;
 pub mod firewall;
 pub mod firmware;
 pub mod hyprland;
+pub mod keybinds;
 pub mod network;
 pub mod packages;
 pub mod power;

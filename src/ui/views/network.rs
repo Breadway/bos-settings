@@ -10,7 +10,7 @@
 //! only runs when the user clicks Scan.
 
 use gtk4::prelude::*;
-use gtk4::{Box as GBox, Button, Entry, Label, ListBox, ListBoxRow, Orientation, ScrolledWindow, Switch};
+use gtk4::{Box as GBox, Button, Label, ListBox, ListBoxRow, Orientation, PasswordEntry, ScrolledWindow, Switch};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::process::Command;
@@ -127,8 +127,8 @@ pub fn build() -> GBox {
     // network — set visible/hidden rather than a modal dialog, to keep this
     // panel's async flow in one place instead of a nested dialog callback.
     let pw_row = GBox::new(Orientation::Horizontal, 8);
-    let pw_entry = Entry::new();
-    pw_entry.set_visibility(false);
+    let pw_entry = PasswordEntry::new();
+    pw_entry.set_show_peek_icon(true);
     pw_entry.set_hexpand(true);
     pw_entry.set_placeholder_text(Some("Password"));
     let pw_connect_btn = Button::with_label("Connect");
