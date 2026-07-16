@@ -39,6 +39,7 @@ pub const SYSTEM_ITEMS: &[SidebarItem] = &[
     item("power", "Power", "battery-good-symbolic"),
     item("datetime", "Date & Time", "preferences-system-time-symbolic"),
     item_sub("hyprland", "Display", "monitors.json", "video-display-symbolic"),
+    item_sub("keybinds", "Keybinds", "binds.json", "input-keyboard-symbolic"),
     item_sub("autostart", "Startup Apps", "autostart.json", "system-run-symbolic"),
     item("users", "Users", "system-users-symbolic"),
 ];
@@ -94,7 +95,19 @@ pub fn build(default_id: &str) -> (GBox, ListBox) {
         }
     }
 
-    vbox.append(&list);
+    // Unscrolled, this list's ~30 rows (4 sections' worth of items plus
+    // headers) force a minimum window height that exceeds the *logical*
+    // screen height at Hyprland scale factors above 1.0 (e.g. a 1200px-tall
+    // panel becomes 800 logical px at scale 1.5) — GTK can't shrink below a
+    // widget's natural size, so the window (and anything below the fold,
+    // like a panel's Save button) gets clipped by the compositor with no way
+    // to reach it. Scrolling the nav list independently of the content pane
+    // lets the window's minimum height drop to whatever a single row needs.
+    let scroll = gtk4::ScrolledWindow::new();
+    scroll.set_vexpand(true);
+    scroll.set_hscrollbar_policy(gtk4::PolicyType::Never);
+    scroll.set_child(Some(&list));
+    vbox.append(&scroll);
     (vbox, list)
 }
 

@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GBox, Button, Entry, Label, ListBox, ListBoxRow, Orientation, Switch,
+    Box as GBox, Button, Entry, Label, ListBox, ListBoxRow, Orientation, PasswordEntry, Switch,
 };
 use toml_edit::{value, Array, ArrayOfTables, DocumentMut, Item, Table};
 
@@ -78,11 +78,10 @@ fn rebuild_networks(list: &ListBox, model: &Rc<RefCell<Vec<Network>>>) {
         ssid.set_width_chars(16);
         ssid.set_placeholder_text(Some("SSID"));
 
-        let pass = Entry::new();
+        let pass = PasswordEntry::new();
         pass.set_text(&n.password);
         pass.set_hexpand(true);
-        pass.set_visibility(false);
-        pass.set_input_purpose(gtk4::InputPurpose::Password);
+        pass.set_show_peek_icon(true);
         pass.set_placeholder_text(Some("password"));
 
         let hidden = Switch::new();

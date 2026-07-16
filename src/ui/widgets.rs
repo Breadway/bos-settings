@@ -92,7 +92,14 @@ pub fn hint(text: &str) -> Label {
 /// inherits hexpand from its rows' hexpand-ing labels and the ScrolledWindow
 /// stretches it to the full window width — on a maximized/ultrawide window
 /// that leaves the control on every row stranded ~1500px from its label.
-const CONTENT_MAX_WIDTH: i32 = 760;
+///
+/// `set_size_request` below sets this as a *minimum*, not just a cap (GTK4
+/// has no real max-width clamp without libadwaita's `AdwClamp`) — so this
+/// number also becomes a floor under the window's minimum width. 760 pushed
+/// the window's minimum past the logical screen width at Hyprland scale 2.0
+/// (e.g. 1920px physical -> 960 logical), clipping the app. 560 keeps rows
+/// readable while surviving scale 2.0 on common panel widths.
+const CONTENT_MAX_WIDTH: i32 = 560;
 
 /// A centered placeholder for a panel's empty state (no snapshots yet, no
 /// scan results yet, etc) — a dim icon + title + hint, instead of a single
@@ -186,14 +193,16 @@ pub fn entry_row(label: &str, doc: &Doc, path: Path, placeholder: &str, default:
     row(label, &entry)
 }
 
+/// `PasswordEntry` (core GTK4 since 4.0, not a libadwaita widget) has a
+/// built-in reveal/unhide eye icon via `set_show_peek_icon` — the correct
+/// idiomatic replacement for a masked `Entry`, which had no way to unhide.
 pub fn password_row(label: &str, doc: &Doc, path: Path) -> GBox {
     let cur = config::get_str(&doc.borrow(), path).unwrap_or_default();
-    let entry = Entry::new();
+    let entry = gtk4::PasswordEntry::new();
     entry.set_text(&cur);
-    entry.set_visibility(false);
+    entry.set_show_peek_icon(true);
     entry.set_hexpand(true);
     entry.set_width_chars(28);
-    entry.set_input_purpose(gtk4::InputPurpose::Password);
     let doc = doc.clone();
     entry.connect_changed(move |e| {
         config::set_str_or_remove(&mut doc.borrow_mut(), path, e.text().as_str());
