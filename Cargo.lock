@@ -32,6 +32,7 @@ version = "0.6.3"
 dependencies = [
  "async-channel",
  "bread-theme",
+ "bread-utils",
  "glib",
  "gtk4",
  "serde",
@@ -49,6 +50,16 @@ dependencies = [
  "gtk4",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "bread-utils"
+version = "0.2.3"
+dependencies = [
+ "dirs",
+ "serde",
+ "serde_json",
+ "toml_edit 0.22.27",
 ]
 
 [[package]]
