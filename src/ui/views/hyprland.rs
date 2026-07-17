@@ -69,11 +69,13 @@ fn save(rules: &[MonitorRule]) -> std::io::Result<()> {
 }
 
 fn get_live_monitors() -> Vec<(String, String)> {
-    let Ok(output) = std::process::Command::new("hyprctl").args(["monitors", "-j"]).output() else {
+    // Was a bare Command::new("hyprctl").output() with no timeout.
+    let Some(value) =
+        bread_utils::proc::run_json("hyprctl", &["monitors", "-j"], std::time::Duration::from_secs(3))
+    else {
         return Vec::new();
     };
-    let text = String::from_utf8_lossy(&output.stdout);
-    let Ok(monitors) = serde_json::from_str::<Vec<serde_json::Value>>(&text) else {
+    let Ok(monitors) = serde_json::from_value::<Vec<serde_json::Value>>(value) else {
         return Vec::new();
     };
     monitors
