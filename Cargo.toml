@@ -18,4 +18,4 @@ toml = "0.8"
 toml_edit = "0.22"
 async-channel = "2"
 # TODO(owner): switch to tag-pinned git dependency once bread-utils is merged and tagged, matching the bread-theme pattern
-bread-utils = { path = "../bread-ecosystem-fix-worktree/bread-utils", features = ["toml"] }
+bread-utils = { git = "https://git.breadway.dev/Breadway/bread-ecosystem", tag = "v0.3.0", features = ["toml"] }
