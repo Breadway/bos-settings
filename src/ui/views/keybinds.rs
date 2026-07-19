@@ -564,7 +564,9 @@ fn populate(content: &GBox, model: &Rc<RefCell<Model>>, status: &Label) {
         Rc::new(move || rerender(&content, &model, &status))
     };
 
-    match model.borrow().kind {
+    let kind = model.borrow().kind;
+
+    match kind {
         SchemaKind::Unknown => populate_unknown(content, status),
         SchemaKind::Flat => populate_flat(content, model, status, &rerender),
         SchemaKind::MultiLayout => populate_multi_layout(content, model, &rerender),
