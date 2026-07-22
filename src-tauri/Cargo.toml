@@ -1,0 +1,36 @@
+[package]
+name = "bos-settings"
+version = "0.8.0"
+description = "System settings app for BOS (Bread Operating System)"
+authors = ["Breadway"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "bos_settings_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml_edit = "0.22"
+tokio = { version = "1", features = ["process", "io-util", "time", "macros"] }
+notify = "7"
+regex = "1"
+# TODO(owner): switch to a tag-pinned git dependency once bread-theme cuts a
+# release including css_custom_properties/css_tokens (added 2026-07-21 for
+# this migration, unreleased) — matches the same pending-tag pattern
+# bos-settings' old GTK Cargo.toml used for bread-utils.
+bread-theme = { path = "../../bread-ecosystem/bread-theme" }
+bread-utils = { path = "../../bread-ecosystem/bread-utils", features = ["toml"] }
+
