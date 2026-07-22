@@ -58,7 +58,11 @@
 
 		<Group title="Modules">
 			<SwitchField label="Load built-in modules" bind:value={cfg.modules_builtin} />
-			<TagsField label="Disabled modules" bind:value={cfg.modules_disable} />
+			<TagsField
+				label="Disabled modules"
+				bind:value={cfg.modules_disable}
+				suggestions={["bread.monitors", "bread.devices", "bread.workspaces", "bread.binds"]}
+			/>
 		</Group>
 
 		<Group title="Adapters" hint="Sources breadd normalises into events. Disable any you don't use.">

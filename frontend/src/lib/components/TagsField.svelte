@@ -1,7 +1,13 @@
 <script lang="ts">
-	let { label, value = $bindable() }: { label: string; value: string[] } = $props();
+	let {
+		label,
+		value = $bindable(),
+		suggestions = [],
+	}: { label: string; value: string[]; suggestions?: string[] } = $props();
 
 	let text = $state("");
+	const listId = $props.id();
+	let available = $derived(suggestions.filter((s) => !value.includes(s)));
 
 	function commit() {
 		const v = text.trim();
@@ -36,8 +42,15 @@
 				<button type="button" class="remove" onclick={() => remove(name)} aria-label={`Remove ${name}`}>×</button>
 			</span>
 		{/each}
-		<input type="text" bind:value={text} onkeydown={onKeydown} placeholder="Type and press Enter…" />
+		<input type="text" bind:value={text} onkeydown={onKeydown} placeholder="Type and press Enter…" list={available.length ? listId : undefined} />
 	</div>
+	{#if available.length}
+		<datalist id={listId}>
+			{#each available as s (s)}
+				<option value={s}></option>
+			{/each}
+		</datalist>
+	{/if}
 </div>
 
 <style>
