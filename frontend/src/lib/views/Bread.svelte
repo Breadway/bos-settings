@@ -9,6 +9,7 @@
 	import SelectField from "$lib/components/SelectField.svelte";
 	import NumberField from "$lib/components/NumberField.svelte";
 	import TagsField from "$lib/components/TagsField.svelte";
+	import ChipPickerField from "$lib/components/ChipPickerField.svelte";
 	import SaveButton from "$lib/components/SaveButton.svelte";
 
 	interface BreadConfig {
@@ -32,9 +33,14 @@
 	}
 
 	let cfg = $state<BreadConfig | null>(null);
+	// The daemon's 4 compiled-in modules plus every *.lua file actually
+	// sitting in the configured module directory — real installed modules,
+	// not a guess, so picking one to disable is a click.
+	let knownModules = $state<string[]>([]);
 
 	onMount(async () => {
 		cfg = await invoke<BreadConfig>("get_bread_config");
+		knownModules = await invoke<string[]>("list_bread_modules");
 	});
 
 	async function save() {
@@ -58,10 +64,11 @@
 
 		<Group title="Modules">
 			<SwitchField label="Load built-in modules" bind:value={cfg.modules_builtin} />
-			<TagsField
+			<ChipPickerField
 				label="Disabled modules"
 				bind:value={cfg.modules_disable}
-				suggestions={["bread.monitors", "bread.devices", "bread.workspaces", "bread.binds"]}
+				options={knownModules}
+				emptyOptionsHint="No other modules found to disable."
 			/>
 		</Group>
 

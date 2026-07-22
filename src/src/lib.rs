@@ -19,6 +19,7 @@ pub fn run() {
             commands::breadclip::open_breadclip,
             commands::bread::get_bread_config,
             commands::bread::save_bread_config,
+            commands::bread::list_bread_modules,
             commands::breadpad::get_breadpad_config,
             commands::breadpad::save_breadpad_config,
             commands::breadsearch::get_breadsearch_config,
