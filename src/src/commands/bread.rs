@@ -55,6 +55,49 @@ pub fn get_bread_config() -> BreadConfig {
     }
 }
 
+/// Real, pickable module names for the "Disabled modules" field: breadd's
+/// four compiled-in modules (bread/breadd/src/lua/mod.rs's `BUILTIN_*`
+/// registry — these aren't files on disk, so a directory scan alone would
+/// miss them) plus every `.lua` file actually sitting in the configured
+/// module directory (the user's own custom widgets/modules — the common
+/// case in practice, going by real configs seen in the wild).
+#[tauri::command]
+pub fn list_bread_modules() -> Vec<String> {
+    let mut modules = vec![
+        "bread.monitors".to_string(),
+        "bread.devices".to_string(),
+        "bread.workspaces".to_string(),
+        "bread.binds".to_string(),
+    ];
+
+    let doc = config::load_doc(&config_path());
+    let configured = config::get_str(&doc, &["lua", "module_path"]);
+    let module_dir = expand_home(configured.as_deref().filter(|s| !s.is_empty()).unwrap_or("~/.config/bread/modules"));
+
+    if let Ok(entries) = std::fs::read_dir(&module_dir) {
+        let mut found: Vec<String> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("lua"))
+            .filter_map(|e| e.file_name().into_string().ok())
+            .collect();
+        found.sort();
+        modules.extend(found);
+    }
+
+    modules
+}
+
+/// Expands a leading `~/` against `$HOME` — breadd's own config resolution
+/// (`Config::lua_module_path`) does the same for this exact field.
+fn expand_home(path: &str) -> std::path::PathBuf {
+    if let Some(rest) = path.strip_prefix("~/") {
+        if let Some(home) = std::env::var_os("HOME") {
+            return std::path::PathBuf::from(home).join(rest);
+        }
+    }
+    std::path::PathBuf::from(path)
+}
+
 #[tauri::command]
 pub fn save_bread_config(cfg: BreadConfig) -> Result<(), String> {
     let path = config_path();
