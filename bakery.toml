@@ -1,9 +1,11 @@
 name = "bos-settings"
 description = "System settings app for Bread OS"
 binaries = ["bos-settings"]
-system_deps = ["gtk4", "glib2"]
+system_deps = ["gtk4", "glib2", "hicolor-icon-theme"]
 optional_system_deps = ["snapper"]
 bread_deps = []
+license_file = "LICENSE"
+desktop_file = "bos-settings.desktop"
 
 [config]
 dir = "~/.config"
