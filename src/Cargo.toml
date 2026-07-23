@@ -38,8 +38,9 @@ notify = "7"
 regex = "1"
 # TODO(owner): switch to a tag-pinned git dependency once bread-theme cuts a
 # release including css_custom_properties/css_tokens (added 2026-07-21 for
-# this migration, unreleased) — matches the same pending-tag pattern
-# bos-settings' old GTK Cargo.toml used for bread-utils.
-bread-theme = { path = "../../bread-ecosystem/bread-theme" }
-bread-utils = { path = "../../bread-ecosystem/bread-utils", features = ["toml"] }
+# this migration) — pinned to branch = "main" for now rather than a path
+# dependency (which broke bakery/CI builds — no sibling bread-ecosystem
+# checkout exists on the runner) since no tag has these functions yet.
+bread-theme = { git = "https://github.com/Breadway/bread-ecosystem", branch = "main" }
+bread-utils = { git = "https://github.com/Breadway/bread-ecosystem", branch = "main", features = ["toml"] }
 
