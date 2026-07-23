@@ -17,6 +17,15 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[features]
+# Default-on so a plain `cargo build --release` produces a standalone binary
+# that embeds the built frontend instead of loading it from `devUrl` —
+# `cargo tauri dev` strips this back off via `--no-default-features` so dev
+# builds keep talking to the Vite dev server. See
+# https://v2.tauri.app/reference/cargo-features/#custom-protocol
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
