@@ -307,6 +307,7 @@ dependencies = [
 [[package]]
 name = "bread-theme"
 version = "0.3.1"
+source = "git+https://github.com/Breadway/bread-ecosystem?branch=main#afa3686e9acf348bc86d62b64a7b9be16739ac40"
 dependencies = [
  "dirs 5.0.1",
  "serde",
@@ -316,6 +317,7 @@ dependencies = [
 [[package]]
 name = "bread-utils"
 version = "0.3.1"
+source = "git+https://github.com/Breadway/bread-ecosystem?branch=main#afa3686e9acf348bc86d62b64a7b9be16739ac40"
 dependencies = [
  "dirs 5.0.1",
  "serde",
