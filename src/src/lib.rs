@@ -1,12 +1,19 @@
 mod commands;
+mod screenshot;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let args: Vec<String> = std::env::args().collect();
+    let screenshot_req = screenshot::parse(&args);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .setup(|app| {
+        .setup(move |app| {
             commands::theme::watch_and_emit(app.handle());
+            if let Some(req) = screenshot_req {
+                screenshot::dispatch(req);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

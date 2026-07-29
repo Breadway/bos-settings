@@ -290,8 +290,10 @@ dependencies = [
 name = "bos-settings"
 version = "0.8.0"
 dependencies = [
+ "anyhow",
+ "bread-screenshots",
  "bread-theme",
- "bread-utils",
+ "bread-utils 0.3.1 (git+https://github.com/Breadway/bread-ecosystem?branch=main)",
  "notify",
  "regex",
  "serde",
@@ -305,9 +307,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "bread-screenshots"
+version = "0.3.1"
+source = "git+https://git.breadway.dev/Breadway/bread-ecosystem?branch=dev#c93f4cf4d0ea1d49e639a1b5b4507e5a2497f52d"
+dependencies = [
+ "anyhow",
+ "bread-utils 0.3.1 (git+https://git.breadway.dev/Breadway/bread-ecosystem?branch=dev)",
+ "tracing",
+]
+
+[[package]]
 name = "bread-theme"
 version = "0.3.1"
 source = "git+https://github.com/Breadway/bread-ecosystem?branch=main#afa3686e9acf348bc86d62b64a7b9be16739ac40"
+dependencies = [
+ "dirs 5.0.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "bread-utils"
+version = "0.3.1"
+source = "git+https://git.breadway.dev/Breadway/bread-ecosystem?branch=dev#c93f4cf4d0ea1d49e639a1b5b4507e5a2497f52d"
 dependencies = [
  "dirs 5.0.1",
  "serde",
