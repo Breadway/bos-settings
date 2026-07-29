@@ -1,35 +1,69 @@
-//! `--screenshot` CLI mode: capture the settings window via
-//! `bread-screenshots`, then exit — driven by `bread-ecosystem`'s
-//! `bread-capture` orchestrator, or run standalone for one-off captures.
+//! `--screenshot` CLI mode: switch the Svelte SPA to the named sidebar
+//! section, capture it via `bread-screenshots`, then exit — driven by
+//! `bread-ecosystem`'s `bread-capture` orchestrator, or run standalone for
+//! one-off captures.
 //!
-//! First pass at a Tauri (webview, not raw GTK4) target: there's no
-//! `connect_map`/`glib` signal to hook here the way every other bread-
-//! ecosystem app's screenshot mode does, since the window is owned by
-//! tao/wry, not gtk4-rs directly. Instead this just waits a fixed
-//! [`SETTLE_DELAY`] on Tauri's own async runtime after `setup()` runs —
-//! longer than the native apps' settle delays, since a webview's first
-//! paint means a full page load (JS bundle parse + Svelte mount), not just
-//! GTK widget layout. The window itself is a plain, non-layer-shell
-//! toplevel (per `tauri.conf.json`'s fixed 960x640 size), so — same
-//! reasoning as breadman/breadhelp — a full known-size canvas capture is
-//! enough; no geometry to track.
+//! There's no `connect_map`/`glib` signal to hook here the way every other
+//! bread-ecosystem app's screenshot mode does, since the window is owned by
+//! tao/wry (Tauri's Linux backend), not gtk4-rs directly. Instead this
+//! waits a fixed [`INITIAL_SETTLE_DELAY`] on Tauri's own async runtime after
+//! `setup()` runs for the page's first paint (JS bundle parse + Svelte
+//! mount) — longer than the native apps' settle delays, since a webview's
+//! first paint is a full page load, not just GTK widget layout — then emits
+//! a `screenshot-set-view` event the frontend listens for
+//! (`+page.svelte`'s `onMount`) to switch `activePage` exactly like a real
+//! sidebar click would, then waits [`VIEW_SETTLE_DELAY`] more for that
+//! view's own data to load (each section fetches its own state over Tauri
+//! commands on mount) before capturing. The window itself is a plain,
+//! non-layer-shell toplevel (per `tauri.conf.json`'s fixed 960x640 size),
+//! so — same reasoning as breadman/breadhelp — a full known-size canvas
+//! capture is enough; no geometry to track.
 //!
-//! Only one view ("default", the settings window's initial landing
-//! section) is wired up so far. The frontend is a Svelte SPA with its own
-//! sidebar routing for each settings section (Appearance, Network,
-//! Bluetooth, ...) — capturing one of those specifically would mean
-//! passing a route via a URL/hash on window creation and is real, separate
-//! frontend work, deferred past this first pass (which exists to prove the
-//! isolated-headless-Sway pipeline works against a Tauri/webview window at
-//! all, not to reach full view parity with the native GTK4 apps).
+//! View names match `frontend/src/lib/sidebar.ts`'s item ids exactly (see
+//! `KNOWN_VIEWS`) — every one of them has a real registered component (see
+//! `frontend/src/lib/views/registry.ts`), no Placeholder fallbacks to skip.
 
 use std::path::PathBuf;
 use std::time::Duration;
+use tauri::Emitter;
 
-const SETTLE_DELAY: Duration = Duration::from_millis(2000);
-const KNOWN_VIEWS: &[&str] = &["default"];
+const INITIAL_SETTLE_DELAY: Duration = Duration::from_millis(2000);
+/// Applied after switching views — shorter than the initial load (no full
+/// page/JS reload, just a component swap + that view's own Tauri-command
+/// data fetch), but the About page alone needed 2s for its fetch to land
+/// (see the initial-pass commit), so this stays generous rather than
+/// re-guessing per view.
+const VIEW_SETTLE_DELAY: Duration = Duration::from_millis(2000);
+
+const KNOWN_VIEWS: &[&str] = &[
+    "network",
+    "breadcrumbs",
+    "bluetooth",
+    "firewall",
+    "sound",
+    "power",
+    "datetime",
+    "hyprland",
+    "keybinds",
+    "autostart",
+    "users",
+    "appearance",
+    "breadpaper",
+    "breadbar",
+    "breadbox",
+    "breadclip",
+    "breadpad",
+    "breadsearch",
+    "bread",
+    "packages",
+    "aur",
+    "firmware",
+    "snapshots",
+    "about",
+];
 
 pub struct ScreenshotRequest {
+    pub view: String,
     pub output: PathBuf,
     pub width: u32,
     pub height: u32,
@@ -73,13 +107,20 @@ pub fn parse(args: &[String]) -> Option<ScreenshotRequest> {
         eprintln!("bos-settings: --screenshot requires --output");
         std::process::exit(1);
     };
-    Some(ScreenshotRequest { output: output.into(), width, height })
+    Some(ScreenshotRequest { view, output: output.into(), width, height })
 }
 
-/// Schedule the capture-then-exit sequence. Called once from `setup()`.
-pub fn dispatch(req: ScreenshotRequest) {
+/// Schedule the switch-view-then-capture-then-exit sequence. Called once
+/// from `setup()`, which is also where `app` (needed to emit the
+/// `screenshot-set-view` event) comes from.
+pub fn dispatch(req: ScreenshotRequest, app: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(SETTLE_DELAY).await;
+        tokio::time::sleep(INITIAL_SETTLE_DELAY).await;
+        if let Err(e) = app.emit("screenshot-set-view", &req.view) {
+            eprintln!("bos-settings: failed to emit screenshot-set-view: {e}");
+            std::process::exit(1);
+        }
+        tokio::time::sleep(VIEW_SETTLE_DELAY).await;
         finish(bread_screenshots::capture_region(
             0,
             0,
