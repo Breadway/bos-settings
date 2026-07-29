@@ -12,7 +12,7 @@ pub fn run() {
         .setup(move |app| {
             commands::theme::watch_and_emit(app.handle());
             if let Some(req) = screenshot_req {
-                screenshot::dispatch(req);
+                screenshot::dispatch(req, app.handle().clone());
             }
             Ok(())
         })

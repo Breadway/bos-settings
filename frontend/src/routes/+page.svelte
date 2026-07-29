@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { listen } from "@tauri-apps/api/event";
 	import Sidebar from "$lib/components/Sidebar.svelte";
 	import Placeholder from "$lib/components/Placeholder.svelte";
 	import { DEFAULT_PAGE } from "$lib/sidebar";
@@ -11,6 +12,15 @@
 
 	onMount(() => {
 		initTheme();
+		// Screenshot mode only (src-tauri's screenshot.rs) — lets the Rust
+		// core drive which sidebar section is showing for a capture without
+		// a real user ever clicking the sidebar.
+		const unlisten = listen<string>("screenshot-set-view", (event) => {
+			activePage = event.payload;
+		});
+		return () => {
+			unlisten.then((f) => f());
+		};
 	});
 </script>
 
