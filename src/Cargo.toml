@@ -45,6 +45,6 @@ bread-theme = { git = "https://github.com/Breadway/bread-ecosystem", branch = "m
 bread-utils = { git = "https://github.com/Breadway/bread-ecosystem", branch = "main", features = ["toml"] }
 # Capture primitives for `--screenshot` mode — see src/screenshot.rs. On
 # "dev", not "main" like the two deps above: it doesn't exist on main yet.
-bread-screenshots = { git = "https://git.breadway.dev/Breadway/bread-ecosystem", branch = "dev" }
+bread-screenshots = { git = "https://git.breadway.dev/Breadway/bread-ecosystem", branch = "main" }
 anyhow = "1"
 
