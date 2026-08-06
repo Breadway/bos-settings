@@ -33,7 +33,7 @@ pub struct BreadbarStyle {
     pub notification_border_radius: u32,
 }
 
-fn find_block<'a>(css: &'a str, selector: &str) -> Option<(usize, usize)> {
+fn find_block(css: &str, selector: &str) -> Option<(usize, usize)> {
     let pat = format!(r"(?m)^\s*{}\s*\{{", regex::escape(selector));
     let re = Regex::new(&pat).ok()?;
     let m = re.find(css)?;
