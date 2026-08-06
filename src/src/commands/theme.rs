@@ -128,7 +128,7 @@ pub fn watch_and_emit(app: &AppHandle) {
     app.manage(WatcherHandle(watcher));
 }
 
-struct WatcherHandle(RecommendedWatcher);
+struct WatcherHandle(#[allow(dead_code)] RecommendedWatcher);
 
 fn tracing_or_eprintln(msg: &str) {
     eprintln!("{msg}");

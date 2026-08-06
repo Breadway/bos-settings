@@ -89,7 +89,7 @@ pub async fn scan_wifi() -> Vec<WifiNetwork> {
         by_ssid.entry(ssid.to_string()).and_modify(|existing| if net.signal > existing.signal { *existing = net.clone() }).or_insert(net);
     }
     let mut list: Vec<_> = by_ssid.into_values().collect();
-    list.sort_by(|a, b| b.signal.cmp(&a.signal));
+    list.sort_by_key(|n| std::cmp::Reverse(n.signal));
     list
 }
 
