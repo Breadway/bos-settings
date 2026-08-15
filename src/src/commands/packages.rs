@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 #[derive(Serialize, Clone)]
 pub struct InstalledPackage {
-    name: String,
+    pub name: String,
     version: String,
 }
 
@@ -23,14 +23,19 @@ pub fn get_installed_packages() -> Vec<InstalledPackage> {
     let Some(packages) = parsed.get_mut("packages").map(std::mem::take) else {
         return Vec::new();
     };
-    let Ok(packages) = serde_json::from_value::<HashMap<String, serde_json::Value>>(packages) else {
+    let Ok(packages) = serde_json::from_value::<HashMap<String, serde_json::Value>>(packages)
+    else {
         return Vec::new();
     };
 
     let mut list: Vec<InstalledPackage> = packages
         .into_iter()
         .map(|(name, val)| {
-            let version = val.get("version").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+            let version = val
+                .get("version")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string();
             InstalledPackage { name, version }
         })
         .collect();

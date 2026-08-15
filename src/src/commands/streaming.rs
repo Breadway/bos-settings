@@ -15,20 +15,49 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 #[derive(Clone, Serialize)]
-struct CmdOutputEvent {
+pub(crate) struct CmdOutputEvent {
     session_id: String,
     line: String,
+}
+
+pub(crate) fn emit_line(app: &AppHandle, session_id: &str, line: &str) {
+    let _ = app.emit(
+        "cmd-output",
+        CmdOutputEvent {
+            session_id: session_id.to_string(),
+            line: line.to_string(),
+        },
+    );
 }
 
 /// Runs a hardcoded `program args...`, emitting one `cmd-output` event per
 /// line of stdout/stderr (tagged with `session_id` so the frontend can route
 /// concurrent streams), and resolves to whether it exited successfully.
-async fn run_hardcoded(app: AppHandle, session_id: String, program: &str, args: &[&str]) -> bool {
-    let child = Command::new(program)
-        .args(args)
+pub(crate) async fn run_hardcoded(
+    app: AppHandle,
+    session_id: String,
+    program: &str,
+    args: &[&str],
+) -> bool {
+    run_hardcoded_env(app, session_id, program, args, &[]).await
+}
+
+pub(crate) async fn run_hardcoded_env(
+    app: AppHandle,
+    session_id: String,
+    program: &str,
+    args: &[&str],
+    envs: &[(&str, String)],
+) -> bool {
+    let mut cmd = Command::new(program);
+    cmd.args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn();
+        .kill_on_drop(true);
+    for (k, v) in envs {
+        cmd.env(k, v);
+    }
+    let child = cmd.spawn();
     let mut child = match child {
         Ok(c) => c,
         Err(e) => {
@@ -133,6 +162,35 @@ pub async fn fwupd_refresh(app: AppHandle, session_id: String) -> bool {
 #[tauri::command]
 pub async fn fwupd_update(app: AppHandle, session_id: String) -> bool {
     run_hardcoded(app, session_id, "fwupdmgr", &["update", "-y"]).await
+}
+
+#[tauri::command]
+pub async fn bakery_install(app: AppHandle, session_id: String, name: String) -> bool {
+    if let Err(e) = super::util::allowed_bakery_install(&name) {
+        emit_line(&app, &session_id, &format!("Error: {e}"));
+        return false;
+    }
+    run_hardcoded(app, session_id, "bakery", &["-y", "install", &name]).await
+}
+
+#[tauri::command]
+pub async fn pacman_install(app: AppHandle, session_id: String, packages: Vec<String>) -> bool {
+    let names = match super::util::allowed_pacman_packages(&packages) {
+        Ok(n) => n,
+        Err(e) => {
+            emit_line(&app, &session_id, &format!("Error: {e}"));
+            return false;
+        }
+    };
+    let mut args: Vec<String> = vec![
+        "pacman".into(),
+        "-S".into(),
+        "--noconfirm".into(),
+        "--".into(),
+    ];
+    args.extend(names);
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_hardcoded(app, session_id, "pkexec", &refs).await
 }
 
 #[cfg(test)]
