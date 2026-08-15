@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
-	import { runStreamingCommand } from "$lib/streaming";
+	import { runStreamed } from "$lib/streaming";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
 	import Hint from "$lib/components/Hint.svelte";
@@ -31,7 +31,7 @@
 	async function checkForUpdates() {
 		log = [];
 		busy = true;
-		await runStreamingCommand("fwupdmgr", ["refresh"], appendLine);
+		await runStreamed("fwupd_refresh", {}, appendLine);
 		busy = false;
 		await refresh();
 	}
@@ -39,7 +39,7 @@
 	async function updateAll() {
 		log = [];
 		busy = true;
-		await runStreamingCommand("fwupdmgr", ["update", "-y"], appendLine);
+		await runStreamed("fwupd_update", {}, appendLine);
 		busy = false;
 		await refresh();
 	}

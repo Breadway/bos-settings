@@ -27,6 +27,10 @@ import Package from "@lucide/svelte/icons/package";
 import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 import History from "@lucide/svelte/icons/history";
 import Info from "@lucide/svelte/icons/info";
+import Lock from "@lucide/svelte/icons/lock";
+import Camera from "@lucide/svelte/icons/camera";
+import AppWindow from "@lucide/svelte/icons/app-window";
+import CircleHelp from "@lucide/svelte/icons/circle-help";
 
 export interface SidebarItem {
 	/** Must match a key in the view component map (see routing in +page.svelte). */
@@ -47,7 +51,10 @@ export const SYSTEM_ITEMS: SidebarItem[] = [
 	{ id: "power", label: "Power", icon: BatteryFull },
 	{ id: "datetime", label: "Date & Time", icon: Clock },
 	{ id: "hyprland", label: "Display", sublabel: "monitors.json", icon: Monitor },
+	{ id: "breadmon", label: "Monitors", sublabel: "breadmon", icon: AppWindow },
+	{ id: "breadlock", label: "Lock & greet", sublabel: "breadlock", icon: Lock },
 	{ id: "keybinds", label: "Keybinds", sublabel: "binds.json", icon: Keyboard },
+	{ id: "breadshot", label: "Screenshots", sublabel: "breadshot", icon: Camera },
 	{ id: "autostart", label: "Startup Apps", sublabel: "autostart.json", icon: Rocket },
 	{ id: "users", label: "Users", icon: Users },
 ];
@@ -70,7 +77,10 @@ export const MAINTENANCE_ITEMS: SidebarItem[] = [
 	{ id: "snapshots", label: "Snapshots", icon: History },
 ];
 
-export const ABOUT_ITEMS: SidebarItem[] = [{ id: "about", label: "About", icon: Info }];
+export const ABOUT_ITEMS: SidebarItem[] = [
+	{ id: "breadhelp", label: "Help", sublabel: "breadhelp", icon: CircleHelp },
+	{ id: "about", label: "About", icon: Info },
+];
 
 export interface SidebarSection {
 	title: string | null;

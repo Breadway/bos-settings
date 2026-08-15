@@ -201,6 +201,51 @@ fn save(f: &BindsFile, kind: SchemaKind) -> std::io::Result<()> {
     save_to(&config_path(), f, kind)
 }
 
+/// One breadshot `exec` bind as binds.json stored it. Used by the
+/// Screenshots panel (read-only); editing still happens here.
+pub(crate) struct ShotBindRaw {
+    pub mods: Option<Vec<String>>,
+    pub key: Option<String>,
+    pub command: String,
+    pub default_mods: Vec<String>,
+}
+
+pub(crate) fn breadshot_binds() -> Vec<ShotBindRaw> {
+    let (file, _kind) = load();
+    let default_mods = file.default_mods.clone();
+    let mut out = Vec::new();
+    let mut push = |binds: &[Bind]| {
+        for b in binds {
+            if b.action != "exec" {
+                continue;
+            }
+            let Some(cmd) = b.extra.get("command").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            if !cmd
+                .split_whitespace()
+                .next()
+                .is_some_and(|bin| bin == "breadshot" || bin.ends_with("/breadshot"))
+            {
+                continue;
+            }
+            out.push(ShotBindRaw {
+                mods: b.mods.clone(),
+                key: b.key.clone(),
+                command: cmd.to_string(),
+                default_mods: default_mods.clone(),
+            });
+        }
+    };
+    push(&file.bindings);
+    push(&file.globals);
+    push(&file.common);
+    for binds in file.layouts.values() {
+        push(binds);
+    }
+    out
+}
+
 #[tauri::command]
 pub fn get_keybinds() -> BindsPayload {
     let (file, kind) = load();
@@ -265,8 +310,14 @@ mod tests {
         // active_layout/globals/common/layouts keys leaking in.
         let saved_obj = saved.as_object().expect("flat save must be a JSON object");
         assert_eq!(
-            saved_obj.keys().cloned().collect::<std::collections::BTreeSet<_>>(),
-            ["default_mods", "bindings"].into_iter().map(String::from).collect(),
+            saved_obj
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            ["default_mods", "bindings"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
             "Flat schema must round-trip as exactly {{default_mods, bindings}}"
         );
 
@@ -279,7 +330,8 @@ mod tests {
 
     #[test]
     fn round_trip_via_files_preserves_bindings_key_and_extras() {
-        let dir = std::env::temp_dir().join(format!("bos-settings-keybinds-test-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("bos-settings-keybinds-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("binds.json");
         std::fs::write(&path, REAL_BOS_FLAT_FIXTURE).unwrap();
@@ -292,7 +344,10 @@ mod tests {
         let saved: Value = serde_json::from_str(&saved_text).unwrap();
         let original: Value = serde_json::from_str(REAL_BOS_FLAT_FIXTURE).unwrap();
 
-        assert!(saved.get("bindings").is_some(), "bindings key must survive a load -> save round trip");
+        assert!(
+            saved.get("bindings").is_some(),
+            "bindings key must survive a load -> save round trip"
+        );
         assert_eq!(saved["bindings"], original["bindings"]);
         assert_eq!(saved["default_mods"], original["default_mods"]);
 
@@ -301,7 +356,8 @@ mod tests {
         save_to(&path, &file, kind).unwrap();
         let backup_path = dir.join("binds.json.bak");
         assert!(backup_path.exists(), "save must back up the previous file");
-        let backup: Value = serde_json::from_str(&std::fs::read_to_string(&backup_path).unwrap()).unwrap();
+        let backup: Value =
+            serde_json::from_str(&std::fs::read_to_string(&backup_path).unwrap()).unwrap();
         assert_eq!(backup["bindings"], original["bindings"]);
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -320,7 +376,10 @@ mod tests {
         assert_eq!(kind, SchemaKind::MultiLayout);
 
         let saved = to_json(&file, kind);
-        assert!(saved.get("bindings").is_none(), "MultiLayout save must not emit a flat `bindings` key");
+        assert!(
+            saved.get("bindings").is_none(),
+            "MultiLayout save must not emit a flat `bindings` key"
+        );
         assert_eq!(saved["active_layout"], "qwerty");
         assert_eq!(saved["layouts"]["qwerty"][0]["action"], "close");
         assert_eq!(saved["globals"][0]["command"], "kitty");
@@ -332,20 +391,32 @@ mod tests {
         let (file, kind) = parse(text);
         assert_eq!(kind, SchemaKind::Unknown);
 
-        let dir = std::env::temp_dir().join(format!("bos-settings-keybinds-unknown-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "bos-settings-keybinds-unknown-test-{}",
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("binds.json");
 
         let result = save_to(&path, &file, kind);
-        assert!(result.is_err(), "save() must refuse when schema kind is Unknown");
-        assert!(!path.exists(), "refusing to save must not create/touch the target file");
+        assert!(
+            result.is_err(),
+            "save() must refuse when schema kind is Unknown"
+        );
+        assert!(
+            !path.exists(),
+            "refusing to save must not create/touch the target file"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn missing_file_defaults_to_flat_not_multi_layout() {
-        let dir = std::env::temp_dir().join(format!("bos-settings-keybinds-missing-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "bos-settings-keybinds-missing-test-{}",
+            std::process::id()
+        ));
         // Don't create the file at all.
         let path = dir.join("binds.json");
         let (_, kind) = load_from(&path);
