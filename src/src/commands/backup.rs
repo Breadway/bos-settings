@@ -11,6 +11,12 @@ use super::config;
 use super::streaming;
 use super::util::{self, command_exists, fail_output};
 
+fn home_dir() -> PathBuf {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/root"))
+}
+
 fn backup_toml() -> PathBuf {
     util::bos_settings_dir().join("backup.toml")
 }
@@ -66,6 +72,7 @@ pub struct BackupStatus {
     has_password: bool,
     snapshots: Vec<ResticSnapshot>,
     error: Option<String>,
+    home: String,
 }
 
 #[derive(Serialize, Clone)]
@@ -84,6 +91,7 @@ pub fn get_backup_config() -> BackupStatus {
         has_password: s.password.is_some(),
         snapshots: Vec::new(),
         error: None,
+        home: home_dir().to_string_lossy().into_owned(),
     }
 }
 
@@ -161,6 +169,7 @@ fn exclude_args(home: &str) -> Vec<String> {
         ".cache",
         ".local/share/Trash",
         ".local/share/Steam",
+        ".local/share/containers",
         ".npm",
         ".cargo/registry",
         ".cargo/git",
@@ -210,8 +219,56 @@ pub async fn restic_backup(app: AppHandle, session_id: String) -> bool {
     .await
 }
 
-#[tauri::command]
-pub async fn restic_restore_dry_run(app: AppHandle, session_id: String, snapshot: String) -> bool {
+/// `~/bos-restore-<id>`. Never `$HOME` itself — restore writes into a new
+/// directory so a bad snapshot cannot clobber the live home.
+pub fn default_restore_dir(snapshot: &str) -> PathBuf {
+    home_dir().join(format!("bos-restore-{snapshot}"))
+}
+
+fn normalize_abs(path: &Path) -> PathBuf {
+    path.components().collect()
+}
+
+/// Absolute path, not `$HOME` and not `/`. Empty target means the default.
+pub fn valid_restore_target(path: &Path) -> bool {
+    if !path.is_absolute() {
+        return false;
+    }
+    let s = path.to_string_lossy();
+    if s.is_empty() || s.len() > 512 || s.contains('\n') || s.contains('\0') {
+        return false;
+    }
+    let normalized = normalize_abs(path);
+    if normalized == PathBuf::from("/") {
+        return false;
+    }
+    normalized != normalize_abs(&home_dir())
+}
+
+fn resolve_restore_target(snapshot: &str, target: Option<&str>) -> Result<PathBuf, String> {
+    if !valid_snapshot_id(snapshot) {
+        return Err("invalid snapshot id".into());
+    }
+    let dest = match target.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(t) => PathBuf::from(t),
+        None => default_restore_dir(snapshot),
+    };
+    if !valid_restore_target(&dest) {
+        return Err(
+            "restore target must be an absolute path that is not $HOME (default is ~/bos-restore-<id>)"
+                .into(),
+        );
+    }
+    Ok(dest)
+}
+
+async fn run_restic_restore(
+    app: AppHandle,
+    session_id: String,
+    snapshot: String,
+    target: Option<String>,
+    dry_run: bool,
+) -> bool {
     let s = match require_ready() {
         Ok(s) => s,
         Err(e) => {
@@ -220,14 +277,38 @@ pub async fn restic_restore_dry_run(app: AppHandle, session_id: String, snapshot
         }
     };
     let snap = snapshot.trim();
-    if !valid_snapshot_id(snap) {
-        streaming::emit_line(&app, &session_id, "Error: invalid snapshot id");
-        return false;
-    }
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
+    let dest = match resolve_restore_target(snap, target.as_deref()) {
+        Ok(p) => p,
+        Err(e) => {
+            streaming::emit_line(&app, &session_id, &format!("Error: {e}"));
+            return false;
+        }
+    };
+    let dest_s = dest.to_string_lossy().into_owned();
     let password = s.password.clone().unwrap_or_default();
-    let extra = ["restore", snap, "--target", home.as_str(), "--dry-run"];
-    let args = restic_args(&s.repo, &extra);
+    let mut extra = vec![
+        "restore".to_string(),
+        snap.to_string(),
+        "--target".into(),
+        dest_s.clone(),
+    ];
+    if dry_run {
+        extra.push("--dry-run".into());
+    }
+    streaming::emit_line(
+        &app,
+        &session_id,
+        &format!(
+            "{} {snap} → {dest_s}",
+            if dry_run {
+                "Dry-run restore"
+            } else {
+                "Restoring"
+            }
+        ),
+    );
+    let extra_refs: Vec<&str> = extra.iter().map(String::as_str).collect();
+    let args = restic_args(&s.repo, &extra_refs);
     streaming::run_hardcoded_env(
         app,
         session_id,
@@ -236,6 +317,26 @@ pub async fn restic_restore_dry_run(app: AppHandle, session_id: String, snapshot
         &[("RESTIC_PASSWORD", password)],
     )
     .await
+}
+
+#[tauri::command]
+pub async fn restic_restore_dry_run(
+    app: AppHandle,
+    session_id: String,
+    snapshot: String,
+    target: Option<String>,
+) -> bool {
+    run_restic_restore(app, session_id, snapshot, target, true).await
+}
+
+#[tauri::command]
+pub async fn restic_restore(
+    app: AppHandle,
+    session_id: String,
+    snapshot: String,
+    target: Option<String>,
+) -> bool {
+    run_restic_restore(app, session_id, snapshot, target, false).await
 }
 
 fn valid_snapshot_id(id: &str) -> bool {
@@ -354,5 +455,34 @@ mod tests {
         let v = parse_snapshots(json).unwrap();
         assert_eq!(v[0].id, "abc123");
         assert_eq!(v[0].paths[0], "/home/a");
+    }
+
+    #[test]
+    fn restore_defaults_to_bos_restore_id_not_home() {
+        let dest = default_restore_dir("a1b2c3d4");
+        let home = home_dir();
+        assert_eq!(dest, home.join("bos-restore-a1b2c3d4"));
+        assert_ne!(dest, home);
+        assert!(valid_restore_target(&dest));
+        assert!(!valid_restore_target(&home));
+        assert!(!valid_restore_target(Path::new("/")));
+        assert!(!valid_restore_target(Path::new("relative/path")));
+        assert!(valid_restore_target(Path::new("/tmp/bos-restore-custom")));
+        let resolved = resolve_restore_target("latest", None).unwrap();
+        assert_eq!(resolved, home.join("bos-restore-latest"));
+        assert!(resolve_restore_target("latest", Some(home.to_str().unwrap())).is_err());
+    }
+
+    #[test]
+    fn exclude_covers_caches_and_containers() {
+        let args = exclude_args("/home/a");
+        let joined = args.join(" ");
+        assert!(joined.contains("/home/a/.cache"));
+        assert!(joined.contains("/home/a/.local/share/Trash"));
+        assert!(joined.contains("/home/a/.local/share/Steam"));
+        assert!(joined.contains("/home/a/.local/share/containers"));
+        assert!(joined.contains("node_modules"));
+        assert!(joined.contains("target"));
+        assert!(joined.contains(".git"));
     }
 }
