@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { getContext, onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { runStreamed } from "$lib/streaming";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
@@ -7,8 +7,11 @@
 	import Hint from "$lib/components/Hint.svelte";
 	import EmptyState from "$lib/components/EmptyState.svelte";
 	import LogView from "$lib/components/LogView.svelte";
+	import { NAVIGATE_KEY, type Navigate } from "$lib/nav";
 	import Download from "@lucide/svelte/icons/download";
 	import Cpu from "@lucide/svelte/icons/cpu";
+
+	const navigate = getContext<Navigate | undefined>(NAVIGATE_KEY);
 
 	interface PendingUpdate {
 		name: string;
@@ -156,9 +159,13 @@
 
 	<Group
 		title="Rollback"
-		hint="BOS pins GRUB to rootflags=subvol=@, so snapper rollback does not change the running root. Boot a snapshot from the GRUB “BOS snapshots” submenu (grub-btrfs), or use the Snapshots page to reboot and pick one there."
+		hint="Boot a snapshot from GRUB (BOS snapshots)."
 	>
+		<Hint text="Snapshots lists number, date, and description so you know which GRUB entry to pick. snapper rollback will not change what GRUB boots (rootflags=subvol=@)." />
 		<Hint text="Bakery also has bakery rollback <pkg> for a single ecosystem binary — that is not a system rollback." />
+		<div class="btn-row">
+			<button disabled={!navigate} onclick={() => navigate?.("snapshots")}>Open Snapshots</button>
+		</div>
 	</Group>
 
 	<LogView lines={log} />
