@@ -23,7 +23,8 @@
 //! `KNOWN_VIEWS`) — every one of them has a real registered component (see
 //! `frontend/src/lib/views/registry.ts`), no Placeholder fallbacks to skip.
 
-use std::path::PathBuf;
+use bread_utils::screenshot_cli::{validate_pair, DEFAULT_HEIGHT, DEFAULT_WIDTH};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tauri::Emitter;
 
@@ -84,13 +85,13 @@ pub struct ScreenshotRequest {
 }
 
 /// `None` for a normal run. Exits the process with an error for an unknown
-/// view, or if `--screenshot` was given without `--output` — before any
-/// Tauri setup happens.
+/// view, or if the `--screenshot` / `--output` pair is incomplete — before
+/// any Tauri setup happens.
 pub fn parse(args: &[String]) -> Option<ScreenshotRequest> {
     let mut view = None;
     let mut output = None;
-    let mut width = 1920u32;
-    let mut height = 1080u32;
+    let mut width = DEFAULT_WIDTH;
+    let mut height = DEFAULT_HEIGHT;
     let mut it = args.iter().skip(1);
     while let Some(arg) = it.next() {
         match arg.as_str() {
@@ -109,6 +110,10 @@ pub fn parse(args: &[String]) -> Option<ScreenshotRequest> {
             _ => {}
         }
     }
+    if let Err(e) = validate_pair(view.as_deref(), output.as_deref().map(Path::new)) {
+        eprintln!("bos-settings: {e}");
+        std::process::exit(1);
+    }
     let view = view?;
     if !KNOWN_VIEWS.contains(&view.as_str()) {
         eprintln!(
@@ -117,13 +122,9 @@ pub fn parse(args: &[String]) -> Option<ScreenshotRequest> {
         );
         std::process::exit(1);
     }
-    let Some(output) = output else {
-        eprintln!("bos-settings: --screenshot requires --output");
-        std::process::exit(1);
-    };
     Some(ScreenshotRequest {
         view,
-        output: output.into(),
+        output: output?.into(),
         width,
         height,
     })
