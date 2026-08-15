@@ -115,6 +115,7 @@ pub fn run() {
             commands::breadhelp::open_breadhelp,
             commands::updates::get_updates_status,
             commands::nvidia::get_nvidia_offer,
+            commands::nvidia::nvidia_setup,
             commands::printing::get_printers,
             commands::printing::set_default_printer,
             commands::printing::add_ipp_printer,

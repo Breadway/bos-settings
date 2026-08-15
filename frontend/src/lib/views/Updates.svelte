@@ -26,6 +26,7 @@
 		gpu: string;
 		reason: string;
 		packages: string[];
+		installed: boolean;
 	}
 	interface UpdatesStatus {
 		pacman: PendingUpdate[];
@@ -67,16 +68,18 @@
 				<div class="offer-text">
 					<strong>{status.nvidia.gpu}</strong>
 					<p>{status.nvidia.reason}</p>
-					<Hint
-						text="Installs nvidia + nvidia-utils only. Afterward, Hyprland usually needs env = LIBVA_DRIVER_NAME,nvidia / __GLX_VENDOR_LIBRARY_NAME,nvidia / NVD_BACKEND,direct — not written for you. Reboot after install."
-					/>
+					{#if status.nvidia.installed}
+						<Hint text="Driver and Hyprland env drop-in are in place. Reboot to start a working session." />
+					{:else}
+						<Hint text="Installs nvidia + nvidia-utils (not cuda) and writes ~/.config/hypr/nvidia.lua. hyprland.lua loads that file only if it exists. Reboot after." />
+					{/if}
 				</div>
 				<button
 					class="primary"
 					disabled={busy}
-					onclick={() => run("pacman_install", { packages: status?.nvidia?.packages ?? ["nvidia", "nvidia-utils"] })}
+					onclick={() => run("nvidia_setup")}
 				>
-					Install driver
+					{status.nvidia.installed ? "Re-run setup" : "Install driver"}
 				</button>
 			</div>
 		</Group>
