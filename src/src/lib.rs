@@ -142,6 +142,7 @@ pub fn run() {
             commands::backup::restic_init,
             commands::backup::restic_backup,
             commands::backup::restic_restore_dry_run,
+            commands::backup::restic_restore,
             commands::backup::list_restic_snapshots,
             commands::optional::get_optional_software,
             commands::optional::enable_flathub,

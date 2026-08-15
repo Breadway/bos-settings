@@ -24,6 +24,7 @@
 		has_password: boolean;
 		snapshots: ResticSnapshot[];
 		error: string | null;
+		home: string;
 	}
 
 	let st = $state<BackupStatus | null>(null);
@@ -31,9 +32,26 @@
 	let password = $state("");
 	let snapshots = $state<ResticSnapshot[]>([]);
 	let selected = $state("latest");
+	let restoreTarget = $state("");
+	let lastAutoTarget = $state("");
 	let log = $state<string[]>([]);
 	let busy = $state(false);
 	let message = $state("");
+
+	function defaultTarget(id: string): string {
+		const home = st?.home ?? "";
+		if (!home) return "";
+		return `${home}/bos-restore-${id || "latest"}`;
+	}
+
+	$effect(() => {
+		if (!st?.home) return;
+		const auto = defaultTarget(selected || "latest");
+		if (restoreTarget === "" || restoreTarget === lastAutoTarget) {
+			if (restoreTarget !== auto) restoreTarget = auto;
+			if (lastAutoTarget !== auto) lastAutoTarget = auto;
+		}
+	});
 
 	async function refresh() {
 		st = await invoke<BackupStatus>("get_backup_config");
@@ -79,6 +97,26 @@
 			snapshots = [];
 		}
 	}
+
+	async function restore(dryRun: boolean) {
+		const snap = selected || "latest";
+		const target = restoreTarget.trim() || defaultTarget(snap);
+		const home = st?.home ?? "";
+		if (!dryRun && home && (target === home || target === `${home}/`)) {
+			message = "Refusing to restore onto $HOME. Leave the default ~/bos-restore-<id> or pick another folder.";
+			return;
+		}
+		if (!dryRun) {
+			const ok = confirm(
+				`Restore snapshot ${snap} into ${target}?\n\nFiles go into that directory. Your live home is not overwritten.`,
+			);
+			if (!ok) return;
+		}
+		await run(dryRun ? "restic_restore_dry_run" : "restic_restore", {
+			snapshot: snap,
+			target,
+		});
+	}
 </script>
 
 <ViewScaffold title="Backup">
@@ -100,16 +138,27 @@
 		{/if}
 	</Group>
 
-	<Group title="Actions" hint="Backup covers $HOME and skips caches, Trash, Steam, cargo/rustup, node_modules, target, and .git. Restore is dry-run only.">
+	<Group
+		title="Actions"
+		hint="This backs up your @home life — documents, configs, the stuff snapper does not. Snapshots on the Snapshots page are root (@) only. Skips caches, Trash, Steam, containers, cargo/rustup, Flatpak, node_modules, target, and .git."
+	>
 		<div class="btn-row">
 			<button disabled={busy} onclick={() => run("restic_init")}>Init repo</button>
 			<button class="primary" disabled={busy} onclick={() => run("restic_backup")}>Backup home</button>
 			<button disabled={busy} onclick={listSnaps}>List snapshots</button>
-			<button disabled={busy} onclick={() => run("restic_restore_dry_run", { snapshot: selected || "latest" })}>
-				Restore dry-run
-			</button>
 		</div>
 		{#if message}<Hint text={message} />{/if}
+	</Group>
+
+	<Group
+		title="Restore"
+		hint="Writes into a new folder (default ~/bos-restore-<id>). Does not overwrite $HOME. Dry-run previews the same target."
+	>
+		<FileField label="Restore into" bind:value={restoreTarget} mode="folder" placeholder="/home/you/bos-restore-latest" />
+		<div class="btn-row">
+			<button disabled={busy || !st?.restic_installed} onclick={() => restore(true)}>Restore dry-run</button>
+			<button class="primary" disabled={busy || !st?.restic_installed} onclick={() => restore(false)}>Restore</button>
+		</div>
 	</Group>
 
 	<Group title="Snapshots" wide>
