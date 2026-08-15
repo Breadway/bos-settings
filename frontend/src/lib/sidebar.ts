@@ -31,6 +31,16 @@ import Lock from "@lucide/svelte/icons/lock";
 import Camera from "@lucide/svelte/icons/camera";
 import AppWindow from "@lucide/svelte/icons/app-window";
 import CircleHelp from "@lucide/svelte/icons/circle-help";
+import Download from "@lucide/svelte/icons/download";
+import Printer from "@lucide/svelte/icons/printer";
+import ShieldEllipsis from "@lucide/svelte/icons/shield-ellipsis";
+import Moon from "@lucide/svelte/icons/moon";
+import Languages from "@lucide/svelte/icons/languages";
+import Accessibility from "@lucide/svelte/icons/accessibility";
+import AppWindowMac from "@lucide/svelte/icons/app-window-mac";
+import GitBranch from "@lucide/svelte/icons/git-branch";
+import Archive from "@lucide/svelte/icons/archive";
+import Boxes from "@lucide/svelte/icons/boxes";
 
 export interface SidebarItem {
 	/** Must match a key in the view component map (see routing in +page.svelte). */
@@ -45,15 +55,20 @@ export interface SidebarItem {
 export const SYSTEM_ITEMS: SidebarItem[] = [
 	{ id: "network", label: "Network", icon: Wifi },
 	{ id: "breadcrumbs", label: "Wi-Fi Profiles", sublabel: "breadcrumbs", icon: Network },
+	{ id: "vpn", label: "VPN / WireGuard", sublabel: "NetworkManager", icon: ShieldEllipsis },
 	{ id: "bluetooth", label: "Bluetooth", icon: Bluetooth },
+	{ id: "printing", label: "Printing", sublabel: "CUPS", icon: Printer },
 	{ id: "firewall", label: "Firewall", icon: Shield },
 	{ id: "sound", label: "Sound", icon: Volume2 },
 	{ id: "power", label: "Power", icon: BatteryFull },
 	{ id: "datetime", label: "Date & Time", icon: Clock },
 	{ id: "hyprland", label: "Display", sublabel: "monitors.json", icon: Monitor },
+	{ id: "nightlight", label: "Night light", sublabel: "hyprsunset", icon: Moon },
 	{ id: "breadmon", label: "Monitors", sublabel: "breadmon", icon: AppWindow },
 	{ id: "breadlock", label: "Lock & greet", sublabel: "breadlock", icon: Lock },
 	{ id: "keybinds", label: "Keybinds", sublabel: "binds.json", icon: Keyboard },
+	{ id: "ime", label: "Input method", sublabel: "fcitx5", icon: Languages },
+	{ id: "accessibility", label: "Accessibility", icon: Accessibility },
 	{ id: "breadshot", label: "Screenshots", sublabel: "breadshot", icon: Camera },
 	{ id: "autostart", label: "Startup Apps", sublabel: "autostart.json", icon: Rocket },
 	{ id: "users", label: "Users", icon: Users },
@@ -67,14 +82,19 @@ export const PERSONALIZATION_ITEMS: SidebarItem[] = [
 	{ id: "breadclip", label: "Clipboard", sublabel: "breadclipd", icon: Clipboard },
 	{ id: "breadpad", label: "Notes", sublabel: "breadpad", icon: NotebookPen },
 	{ id: "breadsearch", label: "File Search", sublabel: "breadsearch", icon: Search },
+	{ id: "defaults", label: "Default apps", sublabel: "mimeapps.list", icon: AppWindowMac },
 	{ id: "bread", label: "Daemon", sublabel: "breadd", icon: Cog },
 ];
 
 export const MAINTENANCE_ITEMS: SidebarItem[] = [
+	{ id: "updates", label: "Updates", icon: Download },
 	{ id: "packages", label: "Packages", icon: Package },
 	{ id: "aur", label: "AUR", icon: Search },
 	{ id: "firmware", label: "Firmware", icon: RefreshCw },
 	{ id: "snapshots", label: "Snapshots", icon: History },
+	{ id: "channel", label: "Bakery channel", sublabel: "track", icon: GitBranch },
+	{ id: "backup", label: "Backup", sublabel: "restic", icon: Archive },
+	{ id: "optional", label: "Optional software", icon: Boxes },
 ];
 
 export const ABOUT_ITEMS: SidebarItem[] = [

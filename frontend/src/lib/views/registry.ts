@@ -30,6 +30,16 @@ import Breadlock from "./Breadlock.svelte";
 import Breadshot from "./Breadshot.svelte";
 import Breadmon from "./Breadmon.svelte";
 import Breadhelp from "./Breadhelp.svelte";
+import Updates from "./Updates.svelte";
+import Printing from "./Printing.svelte";
+import Vpn from "./Vpn.svelte";
+import NightLight from "./NightLight.svelte";
+import InputMethod from "./InputMethod.svelte";
+import Accessibility from "./Accessibility.svelte";
+import Defaults from "./Defaults.svelte";
+import Channel from "./Channel.svelte";
+import Backup from "./Backup.svelte";
+import Optional from "./Optional.svelte";
 
 export const VIEWS: Record<string, Component> = {
 	about: About,
@@ -60,4 +70,14 @@ export const VIEWS: Record<string, Component> = {
 	breadshot: Breadshot,
 	breadmon: Breadmon,
 	breadhelp: Breadhelp,
+	updates: Updates,
+	printing: Printing,
+	vpn: Vpn,
+	nightlight: NightLight,
+	ime: InputMethod,
+	accessibility: Accessibility,
+	defaults: Defaults,
+	channel: Channel,
+	backup: Backup,
+	optional: Optional,
 };
