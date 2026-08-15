@@ -1,14 +1,18 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onMount, setContext } from "svelte";
 	import { listen } from "@tauri-apps/api/event";
 	import Sidebar from "$lib/components/Sidebar.svelte";
 	import Placeholder from "$lib/components/Placeholder.svelte";
 	import { DEFAULT_PAGE } from "$lib/sidebar";
+	import { NAVIGATE_KEY, type Navigate } from "$lib/nav";
 	import { initTheme } from "$lib/theme";
 	import { VIEWS } from "$lib/views/registry";
 
 	let activePage = $state(DEFAULT_PAGE);
 	let ActiveView = $derived(VIEWS[activePage]);
+	setContext<Navigate>(NAVIGATE_KEY, (page) => {
+		activePage = page;
+	});
 
 	onMount(() => {
 		initTheme();

@@ -42,7 +42,7 @@
 		if (!selected) return;
 		if (
 			confirm(
-				`Boot into snapshot #${selected}? Snapshots on BOS are booted directly from the GRUB menu (under "BOS snapshots"), not rolled back in place. Reboot now and pick this snapshot there.`,
+				`Reboot to pick snapshot #${selected} in GRUB? BOS boots snapshots from the GRUB “BOS snapshots” submenu. This does not run snapper rollback.`,
 			)
 		) {
 			invoke("reboot_system");
@@ -62,9 +62,10 @@
 </script>
 
 <ViewScaffold title="Snapshots">
+	<Hint text="This is how you undo a bad update: reboot and pick the snapshot in GRUB (BOS snapshots)." />
 	<Group
-		title="System snapshots"
-		hint="Created automatically by snap-pac on each pacman transaction. Boot into one from the GRUB menu to recover; delete old ones here."
+		title="What to pick in GRUB"
+		hint="Number, date, and description match the GRUB “BOS snapshots” submenu. Reboot, then choose that entry. This page does not run snapper rollback."
 		wide
 	>
 		<div class="list">
@@ -75,6 +76,11 @@
 			{:else if snapshots.length === 0}
 				<EmptyState icon={History} title="No snapshots yet" hint="Snapshots are created automatically on every pacman transaction." />
 			{:else}
+				<div class="row header" aria-hidden="true">
+					<span class="number">#</span>
+					<span class="date">Date</span>
+					<span class="desc">Description</span>
+				</div>
 				{#each snapshots as snap (snap.number)}
 					<button
 						class="row"
@@ -91,7 +97,7 @@
 
 		<div class="btn-row">
 			<button onclick={refresh}>Refresh</button>
-			<button disabled={!selected} onclick={bootIntoSelected}>Boot into selected…</button>
+			<button disabled={!selected} onclick={bootIntoSelected}>Reboot to pick in GRUB</button>
 			<button class="destructive" disabled={!selected} onclick={deleteSelected}>Delete selected</button>
 		</div>
 	</Group>
@@ -121,7 +127,15 @@
 		min-width: 0;
 	}
 
-	.row:hover {
+	.row.header {
+		background: transparent;
+		cursor: default;
+		opacity: 0.55;
+		font-size: var(--font-size-secondary, 12px);
+		padding-top: 0;
+	}
+
+	.row:hover:not(.header) {
 		background-color: color-mix(in srgb, var(--surface), var(--on-surface) 8%);
 	}
 
