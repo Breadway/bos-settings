@@ -2,7 +2,8 @@
 //!
 //! Every bread* app owns a TOML config that may contain keys, sections, and
 //! comments this settings app does not model (e.g. breadpad's calendar
-//! credentials, breadcrumbs' saved-network passwords). To edit safely we parse
+//! credentials). Saved-network passwords live in breadcrumbs' separate
+//! `networks.toml`, not in breadcrumbs.toml. To edit safely we parse
 //! the file into a `toml_edit::DocumentMut`, mutate only the specific keys the
 //! UI exposes, and write the document back — preserving everything else,
 //! formatting and comments included.
@@ -18,7 +19,7 @@ use toml_edit::{value, Array, DocumentMut, Item, Table, Value};
 /// falling back to an empty document there means the next Save (see
 /// `save_doc`) overwrites it with only the UI-modelled keys, silently
 /// destroying anything else in the file (breadpad's calendar credentials,
-/// breadcrumbs' saved network passwords, ...). Back up the unparseable file
+/// unmodelled keys, ...). Back up the unparseable file
 /// once before falling back, so a bad edit is always recoverable.
 pub fn load_doc(path: &Path) -> DocumentMut {
     bread_utils::tomlcfg::load_doc("bos-settings", path)
@@ -69,7 +70,8 @@ pub fn get_i64(doc: &DocumentMut, path: &[&str]) -> Option<i64> {
 }
 pub fn get_f64(doc: &DocumentMut, path: &[&str]) -> Option<f64> {
     let item = get(doc, path)?;
-    item.as_float().or_else(|| item.as_integer().map(|i| i as f64))
+    item.as_float()
+        .or_else(|| item.as_integer().map(|i| i as f64))
 }
 /// Read an array of strings (e.g. modules.disable, contexts[].priority).
 pub fn get_str_list(doc: &DocumentMut, path: &[&str]) -> Vec<String> {
@@ -176,7 +178,10 @@ password = \"secret\"  # keep me
         let mut doc = DocumentMut::new();
         set_bool(&mut doc, &["adapters", "power", "enabled"], false);
         set_i64(&mut doc, &["adapters", "power", "poll_interval_secs"], 45);
-        assert_eq!(get_bool(&doc, &["adapters", "power", "enabled"]), Some(false));
+        assert_eq!(
+            get_bool(&doc, &["adapters", "power", "enabled"]),
+            Some(false)
+        );
         assert_eq!(
             get_i64(&doc, &["adapters", "power", "poll_interval_secs"]),
             Some(45)
@@ -200,14 +205,20 @@ password = \"secret\"  # keep me
 
     #[test]
     fn atomic_write_backs_up_previous_contents_and_no_tmp_file_left_behind() {
-        let dir = std::env::temp_dir().join(format!("bos-settings-atomic-write-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "bos-settings-atomic-write-test-{}",
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
         let backup = dir.join("config.toml.bak");
 
         atomic_write(&path, "first").unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "first");
-        assert!(!backup.exists(), "no backup should be made when there's nothing to back up yet");
+        assert!(
+            !backup.exists(),
+            "no backup should be made when there's nothing to back up yet"
+        );
 
         atomic_write(&path, "second").unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "second");
@@ -219,7 +230,10 @@ password = \"secret\"  # keep me
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .filter(|n| n.contains(".tmp."))
             .collect();
-        assert!(leftover_tmp.is_empty(), "temp file should be renamed away, not left behind: {leftover_tmp:?}");
+        assert!(
+            leftover_tmp.is_empty(),
+            "temp file should be renamed away, not left behind: {leftover_tmp:?}"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

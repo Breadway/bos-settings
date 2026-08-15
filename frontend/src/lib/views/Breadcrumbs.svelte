@@ -22,7 +22,9 @@
 	}
 	interface Network {
 		ssid: string;
-		password: string;
+		// Write-only. The backend never returns a stored PSK; empty means
+		// "keep the on-disk secret / let NetworkManager remember."
+		password?: string | null;
 		hidden: boolean;
 	}
 	interface Profile {
@@ -51,7 +53,9 @@
 	let savedSsids = $derived(cfg?.networks.map((n) => n.ssid).filter((s) => s.trim().length > 0) ?? []);
 
 	onMount(async () => {
-		cfg = await invoke<BreadcrumbsConfig>("get_breadcrumbs_config");
+		const loaded = await invoke<BreadcrumbsConfig>("get_breadcrumbs_config");
+		loaded.networks = loaded.networks.map((n) => ({ ...n, password: "" }));
+		cfg = loaded;
 	});
 
 	function addNetwork() {
@@ -71,7 +75,20 @@
 	}
 
 	async function save() {
-		await invoke("save_breadcrumbs_config", { input: cfg });
+		const payload = {
+			...cfg!,
+			networks: cfg!.networks.map((n) => ({
+				ssid: n.ssid,
+				hidden: n.hidden,
+				// Omit empty so the backend treats it as "keep / let NM remember"
+				// rather than writing password = "".
+				...(n.password && n.password.length > 0 ? { password: n.password } : {}),
+			})),
+		};
+		await invoke("save_breadcrumbs_config", { input: payload });
+		// Clear typed secrets from the UI after a successful save so a later
+		// glance at the field doesn't look like a stored PSK came back.
+		cfg!.networks = cfg!.networks.map((n) => ({ ...n, password: "" }));
 	}
 </script>
 
@@ -93,12 +110,22 @@
 			<NumberField label="Check connectivity every (s)" bind:value={cfg.settings.watch_interval} min={1} max={600} />
 		</Group>
 
-		<Group title="Saved networks" wide>
+		<Group
+			title="Saved networks"
+			hint="Password is write-only — leave it blank to keep an already-saved secret or let NetworkManager remember it after the first connect. Breadcrumbs never writes a PSK back into breadcrumbs.toml; new passwords go only to networks.toml (0600) and are cleared there after the first successful connect."
+			wide
+		>
 			<div class="list">
 				{#each cfg.networks as net, i (i)}
 					<div class="net-row">
 						<input type="text" bind:value={net.ssid} placeholder="Network name (SSID)" class="ssid" />
-						<input type="password" bind:value={net.password} placeholder="Password" class="pass" />
+						<input
+							type="password"
+							autocomplete="new-password"
+							bind:value={net.password}
+							placeholder="New password (blank = keep / NM remembers)"
+							class="pass"
+						/>
 						<div class="hidden-label">
 							<Switch bind:value={net.hidden} ariaLabel="Hidden network" />
 							<button type="button" class="label-text" onclick={() => (net.hidden = !net.hidden)}>Hidden network</button>

@@ -36,15 +36,7 @@ toml_edit = "0.22"
 tokio = { version = "1", features = ["process", "io-util", "time", "macros"] }
 notify = "7"
 regex = "1"
-# TODO(owner): switch to a tag-pinned git dependency once bread-theme cuts a
-# release including css_custom_properties/css_tokens (added 2026-07-21 for
-# this migration) — pinned to branch = "main" for now rather than a path
-# dependency (which broke bakery/CI builds — no sibling bread-ecosystem
-# checkout exists on the runner) since no tag has these functions yet.
-bread-theme = { git = "https://github.com/Breadway/bread-ecosystem", branch = "main" }
-bread-utils = { git = "https://github.com/Breadway/bread-ecosystem", branch = "main", features = ["toml"] }
-# Capture primitives for `--screenshot` mode — see src/screenshot.rs. On
-# "dev", not "main" like the two deps above: it doesn't exist on main yet.
-bread-screenshots = { git = "https://git.breadway.dev/Breadway/bread-ecosystem", branch = "main" }
+bread-theme = { git = "https://git.breadway.dev/Breadway/bread-ecosystem", tag = "v0.7.1" }
+bread-utils = { git = "https://git.breadway.dev/Breadway/bread-ecosystem", tag = "v0.7.1", features = ["toml"] }
 anyhow = "1"
 

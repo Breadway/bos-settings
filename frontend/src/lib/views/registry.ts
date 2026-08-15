@@ -1,6 +1,5 @@
-// Maps a sidebar page id to its view component. Pages not yet migrated
-// fall back to Placeholder (see +page.svelte) — this map only lists pages
-// that actually have a real Tauri-backed view.
+// Maps a sidebar page id to its view component. Every sidebar id has a
+// real view — +page.svelte's Placeholder is only a safety net for typos.
 
 import type { Component } from "svelte";
 import About from "./About.svelte";
@@ -27,6 +26,10 @@ import Packages from "./Packages.svelte";
 import Aur from "./Aur.svelte";
 import Firmware from "./Firmware.svelte";
 import Snapshots from "./Snapshots.svelte";
+import Breadlock from "./Breadlock.svelte";
+import Breadshot from "./Breadshot.svelte";
+import Breadmon from "./Breadmon.svelte";
+import Breadhelp from "./Breadhelp.svelte";
 
 export const VIEWS: Record<string, Component> = {
 	about: About,
@@ -53,4 +56,8 @@ export const VIEWS: Record<string, Component> = {
 	aur: Aur,
 	firmware: Firmware,
 	snapshots: Snapshots,
+	breadlock: Breadlock,
+	breadshot: Breadshot,
+	breadmon: Breadmon,
+	breadhelp: Breadhelp,
 };

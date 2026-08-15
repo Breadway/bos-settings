@@ -1,5 +1,5 @@
 //! `--screenshot` CLI mode: switch the Svelte SPA to the named sidebar
-//! section, capture it via `bread-screenshots`, then exit — driven by
+//! section, capture it via grim, then exit — driven by
 //! `bread-ecosystem`'s `bread-capture` orchestrator, or run standalone for
 //! one-off captures.
 //!
@@ -59,6 +59,10 @@ const KNOWN_VIEWS: &[&str] = &[
     "aur",
     "firmware",
     "snapshots",
+    "breadlock",
+    "breadshot",
+    "breadmon",
+    "breadhelp",
     "about",
 ];
 
@@ -107,7 +111,12 @@ pub fn parse(args: &[String]) -> Option<ScreenshotRequest> {
         eprintln!("bos-settings: --screenshot requires --output");
         std::process::exit(1);
     };
-    Some(ScreenshotRequest { view, output: output.into(), width, height })
+    Some(ScreenshotRequest {
+        view,
+        output: output.into(),
+        width,
+        height,
+    })
 }
 
 /// Schedule the switch-view-then-capture-then-exit sequence. Called once
@@ -121,7 +130,7 @@ pub fn dispatch(req: ScreenshotRequest, app: tauri::AppHandle) {
             std::process::exit(1);
         }
         tokio::time::sleep(VIEW_SETTLE_DELAY).await;
-        finish(bread_screenshots::capture_region(
+        finish(capture_region(
             0,
             0,
             req.width as i32,
@@ -129,6 +138,28 @@ pub fn dispatch(req: ScreenshotRequest, app: tauri::AppHandle) {
             &req.output,
         ));
     });
+}
+
+/// Same contract as bread-screenshots::capture_region. That crate is not
+/// on bread-ecosystem v0.7.1 (it landed after the tag), so this stays a
+/// local grim -g call rather than a branch-pinned git dep.
+fn capture_region(x: i32, y: i32, w: i32, h: i32, out: &std::path::Path) -> anyhow::Result<()> {
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let out_str = out
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("output path is not valid UTF-8"))?;
+    let geometry = format!("{x},{y} {w}x{h}");
+    let result =
+        bread_utils::proc::run("grim", &["-g", &geometry, out_str], Duration::from_secs(5));
+    if !result.success {
+        anyhow::bail!(
+            "grim failed for geometry {geometry}: {}",
+            result.stderr.trim()
+        );
+    }
+    Ok(())
 }
 
 fn finish(result: anyhow::Result<()>) {

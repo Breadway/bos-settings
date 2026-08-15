@@ -3,7 +3,7 @@
 </script>
 
 <div class="placeholder">
-	<p>"{page}" hasn't been migrated to Tauri yet.</p>
+	<p>Unknown page "{page}".</p>
 </div>
 
 <style>

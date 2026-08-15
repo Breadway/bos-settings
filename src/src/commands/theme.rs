@@ -17,10 +17,68 @@ pub fn get_theme_css() -> String {
 
 fn render_theme_css() -> String {
     let palette = bread_theme::load_palette();
+    // bread-theme v0.7.1 exposes Palette + ink_on + tokens, but not the
+    // later css_custom_properties / css_tokens helpers (those landed after
+    // the tag). Emit the same :root custom-property names the Svelte app
+    // already uses so a tag pin doesn't require a web-side rename.
+    format!("{}\n{}", css_custom_properties(&palette), css_tokens())
+}
+
+fn css_custom_properties(p: &bread_theme::Palette) -> String {
+    let pairs = [
+        ("bg", p.background.as_str()),
+        ("fg", p.foreground.as_str()),
+        ("surface", p.color0.as_str()),
+        ("overlay", p.color7.as_str()),
+        ("accent", p.color4.as_str()),
+        ("red", p.color1.as_str()),
+        ("green", p.color2.as_str()),
+        ("yellow", p.color3.as_str()),
+        ("blue", p.color4.as_str()),
+        ("pink", p.color5.as_str()),
+        ("teal", p.color6.as_str()),
+        ("on-bg", bread_theme::ink_on(&p.background)),
+        ("on-surface", bread_theme::ink_on(&p.color0)),
+        ("on-accent", bread_theme::ink_on(&p.color4)),
+        ("on-red", bread_theme::ink_on(&p.color1)),
+        ("on-overlay", bread_theme::ink_on(&p.color7)),
+    ];
+    let vars: String = pairs
+        .iter()
+        .map(|(name, value)| format!("  --{name}: {value};\n"))
+        .collect();
+    format!(":root {{\n{vars}}}\n")
+}
+
+fn css_tokens() -> String {
+    use bread_theme::tokens::*;
     format!(
-        "{}\n{}",
-        bread_theme::css_custom_properties(&palette),
-        bread_theme::css_tokens(),
+        ":root {{\n\
+         \x20\x20--font-family: '{font}';\n\
+         \x20\x20--font-size-base: {base}px;\n\
+         \x20\x20--font-size-secondary: {sec}px;\n\
+         \x20\x20--space-xs: {xs}px;\n\
+         \x20\x20--space-sm: {sm}px;\n\
+         \x20\x20--space-md: {md}px;\n\
+         \x20\x20--space-lg: {lg}px;\n\
+         \x20\x20--space-xl: {xl}px;\n\
+         \x20\x20--radius-primary: {r1}px;\n\
+         \x20\x20--radius-secondary: {r2}px;\n\
+         \x20\x20--radius-tertiary: {r3}px;\n\
+         \x20\x20--radius-pill: {pill}px;\n\
+         }}\n",
+        font = FONT_FAMILY,
+        base = FONT_SIZE_BASE,
+        sec = FONT_SIZE_SECONDARY,
+        xs = SPACE_XS,
+        sm = SPACE_SM,
+        md = SPACE_MD,
+        lg = SPACE_LG,
+        xl = SPACE_XL,
+        r1 = RADIUS_PRIMARY,
+        r2 = RADIUS_SECONDARY,
+        r3 = RADIUS_TERTIARY,
+        pill = RADIUS_PILL,
     )
 }
 
@@ -58,7 +116,10 @@ pub fn watch_and_emit(app: &AppHandle) {
     };
 
     if let Err(e) = watcher.watch(dir, RecursiveMode::NonRecursive) {
-        tracing_or_eprintln(&format!("theme watcher: failed to watch {}: {e}", dir.display()));
+        tracing_or_eprintln(&format!(
+            "theme watcher: failed to watch {}: {e}",
+            dir.display()
+        ));
         return;
     }
 

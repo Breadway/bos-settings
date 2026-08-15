@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
-	import { runStreamingCommand } from "$lib/streaming";
+	import { runStreamed } from "$lib/streaming";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
 	import Hint from "$lib/components/Hint.svelte";
@@ -31,7 +31,7 @@
 	async function updatePackage(name: string) {
 		log = [];
 		busy = true;
-		await runStreamingCommand("bakery", ["update", name], appendLine);
+		await runStreamed("bakery_update", { name }, appendLine);
 		busy = false;
 		await refresh();
 	}
@@ -39,14 +39,14 @@
 	async function listInstalled() {
 		log = [];
 		busy = true;
-		await runStreamingCommand("bakery", ["list"], appendLine);
+		await runStreamed("bakery_list", {}, appendLine);
 		busy = false;
 	}
 
 	async function updateAll() {
 		log = [];
 		busy = true;
-		await runStreamingCommand("bakery", ["update", "--all"], appendLine);
+		await runStreamed("bakery_update_all", {}, appendLine);
 		busy = false;
 		await refresh();
 	}
@@ -54,7 +54,7 @@
 	async function updateSystem() {
 		log = [];
 		busy = true;
-		await runStreamingCommand("pkexec", ["pacman", "-Syu", "--noconfirm"], appendLine);
+		await runStreamed("pacman_system_update", {}, appendLine);
 		busy = false;
 	}
 </script>
