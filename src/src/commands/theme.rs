@@ -11,17 +11,26 @@ use tauri::{AppHandle, Emitter, Manager};
 
 /// Initial theme fetch — called once by the frontend at startup.
 #[tauri::command]
-pub fn get_theme_css() -> String {
-    render_theme_css()
+pub fn get_theme_css(window: tauri::WebviewWindow) -> String {
+    render_theme_css(&palette_for_window(&window))
 }
 
-fn render_theme_css() -> String {
-    let palette = bread_theme::load_palette();
+fn palette_for_window(window: &tauri::WebviewWindow) -> bread_theme::Palette {
+    window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .and_then(|m| m.name().map(|s| s.to_string()))
+        .map(|name| bread_theme::load_palette_for(&name))
+        .unwrap_or_else(bread_theme::load_palette)
+}
+
+fn render_theme_css(palette: &bread_theme::Palette) -> String {
     // bread-theme v0.7.1 exposes Palette + ink_on + tokens, but not the
     // later css_custom_properties / css_tokens helpers (those landed after
     // the tag). Emit the same :root custom-property names the Svelte app
     // already uses so a tag pin doesn't require a web-side rename.
-    format!("{}\n{}", css_custom_properties(&palette), css_tokens())
+    format!("{}\n{}", css_custom_properties(palette), css_tokens())
 }
 
 fn css_custom_properties(p: &bread_theme::Palette) -> String {
@@ -103,7 +112,11 @@ pub fn watch_and_emit(app: &AppHandle) {
                 EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
             ) && event.paths.iter().any(|p| p == &target_for_watcher);
             if touches_target {
-                let _ = app_for_watcher.emit("theme-changed", render_theme_css());
+                let css = app_for_watcher
+                    .get_webview_window("main")
+                    .map(|w| render_theme_css(&palette_for_window(&w)))
+                    .unwrap_or_else(|| render_theme_css(&bread_theme::load_palette()));
+                let _ = app_for_watcher.emit("theme-changed", css);
             }
         },
         notify::Config::default(),
