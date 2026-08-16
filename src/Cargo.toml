@@ -1,6 +1,6 @@
 [package]
 name = "bos-settings"
-version = "0.8.0"
+version = "0.8.2"
 description = "System settings app for BOS (Bread Operating System)"
 authors = ["Breadway"]
 edition = "2021"
