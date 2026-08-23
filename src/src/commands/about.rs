@@ -23,8 +23,10 @@ fn os_pretty_name() -> String {
     fs::read_to_string("/etc/os-release")
         .ok()
         .and_then(|s| {
-            s.lines()
-                .find_map(|l| l.strip_prefix("PRETTY_NAME=").map(|v| v.trim_matches('"').to_string()))
+            s.lines().find_map(|l| {
+                l.strip_prefix("PRETTY_NAME=")
+                    .map(|v| v.trim_matches('"').to_string())
+            })
         })
         .unwrap_or_else(|| "BOS".to_string())
 }
@@ -49,11 +51,15 @@ fn cpu() -> String {
     let model = fs::read_to_string("/proc/cpuinfo")
         .ok()
         .and_then(|s| {
-            s.lines()
-                .find_map(|l| l.strip_prefix("model name").map(|v| v.trim_start_matches([':', ' ', '\t']).to_string()))
+            s.lines().find_map(|l| {
+                l.strip_prefix("model name")
+                    .map(|v| v.trim_start_matches([':', ' ', '\t']).to_string())
+            })
         })
         .unwrap_or_else(|| "unknown".to_string());
-    let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(0);
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(0);
     if cores > 0 {
         format!("{model} ({cores} threads)")
     } else {
@@ -62,14 +68,12 @@ fn cpu() -> String {
 }
 
 fn memory() -> String {
-    let kb = fs::read_to_string("/proc/meminfo")
-        .ok()
-        .and_then(|s| {
-            s.lines()
-                .find(|l| l.starts_with("MemTotal:"))
-                .and_then(|l| l.split_whitespace().nth(1))
-                .and_then(|v| v.parse::<u64>().ok())
-        });
+    let kb = fs::read_to_string("/proc/meminfo").ok().and_then(|s| {
+        s.lines()
+            .find(|l| l.starts_with("MemTotal:"))
+            .and_then(|l| l.split_whitespace().nth(1))
+            .and_then(|v| v.parse::<u64>().ok())
+    });
     match kb {
         Some(kb) => format!("{:.1} GiB", kb as f64 / 1024.0 / 1024.0),
         None => "unknown".to_string(),
@@ -96,7 +100,11 @@ async fn gpu() -> String {
 }
 
 async fn disk_usage() -> String {
-    let Ok(output) = Command::new("df").args(["-h", "--output=used,size,pcent", "/"]).output().await else {
+    let Ok(output) = Command::new("df")
+        .args(["-h", "--output=used,size,pcent", "/"])
+        .output()
+        .await
+    else {
         return "unknown".to_string();
     };
     let text = String::from_utf8_lossy(&output.stdout);
@@ -136,11 +144,35 @@ pub async fn get_system_info() -> SystemInfo {
     }
 }
 
+/// RFC 1123 labels (digit start allowed), no leading `-`. Linux static
+/// hostnames are also capped at `HOST_NAME_MAX` (64).
+fn valid_hostname(name: &str) -> bool {
+    let name = name.trim();
+    if name.is_empty() || name.len() > 64 || name.starts_with('-') {
+        return false;
+    }
+    if name.contains('\n') || name.contains('\r') || name.contains('\0') {
+        return false;
+    }
+    name.split('.').all(valid_dns_label)
+}
+
+fn valid_dns_label(label: &str) -> bool {
+    let b = label.as_bytes();
+    if b.is_empty() || b.len() > 63 {
+        return false;
+    }
+    if !b[0].is_ascii_alphanumeric() || !b[b.len() - 1].is_ascii_alphanumeric() {
+        return false;
+    }
+    b.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'-')
+}
+
 #[tauri::command]
 pub async fn set_hostname(name: String) -> Result<(), String> {
     let name = name.trim();
-    if name.is_empty() {
-        return Err("Hostname can't be empty".into());
+    if !valid_hostname(name) {
+        return Err("invalid hostname".into());
     }
     let output = Command::new("pkexec")
         .args(["hostnamectl", "set-hostname", name])
@@ -151,5 +183,26 @@ pub async fn set_hostname(name: String) -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hostname_rfc1123() {
+        assert!(valid_hostname("bos"));
+        assert!(valid_hostname("bos.local"));
+        assert!(valid_hostname("a1-b"));
+        assert!(valid_hostname("1host"));
+        assert!(!valid_hostname(""));
+        assert!(!valid_hostname("-bos"));
+        assert!(!valid_hostname("bos-"));
+        assert!(!valid_hostname("-foo.bar"));
+        assert!(!valid_hostname("foo_bar"));
+        assert!(!valid_hostname("bos\n-set-hostname evil"));
+        assert!(!valid_hostname("--help"));
+        assert!(!valid_hostname(&"a".repeat(65)));
     }
 }

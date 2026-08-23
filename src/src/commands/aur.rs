@@ -10,6 +10,8 @@
 
 use serde::Serialize;
 
+use super::util;
+
 #[derive(Serialize, Clone)]
 pub struct AurResult {
     name: String,
@@ -19,7 +21,11 @@ pub struct AurResult {
 
 #[tauri::command]
 pub async fn search_aur(query: String) -> Vec<AurResult> {
-    let Ok(output) = tokio::process::Command::new("yay").args(["-Ss", "--aur", &query]).output().await else {
+    let Ok(output) = tokio::process::Command::new("yay")
+        .args(["-Ss", "--aur", &query])
+        .output()
+        .await
+    else {
         return Vec::new();
     };
     let text = String::from_utf8_lossy(&output.stdout);
@@ -28,12 +34,18 @@ pub async fn search_aur(query: String) -> Vec<AurResult> {
     while let Some(header) = lines.next() {
         // "aur/name version (+votes score) [Orphaned]" — name/version are
         // always the first two whitespace-separated fields after "aur/".
-        let Some(rest) = header.strip_prefix("aur/") else { continue };
+        let Some(rest) = header.strip_prefix("aur/") else {
+            continue;
+        };
         let mut parts = rest.split_whitespace();
         let Some(name) = parts.next() else { continue };
         let version = parts.next().unwrap_or("").to_string();
         let description = lines.next().unwrap_or("").trim().to_string();
-        results.push(AurResult { name: name.to_string(), version, description });
+        results.push(AurResult {
+            name: name.to_string(),
+            version,
+            description,
+        });
         if results.len() >= 50 {
             break;
         }
@@ -42,6 +54,13 @@ pub async fn search_aur(query: String) -> Vec<AurResult> {
 }
 
 #[tauri::command]
-pub fn install_aur_package(pkg: String) {
-    let _ = std::process::Command::new("kitty").args(["-e", "yay", "-S", &pkg]).spawn();
+pub fn install_aur_package(pkg: String) -> Result<(), String> {
+    if !util::valid_pkg_name(&pkg) {
+        return Err(format!("refusing to install '{pkg}'"));
+    }
+    std::process::Command::new("kitty")
+        .args(["-e", "yay", "-S", &pkg])
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }

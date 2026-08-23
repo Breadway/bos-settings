@@ -26,7 +26,12 @@ async fn list_timezones() -> Vec<String> {
         .output()
         .await
         .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).lines().map(str::to_string).collect())
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(str::to_string)
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -60,10 +65,32 @@ pub async fn get_datetime_info() -> DateTimeInfo {
     }
 }
 
+/// Reject flags, path traversal, and newlines before we ever exec. Charset
+/// matches IANA names (`Area/City`, `UTC`, `Etc/GMT+6`).
+fn timezone_looks_safe(tz: &str) -> bool {
+    let tz = tz.trim();
+    if tz.is_empty() || tz.len() > 64 || tz.starts_with('-') {
+        return false;
+    }
+    if tz.contains('\n') || tz.contains('\r') || tz.contains('\0') || tz.contains("..") {
+        return false;
+    }
+    tz.chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '+' | '-'))
+}
+
 #[tauri::command]
 pub async fn set_timezone(tz: String) -> Result<(), String> {
+    let tz = tz.trim();
+    if !timezone_looks_safe(tz) {
+        return Err("invalid timezone".into());
+    }
+    let listed = list_timezones().await;
+    if !listed.is_empty() && !listed.iter().any(|t| t == tz) {
+        return Err("unknown timezone".into());
+    }
     let output = Command::new("pkexec")
-        .args(["timedatectl", "set-timezone", &tz])
+        .args(["timedatectl", "set-timezone", tz])
         .output()
         .await
         .map_err(|e| e.to_string())?;
@@ -77,6 +104,28 @@ pub async fn set_timezone(tz: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn set_ntp_enabled(enabled: bool) -> Result<(), String> {
     let val = if enabled { "true" } else { "false" };
-    Command::new("pkexec").args(["timedatectl", "set-ntp", val]).status().await.map_err(|e| e.to_string())?;
+    Command::new("pkexec")
+        .args(["timedatectl", "set-ntp", val])
+        .status()
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn timezone_rejects_flags_and_traversal() {
+        assert!(timezone_looks_safe("UTC"));
+        assert!(timezone_looks_safe("America/New_York"));
+        assert!(timezone_looks_safe("Etc/GMT+6"));
+        assert!(!timezone_looks_safe(""));
+        assert!(!timezone_looks_safe("-UTC"));
+        assert!(!timezone_looks_safe("--help"));
+        assert!(!timezone_looks_safe("America/../UTC"));
+        assert!(!timezone_looks_safe("UTC\n--adjust"));
+        assert!(!timezone_looks_safe("UTC;reboot"));
+    }
 }

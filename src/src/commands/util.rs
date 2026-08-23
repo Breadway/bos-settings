@@ -90,6 +90,30 @@ pub fn bos_settings_dir() -> PathBuf {
     config::config_dir().join("bos-settings")
 }
 
+/// Pipe `input` to a command's stdin (`pkexec` does not inherit a piped
+/// stdin unless we set it). Used by chpasswd and `pkexec tee`.
+pub async fn run_with_stdin(args: &[&str], input: &str) -> bool {
+    if args.is_empty() {
+        return false;
+    }
+    let Ok(mut child) = tokio::process::Command::new(args[0])
+        .args(&args[1..])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    if let Some(mut stdin) = child.stdin.take() {
+        use tokio::io::AsyncWriteExt;
+        if stdin.write_all(input.as_bytes()).await.is_err() {
+            return false;
+        }
+    }
+    child.wait().await.map(|s| s.success()).unwrap_or(false)
+}
+
 /// Atomic write with mode 0600 set on the new inode before/after replace,
 /// matching breadcrumbs' `networks.toml` care.
 pub fn write_secure(path: &Path, contents: &str) -> Result<(), String> {
