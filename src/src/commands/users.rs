@@ -3,8 +3,9 @@
 //! `pkexec`.
 
 use serde::Serialize;
-use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
+
+use super::util;
 
 #[derive(Serialize, Clone)]
 pub struct Account {
@@ -26,10 +27,16 @@ fn list_accounts() -> Vec<Account> {
             let shell = f[6];
             // Real human accounts: normal UID range, a real login shell
             // (excludes system/service accounts like greeter, avahi, etc).
-            if !(1000..60000).contains(&uid) || shell.ends_with("nologin") || shell.ends_with("/false") {
+            if !(1000..60000).contains(&uid)
+                || shell.ends_with("nologin")
+                || shell.ends_with("/false")
+            {
                 return None;
             }
-            Some(Account { username: f[0].to_string(), full_name: f[4].split(',').next().unwrap_or("").to_string() })
+            Some(Account {
+                username: f[0].to_string(),
+                full_name: f[4].split(',').next().unwrap_or("").to_string(),
+            })
         })
         .collect()
 }
@@ -42,29 +49,69 @@ pub struct UsersInfo {
 
 #[tauri::command]
 pub fn get_users_info() -> UsersInfo {
-    UsersInfo { accounts: list_accounts(), current_user: std::env::var("USER").unwrap_or_default() }
+    UsersInfo {
+        accounts: list_accounts(),
+        current_user: std::env::var("USER").unwrap_or_default(),
+    }
 }
 
-/// Runs a root command that needs a line of input on stdin (chpasswd's own
-/// "user:password" format). `pkexec` inherits the spawning process's stdin
-/// only when explicitly piped, so this pipes it through.
-async fn run_with_stdin(args: &[&str], input: String) -> bool {
-    let Ok(mut child) = Command::new(args[0]).args(&args[1..]).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn()
-    else {
+/// shadow-utils `USER_NAME_MAX` is 32; keep chpasswd/useradd operands inside it.
+const USERNAME_MAX: usize = 32;
+
+/// `[a-z_][a-z0-9_-]*`, length-capped, no leading `-`. Also rejects `:`,
+/// newlines, and other chpasswd field/line separators.
+fn valid_username(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    if bytes.is_empty() || bytes.len() > USERNAME_MAX {
         return false;
-    };
-    if let Some(mut stdin) = child.stdin.take() {
-        if stdin.write_all(input.as_bytes()).await.is_err() {
-            return false;
-        }
     }
-    child.wait().await.map(|s| s.success()).unwrap_or(false)
+    let first = bytes[0];
+    if first != b'_' && !first.is_ascii_lowercase() {
+        return false;
+    }
+    bytes[1..]
+        .iter()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(*b, b'_' | b'-'))
+}
+
+/// chpasswd reads `user:password` lines — a `:`, `\n`, or `\r` in either
+/// field injects extra passwd entries or shifts columns.
+fn valid_chpasswd_password(password: &str) -> bool {
+    !password.is_empty()
+        && password.len() <= 512
+        && !password.contains('\n')
+        && !password.contains('\r')
+        && !password.contains(':')
+        && !password.contains('\0')
+}
+
+fn chpasswd_input(username: &str, password: &str) -> Result<String, String> {
+    if !valid_username(username) {
+        return Err("invalid username".into());
+    }
+    if !valid_chpasswd_password(password) {
+        return Err("invalid password".into());
+    }
+    Ok(format!("{username}:{password}\n"))
+}
+
+fn may_delete_user(username: &str, current: &str) -> Result<(), String> {
+    if !valid_username(username) {
+        return Err("invalid username".into());
+    }
+    if username == "root" {
+        return Err("refusing to remove root".into());
+    }
+    if !current.is_empty() && username == current {
+        return Err("refusing to remove the current user".into());
+    }
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn change_password(username: String, password: String) -> Result<(), String> {
-    let input = format!("{username}:{password}\n");
-    if run_with_stdin(&["pkexec", "chpasswd"], input).await {
+    let input = chpasswd_input(&username, &password)?;
+    if util::run_with_stdin(&["pkexec", "chpasswd"], &input).await {
         Ok(())
     } else {
         Err("Failed to change password".into())
@@ -73,7 +120,13 @@ pub async fn change_password(username: String, password: String) -> Result<(), S
 
 #[tauri::command]
 pub async fn remove_user(username: String) -> Result<(), String> {
-    let output = Command::new("pkexec").args(["userdel", "-r", &username]).output().await.map_err(|e| e.to_string())?;
+    let current = std::env::var("USER").unwrap_or_default();
+    may_delete_user(&username, &current)?;
+    let output = Command::new("pkexec")
+        .args(["userdel", "-r", &username])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
     if output.status.success() {
         Ok(())
     } else {
@@ -83,22 +136,68 @@ pub async fn remove_user(username: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn add_user(username: String, full_name: String, password: String) -> Result<(), String> {
-    let username = username.trim().to_string();
-    let mut useradd_args = vec!["pkexec".to_string(), "useradd".to_string(), "-m".to_string(), "-s".to_string(), "/bin/bash".to_string()];
+    let username = username.trim();
+    let input = chpasswd_input(username, &password)?;
+    let mut useradd_args = vec![
+        "pkexec".to_string(),
+        "useradd".to_string(),
+        "-m".to_string(),
+        "-s".to_string(),
+        "/bin/bash".to_string(),
+    ];
     if !full_name.trim().is_empty() {
         useradd_args.push("-c".to_string());
         useradd_args.push(full_name.trim().to_string());
     }
-    useradd_args.push(username.clone());
+    useradd_args.push(username.to_string());
     let args_ref: Vec<&str> = useradd_args.iter().map(String::as_str).collect();
-    let output = Command::new(args_ref[0]).args(&args_ref[1..]).output().await.map_err(|e| e.to_string())?;
+    let output = Command::new(args_ref[0])
+        .args(&args_ref[1..])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
     }
-    let input = format!("{username}:{password}\n");
-    if run_with_stdin(&["pkexec", "chpasswd"], input).await {
+    if util::run_with_stdin(&["pkexec", "chpasswd"], &input).await {
         Ok(())
     } else {
         Err("User created, but setting the password failed.".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chpasswd_rejects_newline_injection() {
+        assert!(chpasswd_input("alice", "pw\nroot:evil").is_err());
+        assert!(chpasswd_input("alice\nroot", "pw").is_err());
+        assert!(chpasswd_input("alice\rroot", "pw").is_err());
+        assert!(chpasswd_input("alice", "pw\rroot:x").is_err());
+        assert!(chpasswd_input("al:ice", "pw").is_err());
+        assert!(chpasswd_input("alice", "p:w").is_err());
+        assert_eq!(chpasswd_input("alice", "secret").unwrap(), "alice:secret\n");
+    }
+
+    #[test]
+    fn username_grammar() {
+        assert!(valid_username("alice"));
+        assert!(valid_username("_svc"));
+        assert!(valid_username("a1-b_c"));
+        assert!(!valid_username(""));
+        assert!(!valid_username("-alice"));
+        assert!(!valid_username("Alice"));
+        assert!(!valid_username("root user"));
+        assert!(!valid_username(&"a".repeat(USERNAME_MAX + 1)));
+    }
+
+    #[test]
+    fn remove_user_refuses_root_and_self() {
+        assert!(may_delete_user("root", "alice").is_err());
+        assert!(may_delete_user("alice", "alice").is_err());
+        assert!(may_delete_user("root\n", "alice").is_err());
+        assert!(may_delete_user("bob", "alice").is_ok());
     }
 }

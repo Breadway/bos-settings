@@ -21,6 +21,19 @@ pub enum ServiceAction {
     Restart,
 }
 
+/// Units the frontend already hardcodes in ServiceControl call sites.
+const ALLOWED_UNITS: &[&str] = &[
+    "breadd.service",
+    "breadclipd.service",
+    "breadcrumbs.service",
+    "breadmill.service",
+    "breadbox-sync.service",
+];
+
+fn allowed_unit(unit: &str) -> bool {
+    ALLOWED_UNITS.contains(&unit)
+}
+
 async fn systemctl_active(unit: &str) -> bool {
     Command::new("systemctl")
         .args(["--user", "is-active", "--quiet", unit])
@@ -40,15 +53,21 @@ async fn systemctl_enabled(unit: &str) -> bool {
 }
 
 #[tauri::command]
-pub async fn get_service_status(unit: String) -> ServiceStatus {
-    ServiceStatus {
+pub async fn get_service_status(unit: String) -> Result<ServiceStatus, String> {
+    if !allowed_unit(&unit) {
+        return Err("unknown service".into());
+    }
+    Ok(ServiceStatus {
         active: systemctl_active(&unit).await,
         enabled: systemctl_enabled(&unit).await,
-    }
+    })
 }
 
 #[tauri::command]
 pub async fn service_action(unit: String, action: ServiceAction) -> Result<(), String> {
+    if !allowed_unit(&unit) {
+        return Err("unknown service".into());
+    }
     let verb = match action {
         ServiceAction::Start => "start",
         ServiceAction::Stop => "stop",
@@ -70,8 +89,31 @@ pub async fn service_action(unit: String, action: ServiceAction) -> Result<(), S
 /// panel, no reason to pull an open-ended `journalctl -f` tail into the
 /// webview.
 #[tauri::command]
-pub fn open_logs(unit: String) {
-    let _ = std::process::Command::new("kitty")
+pub fn open_logs(unit: String) -> Result<(), String> {
+    if !allowed_unit(&unit) {
+        return Err("unknown service".into());
+    }
+    std::process::Command::new("kitty")
         .args(["-e", "journalctl", "--user", "-u", &unit, "-f"])
-        .spawn();
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn units_match_frontend_hardcoded_list() {
+        assert!(allowed_unit("breadd.service"));
+        assert!(allowed_unit("breadclipd.service"));
+        assert!(allowed_unit("breadcrumbs.service"));
+        assert!(allowed_unit("breadmill.service"));
+        assert!(allowed_unit("breadbox-sync.service"));
+        assert!(!allowed_unit("sshd.service"));
+        assert!(!allowed_unit("breadd.service;reboot"));
+        assert!(!allowed_unit("../sshd.service"));
+        assert!(!allowed_unit("-u sshd"));
+    }
 }
