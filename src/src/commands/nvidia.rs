@@ -97,7 +97,7 @@ pub fn read_nvidia_offer() -> Option<NvidiaOffer> {
                         .collect::<Vec<_>>()
                 })
                 .filter(|p| !p.is_empty())
-                .unwrap_or_else(|| default_packages());
+                .unwrap_or_else(default_packages);
             return Some(NvidiaOffer {
                 gpu,
                 reason,

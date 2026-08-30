@@ -226,6 +226,11 @@ pub fn valid_nm_id(name: &str) -> bool {
         && !t.contains(';')
 }
 
+/// Reload Hyprland so settings.json / binds.json / monitors.json take effect now.
+pub fn hypr_reload() {
+    let _ = std::process::Command::new("hyprctl").arg("reload").status();
+}
+
 pub fn valid_printer_name(name: &str) -> bool {
     let bytes = name.as_bytes();
     !bytes.is_empty()
@@ -234,6 +239,43 @@ pub fn valid_printer_name(name: &str) -> bool {
         && bytes
             .iter()
             .all(|b| b.is_ascii_alphanumeric() || matches!(*b, b'-' | b'_' | b'.'))
+}
+
+/// Linux account usernames: lowercase letters, digits, `_`, `-`, `.`;
+/// must start with a lowercase letter (rejects a leading `-`, which would
+/// be a flag injection into useradd/userdel); capped at useradd's 32-char MAX.
+///
+/// We deliberately do *not* accept a leading `@`/domain or spaces: account
+/// creation here is a plain local user.
+pub fn valid_username(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= 32
+        && bytes[0].is_ascii_lowercase()
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(*b, b'_' | b'-' | b'.'))
+}
+
+/// Free-form text thrown at a CLI tool as a single argv element (firewall
+/// rule string, etc). Blocks the two genuinely dangerous shapes — a leading
+/// flag `-` and any control/whitespace injection — while still allowing
+/// spaces, slashes, dots, colons etc that ufw rules legitimately use.
+pub fn valid_cli_value(name: &str) -> bool {
+    let t = name.trim();
+    !t.is_empty()
+        && t.len() <= 256
+        && !t.starts_with('-')
+        && !t.contains('\n')
+        && !t.contains('\r')
+        && !t.contains('\0')
+        && !t.contains(';')
+        && t.bytes().all(|b| !(0..=31).contains(&b))
+}
+
+/// ufw / snapper numeric id — digits only.
+pub fn valid_number_id(num: &str) -> bool {
+    !num.is_empty() && num.len() <= 12 && num.bytes().all(|b| b.is_ascii_digit())
 }
 
 #[cfg(test)]
@@ -278,5 +320,44 @@ mod tests {
         assert!(valid_printer_name("Canon-TS6360a"));
         assert!(!valid_printer_name("foo bar"));
         assert!(!valid_printer_name("-d"));
+    }
+
+    #[test]
+    fn username_accepts_normal_accounts() {
+        assert!(valid_username("alice"));
+        assert!(valid_username("bob_2"));
+        assert!(valid_username("john.doe"));
+        assert!(valid_username("a"));
+    }
+
+    #[test]
+    fn username_rejects_flags_and_injection() {
+        assert!(!valid_username(""));
+        assert!(!valid_username("-r")); // system-account flag into useradd
+        assert!(!valid_username("--system"));
+        assert!(!valid_username("a\nb"));
+        assert!(!valid_username("foo bar"));
+        assert!(!valid_username("UPPER")); // must start lowercase
+        assert!(!valid_username(&"a".repeat(33)));
+    }
+
+    #[test]
+    fn cli_value_rejects_flags_and_controls() {
+        assert!(valid_cli_value("80/tcp"));
+        assert!(valid_cli_value("from 192.168.1.0/24 to any port 53"));
+        assert!(!valid_cli_value("--all"));
+        assert!(!valid_cli_value("-n"));
+        assert!(!valid_cli_value("a\nb"));
+        assert!(!valid_cli_value("a;rm"));
+        assert!(!valid_cli_value(""));
+    }
+
+    #[test]
+    fn number_id_is_digits_only() {
+        assert!(valid_number_id("42"));
+        assert!(!valid_number_id(""));
+        assert!(!valid_number_id("-1"));
+        assert!(!valid_number_id("12a"));
+        assert!(!valid_number_id("1 2"));
     }
 }

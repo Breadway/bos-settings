@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Row from "./Row.svelte";
 
-	// Hyprland's own color format: "rgba(RRGGBBAA)" — a plain hex color input
+	// Hyprland's own color format: "rgba(RRGGBBAA)"  -  a plain hex color input
 	// has no alpha channel, so this pairs one with an alpha slider and
 	// recombines them into that exact string on every change.
 	let { label, value = $bindable() }: { label: string; value: string } = $props();

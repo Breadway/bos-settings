@@ -62,7 +62,7 @@
 <ViewScaffold title="VPN / WireGuard">
 	<Group
 		title="NetworkManager tunnels"
-		hint="Lists connection type vpn and wireguard only. Wi-Fi profiles stay on breadcrumbs; Tailscale is not managed here."
+		hint="WireGuard and OpenVPN. Tailscale is under Saved networks."
 		wide
 	>
 		{#if !status}

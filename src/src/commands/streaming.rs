@@ -51,6 +51,12 @@ pub(crate) async fn run_hardcoded_env(
 ) -> bool {
     let mut cmd = Command::new(program);
     cmd.args(args)
+        // Null stdin, never inherit: a child reading the app's inherited
+        // stdin (pkexec falling back to a tty password prompt, pacman's
+        // interactive confirm) would block forever and hang the install
+        // command. These commands are all non-interactive (--noconfirm/-y);
+        // authenticating goes through the polkit agent as a GUI dialog.
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);

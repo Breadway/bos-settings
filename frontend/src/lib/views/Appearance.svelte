@@ -5,13 +5,12 @@
 	import Group from "$lib/components/Group.svelte";
 	import SwitchField from "$lib/components/SwitchField.svelte";
 	import SelectField from "$lib/components/SelectField.svelte";
-	import NumberField from "$lib/components/NumberField.svelte";
+	import SliderField from "$lib/components/SliderField.svelte";
 	import HyprColorField from "$lib/components/HyprColorField.svelte";
-	import Row from "$lib/components/Row.svelte";
 	import Hint from "$lib/components/Hint.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
+	import { debounce } from "$lib/debounce";
 
-	// Common XKB layout codes. Not exhaustive — if the config holds
+	// Common XKB layout codes. Not exhaustive  -  if the config holds
 	// something else, it's merged in below so it's never dropped from the
 	// dropdown.
 	const COMMON_KB_LAYOUTS = [
@@ -25,12 +24,50 @@
 	// window under the cursor; 2 = focus follows the cursor, but clicking a
 	// window keeps keyboard focus there until the mouse moves again; 3 =
 	// cursor and keyboard focus are fully independent.
-	const FOLLOW_MOUSE_MODES: { value: number; label: string }[] = [
-		{ value: 0, label: "Off — click to focus" },
-		{ value: 1, label: "Follow mouse" },
-		{ value: 2, label: "Follow mouse, detach on click" },
-		{ value: 3, label: "Fully detached from keyboard focus" },
+	const FOLLOW_MOUSE_MODES: { value: string; label: string }[] = [
+		{ value: "0", label: "Click to focus" },
+		{ value: "1", label: "Follow mouse" },
+		{ value: "2", label: "Follow, keep focus on click" },
+		{ value: "3", label: "Mouse and keys independent" },
 	];
+
+	const KB_LABELS: Record<string, string> = {
+		us: "English (US)",
+		gb: "English (UK)",
+		de: "German",
+		fr: "French",
+		es: "Spanish",
+		it: "Italian",
+		pt: "Portuguese",
+		nl: "Dutch",
+		se: "Swedish",
+		no: "Norwegian",
+		dk: "Danish",
+		fi: "Finnish",
+		pl: "Polish",
+		cz: "Czech",
+		sk: "Slovak",
+		hu: "Hungarian",
+		ro: "Romanian",
+		gr: "Greek",
+		tr: "Turkish",
+		ru: "Russian",
+		ua: "Ukrainian",
+		jp: "Japanese",
+		kr: "Korean",
+		cn: "Chinese",
+		br: "Portuguese (Brazil)",
+		ca: "English (Canada)",
+		ch: "German (Switzerland)",
+		be: "Belgian",
+		at: "German (Austria)",
+		ie: "English (Ireland)",
+	};
+
+	const LAYOUT_LABELS: Record<string, string> = {
+		dwindle: "Tiling",
+		master: "Master stack",
+	};
 
 	interface Appearance {
 		gaps_in: number;
@@ -53,76 +90,73 @@
 	}
 
 	let cfg = $state<Appearance | null>(null);
+	let loaded = $state(false);
+	let followMouse = $state("1");
 
 	let kbLayoutOptions = $derived(
 		cfg && !COMMON_KB_LAYOUTS.includes(cfg.kb_layout) ? [...COMMON_KB_LAYOUTS, cfg.kb_layout] : COMMON_KB_LAYOUTS,
 	);
 
+	const persist = debounce(() => {
+		if (!cfg) return;
+		invoke("save_appearance", { appearance: { ...cfg, follow_mouse: Number(followMouse) } });
+	}, 450);
+
 	onMount(async () => {
 		cfg = await invoke<Appearance>("get_appearance");
+		followMouse = String(cfg.follow_mouse);
+		loaded = true;
 	});
 
-	async function save() {
-		await invoke("save_appearance", { appearance: cfg });
-	}
+	let primed = false;
+	$effect(() => {
+		if (!loaded || !cfg) return;
+		JSON.stringify(cfg);
+		void followMouse;
+		if (!primed) {
+			primed = true;
+			return;
+		}
+		persist();
+	});
 </script>
 
 <ViewScaffold title="Appearance">
 	{#if cfg}
-		<Group title="Windows & borders" hint="Gaps, borders, and tiling — the same settings.json Hyprland reads at login.">
-			<NumberField label="Gaps between windows" bind:value={cfg.gaps_in} min={0} max={50} />
-			<NumberField label="Gaps around screen edge" bind:value={cfg.gaps_out} min={0} max={50} />
-			<NumberField label="Border width" bind:value={cfg.border_size} min={0} max={10} />
-			<HyprColorField label="Active border color" bind:value={cfg.active_border} />
-			<HyprColorField label="Inactive border color" bind:value={cfg.inactive_border} />
-			<SelectField label="Tiling layout" bind:value={cfg.layout} options={["dwindle", "master"]} />
-			<SwitchField label="Resize by dragging borders" bind:value={cfg.resize_on_border} />
+		<Group title="Windows">
+			<SliderField label="Gaps between windows" bind:value={cfg.gaps_in} min={0} max={50} />
+			<SliderField label="Gaps around the edge" bind:value={cfg.gaps_out} min={0} max={50} />
+			<SliderField label="Border width" bind:value={cfg.border_size} min={0} max={10} />
+			<HyprColorField label="Active border" bind:value={cfg.active_border} />
+			<HyprColorField label="Inactive border" bind:value={cfg.inactive_border} />
+			<SelectField label="Layout" bind:value={cfg.layout} options={["dwindle", "master"]} labels={LAYOUT_LABELS} />
+			<SwitchField label="Resize by dragging the border" bind:value={cfg.resize_on_border} />
 		</Group>
 
 		<Group title="Effects">
-			<NumberField label="Corner rounding" bind:value={cfg.rounding} min={0} max={30} />
+			<SliderField label="Corner rounding" bind:value={cfg.rounding} min={0} max={30} />
 			<SwitchField label="Blur" bind:value={cfg.blur_enabled} />
-			<NumberField label="Blur size" bind:value={cfg.blur_size} min={0} max={20} />
-			<NumberField label="Blur passes" bind:value={cfg.blur_passes} min={1} max={5} />
-			<SwitchField label="Window shadows" bind:value={cfg.shadow_enabled} />
-			<NumberField label="Shadow range" bind:value={cfg.shadow_range} min={0} max={40} />
-			<NumberField label="Shadow render power" bind:value={cfg.shadow_render_power} min={1} max={4} />
+			{#if cfg.blur_enabled}
+				<SliderField label="Blur size" bind:value={cfg.blur_size} min={0} max={20} />
+				<SliderField label="Blur quality" bind:value={cfg.blur_passes} min={1} max={5} />
+			{/if}
+			<SwitchField label="Shadows" bind:value={cfg.shadow_enabled} />
+			{#if cfg.shadow_enabled}
+				<SliderField label="Shadow size" bind:value={cfg.shadow_range} min={0} max={40} />
+			{/if}
 		</Group>
 
-		<Group title="Input">
-			<SelectField label="Keyboard layout" bind:value={cfg.kb_layout} options={kbLayoutOptions} />
-			<Row label="Focus-follows-mouse mode">
-				<select bind:value={cfg.follow_mouse}>
-					{#each FOLLOW_MOUSE_MODES as mode (mode.value)}
-						<option value={mode.value}>{mode.label}</option>
-					{/each}
-				</select>
-			</Row>
-			<SwitchField label="Natural scrolling (touchpad)" bind:value={cfg.natural_scroll} />
+		<Group title="Keyboard and mouse">
+			<SelectField label="Keyboard layout" bind:value={cfg.kb_layout} options={kbLayoutOptions} labels={KB_LABELS} />
+			<SelectField
+				label="Focus"
+				bind:value={followMouse}
+				options={FOLLOW_MOUSE_MODES.map((m) => m.value)}
+				labels={Object.fromEntries(FOLLOW_MOUSE_MODES.map((m) => [m.value, m.label]))}
+			/>
+			<SwitchField label="Natural scrolling" hint="Touchpad" bind:value={cfg.natural_scroll} />
 		</Group>
 
-		<Hint text="Changes apply on next login or Hyprland reload — this saves settings.json, it doesn't reload Hyprland live." />
-		<SaveButton onSave={save} />
+		<Hint text="Applies as you change it." />
 	{/if}
 </ViewScaffold>
-
-<style>
-	select {
-		color-scheme: dark;
-		background-color: var(--bg);
-		color: var(--on-surface);
-		border: 1px solid transparent;
-		border-radius: var(--radius-secondary, 6px);
-		padding: var(--space-xs, 4px) var(--space-sm, 8px);
-	}
-
-	option {
-		background-color: var(--bg);
-		color: var(--on-surface);
-	}
-
-	select:focus {
-		outline: none;
-		border-color: var(--accent);
-	}
-</style>

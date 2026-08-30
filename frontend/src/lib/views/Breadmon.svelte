@@ -8,14 +8,9 @@
 <ViewScaffold title="Monitors">
 	<Group
 		title="Two different jobs"
-		hint="This is not a second Display editor. Display (monitors.json) is the login-time layout Hyprland itself reads. breadmon is a TUI for live arrange / mirror / named profiles."
+		hint="Live arrange, mirror, and named profiles."
 	>
-		<Hint
-			text="Use Display when you want the persistent Hyprland rule set (output / mode / position / scale) that applies on next login or hyprctl reload."
-		/>
-		<Hint
-			text="Use breadmon when you want to drag monitors around live, pick a common mirror mode, or save/load a profile under ~/.config/breadmon/profiles/. Settings never writes those profiles."
-		/>
+		<Hint text="Layout tab is the login config. This opens the live TUI." />
 		<button class="primary" onclick={() => invoke("open_breadmon")}>Open breadmon</button>
 	</Group>
 </ViewScaffold>

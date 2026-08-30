@@ -75,7 +75,10 @@
 	}
 </script>
 
-<ViewScaffold title="Bluetooth">
+<ViewScaffold
+	title="Bluetooth"
+	lede="Paired devices and nearby scan."
+>
 	{#if powered === null}
 		<EmptyState
 			icon={BluetoothOff}
@@ -97,7 +100,7 @@
 					{#each paired as dev (dev.address)}
 						<div class="row">
 							<span class="name" class:active={dev.connected}>{dev.name}{dev.connected ? " (connected)" : ""}</span>
-							<button class="action" onclick={() => toggleConnect(dev)}>{dev.connected ? "Disconnect" : "Connect"}</button>
+							<button class="btn" onclick={() => toggleConnect(dev)}>{dev.connected ? "Disconnect" : "Connect"}</button>
 							<button class="remove" onclick={() => forget(dev)}>Forget</button>
 						</div>
 					{/each}
@@ -107,7 +110,7 @@
 
 		<Group
 			title="Available devices"
-			hint="Scanning takes a few seconds. Devices needing a PIN aren't supported — only &quot;just works&quot; pairing (most headphones, speakers, keyboards, and mice)."
+			hint="PIN pairing is not supported."
 		>
 			<div class="list">
 				{#if scanResults === null}
@@ -144,9 +147,13 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-sm, 8px);
-		background-color: var(--surface);
-		border-radius: var(--radius-secondary, 6px);
-		padding: var(--space-sm, 8px) var(--space-md, 12px);
+		padding: 10px 2px;
+		border-top: 1px solid var(--line);
+	}
+
+	.row:first-child {
+		border-top: none;
+		padding-top: 0;
 	}
 
 	.name {

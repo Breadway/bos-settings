@@ -59,7 +59,7 @@
 <ViewScaffold title="Input method">
 	<Group
 		title="fcitx5"
-		hint="Writes ~/.config/environment.d/90-fcitx5.conf and a Hyprland source fragment, then starts fcitx5 for this user. Already-running apps keep their old IM until you log out."
+		hint="Starts fcitx5. Running apps need a logout."
 	>
 		{#if !st}
 			<Hint text="Loading…" />
@@ -87,7 +87,7 @@
 		{#if st}
 			<ul>
 				{#each st.packages as p (p.name)}
-					<li class:missing={!p.installed}>{p.name}{p.installed ? "" : " — not installed"}</li>
+					<li class:missing={!p.installed}>{p.name}{p.installed ? "" : " (missing)"}</li>
 				{/each}
 			</ul>
 		{/if}

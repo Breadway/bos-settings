@@ -34,7 +34,7 @@
 <ViewScaffold title="AUR">
 	<Group
 		title="Search"
-		hint="Search the Arch User Repository via yay. Installing opens a terminal — AUR packages run arbitrary build scripts, and reviewing what yay is about to do (and entering your password) is a real safety step."
+		hint="Opens a terminal. Review the PKGBUILD before you confirm."
 		wide
 	>
 		<div class="search-row">

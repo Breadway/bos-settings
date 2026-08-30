@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext, onMount } from "svelte";
+	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { runStreamed } from "$lib/streaming";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
@@ -7,11 +7,9 @@
 	import Hint from "$lib/components/Hint.svelte";
 	import EmptyState from "$lib/components/EmptyState.svelte";
 	import LogView from "$lib/components/LogView.svelte";
-	import { NAVIGATE_KEY, type Navigate } from "$lib/nav";
+	import { go } from "$lib/nav.svelte";
 	import Download from "@lucide/svelte/icons/download";
 	import Cpu from "@lucide/svelte/icons/cpu";
-
-	const navigate = getContext<Navigate | undefined>(NAVIGATE_KEY);
 
 	interface PendingUpdate {
 		name: string;
@@ -114,7 +112,7 @@
 
 	<Group
 		title="Bread ecosystem (bakery)"
-		hint="bakery --dry-run update --all — bakery has no separate outdated command. Per-package install still lives on Packages."
+		hint="Bakery packages waiting to update."
 		wide
 	>
 		{#if !status}
@@ -164,10 +162,9 @@
 		title="Rollback"
 		hint="Boot a snapshot from GRUB (BOS snapshots)."
 	>
-		<Hint text="Snapshots lists number, date, and description so you know which GRUB entry to pick. snapper rollback will not change what GRUB boots (rootflags=subvol=@)." />
-		<Hint text="Bakery also has bakery rollback <pkg> for a single ecosystem binary — that is not a system rollback." />
+		<Hint text="Pick the snapshot in GRUB. bakery rollback undoes one package." />
 		<div class="btn-row">
-			<button disabled={!navigate} onclick={() => navigate?.("snapshots")}>Open Snapshots</button>
+			<button onclick={() => go("snapshots")}>Open Snapshots</button>
 		</div>
 	</Group>
 

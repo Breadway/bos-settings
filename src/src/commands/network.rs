@@ -7,6 +7,8 @@ use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use tokio::process::Command;
 
+use super::util;
+
 #[derive(Serialize, Clone)]
 pub struct WifiNetwork {
     ssid: String,
@@ -95,6 +97,9 @@ pub async fn scan_wifi() -> Vec<WifiNetwork> {
 
 #[tauri::command]
 pub async fn connect_wifi(ssid: String, password: Option<String>) -> Result<(), String> {
+    if !util::valid_nm_id(&ssid) {
+        return Err(format!("invalid SSID '{ssid}'"));
+    }
     let known = known_connection_names().await;
     let output = if let Some(password) = password {
         Command::new("nmcli").args(["dev", "wifi", "connect", &ssid, "password", &password]).output().await

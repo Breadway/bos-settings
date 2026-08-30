@@ -7,6 +7,8 @@
 use serde::Serialize;
 use tokio::process::Command;
 
+use super::util;
+
 #[derive(Serialize, Clone)]
 pub struct FirewallRule {
     number: String,

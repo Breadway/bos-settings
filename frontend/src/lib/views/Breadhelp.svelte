@@ -47,15 +47,15 @@
 <ViewScaffold title="Help">
 	<Group
 		title="BOS Help"
-		hint="breadhelp is the onboarding and help center — searchable guides, a keybind cheatsheet, a troubleshoot wizard, and a live tour. This panel just launches it; it doesn't copy the help app into Settings."
+		hint="Opens the help app."
 	>
 		<button class="primary" onclick={() => invoke("open_breadhelp")}>Open breadhelp</button>
 	</Group>
 
-	<Group title="First-run autostart" hint="The extra autostart entry in hypr/autostart.json (breadhelp --autostart). Core desktop launch is separate and always runs.">
+	<Group title="Show on login">
 		<SwitchField label="Show help on login" bind:value={() => autostartOn, (v) => setAutostart(v)} />
 		{#if !helpEntry}
-			<Hint text="No breadhelp entry in autostart.json yet — turning this on adds the default first-run command." />
+			<Hint text="Turning this on adds the first-run command." />
 		{/if}
 		{#if status}
 			<Hint text={status} />

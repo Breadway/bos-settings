@@ -37,6 +37,7 @@ const INITIAL_SETTLE_DELAY: Duration = Duration::from_millis(2000);
 const VIEW_SETTLE_DELAY: Duration = Duration::from_millis(2000);
 
 const KNOWN_VIEWS: &[&str] = &[
+    "home",
     "network",
     "breadcrumbs",
     "bluetooth",
@@ -45,7 +46,9 @@ const KNOWN_VIEWS: &[&str] = &[
     "power",
     "datetime",
     "hyprland",
+    "displays",
     "keybinds",
+    "input",
     "autostart",
     "users",
     "appearance",
@@ -56,17 +59,20 @@ const KNOWN_VIEWS: &[&str] = &[
     "breadpad",
     "breadsearch",
     "bread",
+    "desktop",
     "packages",
     "aur",
     "firmware",
     "snapshots",
     "updates",
+    "system",
     "printing",
     "vpn",
     "nightlight",
     "ime",
     "accessibility",
     "defaults",
+    "apps",
     "channel",
     "backup",
     "optional",
@@ -74,6 +80,7 @@ const KNOWN_VIEWS: &[&str] = &[
     "breadshot",
     "breadmon",
     "breadhelp",
+    "privacy",
     "about",
 ];
 
