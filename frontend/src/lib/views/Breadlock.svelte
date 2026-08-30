@@ -33,28 +33,23 @@
 	}
 </script>
 
-<ViewScaffold title="Lock & greet">
+<ViewScaffold title="Lock">
 	<Group
 		title="How locking works"
-		hint="This panel does not configure PAM. Authentication is the breadlock PAM service (/etc/pam.d/breadlock) plus greetd for login — both are packaged, not user-editable from Settings."
+		hint="Login and PAM are packaged. This only styles the lock screen."
 	>
-		<Hint
-			text="Super+L runs loginctl lock-session. hypridle's lock_cmd / idle listener then starts breadlock, which owns the already-running Hyprland session via ext-session-lock-v1."
-		/>
-		<Hint
-			text="breadgreet is the graphical greetd greeter (replacing tuigreet). Its live config is typically /etc/greetd/breadgreet.toml, owned by the greeter user — not written from here."
-		/>
+		<Hint text="Super+L locks. Login screen is packaged separately." />
 		<button class="primary" onclick={() => invoke("lock_session")}>Lock now</button>
 	</Group>
 
 	{#if cfg}
-		<Group title="Lock screen" hint="~/.config/breadlock/breadlock.toml — every field is optional; breadlock runs with these defaults if the file is missing.">
+		<Group title="Lock screen">
 			<SelectField label="Background" bind:value={cfg.background_mode} options={["color", "image"]} />
 			{#if cfg.background_mode === "image"}
 				<FileField label="Image" bind:value={cfg.background_path} placeholder="PNG, cover-fit" extensions={["png"]} />
 			{/if}
 			<SwitchField label="Blur background" bind:value={cfg.background_blur} />
-			<Hint text="Blur is accepted in the file but not implemented yet (needs a wlr-screencopy capture). breadlock logs a warning and shows the background unblurred." />
+			<Hint text="Blur is saved but not drawn yet." />
 			<TextField label="Clock format" bind:value={cfg.clock_format} placeholder="%H:%M" />
 			<TextField label="Font" bind:value={cfg.font_family} placeholder="Varela Round" />
 			<NumberField label="Wrong-password timeout (ms)" bind:value={cfg.fail_timeout_ms} min={0} max={10000} />

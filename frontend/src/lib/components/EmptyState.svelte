@@ -16,8 +16,8 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 6px;
-		padding: var(--space-xl, 20px) 0;
-		opacity: 0.7;
+		padding: 28px 8px;
+		color: var(--muted);
 		text-align: center;
 	}
 

@@ -39,7 +39,7 @@ fn css_custom_properties(p: &bread_theme::Palette) -> String {
         ("fg", p.foreground.as_str()),
         ("surface", p.color0.as_str()),
         ("overlay", p.color7.as_str()),
-        ("accent", p.color4.as_str()),
+        ("accent", p.color1.as_str()),
         ("red", p.color1.as_str()),
         ("green", p.color2.as_str()),
         ("yellow", p.color3.as_str()),
@@ -48,7 +48,7 @@ fn css_custom_properties(p: &bread_theme::Palette) -> String {
         ("teal", p.color6.as_str()),
         ("on-bg", bread_theme::ink_on(&p.background)),
         ("on-surface", bread_theme::ink_on(&p.color0)),
-        ("on-accent", bread_theme::ink_on(&p.color4)),
+        ("on-accent", bread_theme::ink_on(&p.color1)),
         ("on-red", bread_theme::ink_on(&p.color1)),
         ("on-overlay", bread_theme::ink_on(&p.color7)),
     ];

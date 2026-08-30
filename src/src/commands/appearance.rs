@@ -69,5 +69,7 @@ pub fn get_appearance() -> Appearance {
 #[tauri::command]
 pub fn save_appearance(appearance: Appearance) -> Result<(), String> {
     let json = serde_json::to_string_pretty(&appearance).map_err(|e| e.to_string())?;
-    config::atomic_write(&config_path(), &json).map_err(|e| e.to_string())
+    config::atomic_write(&config_path(), &json).map_err(|e| e.to_string())?;
+    super::util::hypr_reload();
+    Ok(())
 }

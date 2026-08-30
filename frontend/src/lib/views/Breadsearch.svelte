@@ -48,7 +48,7 @@
 	{#if cfg}
 		<Group
 			title="Power"
-			hint="breadmill's embedding step is CPU/NPU/GPU-heavy. Turn it off entirely, or just pause it on battery — it resumes automatically on AC power."
+			hint="Indexing is heavy. Pause it on battery if you want."
 		>
 			<SwitchField label="Enabled" bind:value={cfg.power_enabled} />
 			<SwitchField label="Index while on battery" bind:value={cfg.run_on_battery} />
@@ -56,7 +56,7 @@
 
 		<Group
 			title="Model"
-			hint="What hardware does the indexing. Check journalctl --user -u breadmill after restarting to confirm it registered."
+			hint="Hardware used for indexing."
 		>
 			<Row label="Search acceleration">
 				<select bind:value={cfg.backend}>

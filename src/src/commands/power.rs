@@ -154,7 +154,8 @@ pub async fn set_brightness(percent: i64) -> Result<(), String> {
     let Some(device) = brightness_device().await else {
         return Err("No controllable backlight found".into());
     };
-    let pct = format!("{percent}%");
+    // Clamp before handing the value to brightnessctl.
+    let pct = format!("{}%", percent.clamp(0, 100));
     Command::new("brightnessctl")
         .args(["--device", &device, "set", &pct])
         .status()

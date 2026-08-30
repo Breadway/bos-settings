@@ -110,6 +110,8 @@ fn may_delete_user(username: &str, current: &str) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn change_password(username: String, password: String) -> Result<(), String> {
+    // chpasswd_input validates the username *and* the password (rejects the
+    // newline / `:` that would let one entry smuggle another).
     let input = chpasswd_input(&username, &password)?;
     if util::run_with_stdin(&["pkexec", "chpasswd"], &input).await {
         Ok(())
@@ -121,9 +123,11 @@ pub async fn change_password(username: String, password: String) -> Result<(), S
 #[tauri::command]
 pub async fn remove_user(username: String) -> Result<(), String> {
     let current = std::env::var("USER").unwrap_or_default();
+    // Validates the username and refuses `root` / the current user.
     may_delete_user(&username, &current)?;
+    // `--` so a username can never be read as a userdel option.
     let output = Command::new("pkexec")
-        .args(["userdel", "-r", &username])
+        .args(["userdel", "-r", "--", &username])
         .output()
         .await
         .map_err(|e| e.to_string())?;
@@ -137,7 +141,14 @@ pub async fn remove_user(username: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn add_user(username: String, full_name: String, password: String) -> Result<(), String> {
     let username = username.trim();
+    // Validates the username and the password (newline / `:` injection).
     let input = chpasswd_input(username, &password)?;
+    // GECOS field is otherwise free text; strip control chars and the field
+    // separators so `-c` can't smuggle extra passwd fields or arguments.
+    let gecos: String = full_name
+        .chars()
+        .filter(|c| !matches!(c, '\n' | '\r' | '\0' | ',' | ':'))
+        .collect();
     let mut useradd_args = vec![
         "pkexec".to_string(),
         "useradd".to_string(),
@@ -145,10 +156,12 @@ pub async fn add_user(username: String, full_name: String, password: String) -> 
         "-s".to_string(),
         "/bin/bash".to_string(),
     ];
-    if !full_name.trim().is_empty() {
+    if !gecos.trim().is_empty() {
         useradd_args.push("-c".to_string());
-        useradd_args.push(full_name.trim().to_string());
+        useradd_args.push(gecos.trim().to_string());
     }
+    // `--` so the username can never be read as a useradd option.
+    useradd_args.push("--".to_string());
     useradd_args.push(username.to_string());
     let args_ref: Vec<&str> = useradd_args.iter().map(String::as_str).collect();
     let output = Command::new(args_ref[0])

@@ -18,8 +18,8 @@
 		background-color: var(--bg);
 		color: var(--on-surface);
 		border: 1px solid transparent;
-		border-radius: var(--radius-secondary, 6px);
-		padding: var(--space-xs, 4px) var(--space-sm, 8px);
+		border-radius: var(--radius-sm, 10px);
+		padding: 6px 10px;
 	}
 
 	input:focus {

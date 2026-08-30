@@ -41,7 +41,7 @@
 	{#if entries}
 		<Group
 			title="Extra autostart apps"
-			hint="What launches after login, beyond the core desktop (bar, theme, clipboard, etc. always start regardless). Toggle off, edit, or add your own."
+			hint="Extra apps after login. Bar and clipboard always start."
 			wide
 		>
 			{#each entries as entry, i (i)}

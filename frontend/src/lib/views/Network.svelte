@@ -3,9 +3,8 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
-	import Row from "$lib/components/Row.svelte";
+	import SwitchField from "$lib/components/SwitchField.svelte";
 	import InfoRow from "$lib/components/InfoRow.svelte";
-	import Hint from "$lib/components/Hint.svelte";
 	import Wifi from "@lucide/svelte/icons/wifi";
 	import WifiOff from "@lucide/svelte/icons/wifi-off";
 	import Lock from "@lucide/svelte/icons/lock";
@@ -26,12 +25,6 @@
 	let pendingSsid = $state<string | null>(null);
 	let password = $state("");
 
-	// The backend reports the first `nmcli`-visible device of TYPE=ethernet,
-	// which on a machine running containers/VMs can be a virtual interface
-	// (docker/podman veth pairs, libvirt bridges, VPN tuns) rather than a
-	// real NIC — nmcli doesn't distinguish these from physical ethernet.
-	// Names like "vethYCF3ZA: unmanaged" are meaningless to a non-technical
-	// user, so hide the card rather than show raw interface jargon.
 	const VIRTUAL_IFACE_PREFIXES = ["veth", "docker", "br-", "virbr", "vnet", "tun", "tap", "vmnet", "podman"];
 	const ETHERNET_STATE_LABELS: Record<string, string> = {
 		connected: "Connected",
@@ -47,11 +40,14 @@
 		if (!iface || VIRTUAL_IFACE_PREFIXES.some((prefix) => iface.startsWith(prefix))) return null;
 		return ETHERNET_STATE_LABELS[rawState ?? ""] ?? "Not connected";
 	});
+	let activeNet = $derived(networks?.find((n) => n.active) ?? null);
+	let nearby = $derived(networks?.filter((n) => !n.active) ?? []);
 
 	onMount(async () => {
 		const info = await invoke<{ radio_enabled: boolean; ethernet: string | null }>("get_network_info");
 		radioEnabled = info.radio_enabled;
 		ethernet = info.ethernet;
+		if (info.radio_enabled) await scan();
 	});
 
 	async function toggleRadio(enabled: boolean) {
@@ -61,10 +57,12 @@
 
 	async function scan() {
 		scanning = true;
-		status = "Scanning…";
-		networks = await invoke<WifiNetwork[]>("scan_wifi");
-		status = `Found ${networks.length} network(s)`;
-		scanning = false;
+		try {
+			networks = await invoke<WifiNetwork[]>("scan_wifi");
+		} finally {
+			scanning = false;
+			status = "";
+		}
 	}
 
 	async function connect(ssid: string, secured: boolean, known: boolean) {
@@ -76,8 +74,9 @@
 		try {
 			await invoke("connect_wifi", { ssid, password: null });
 			status = `Connected to ${ssid}`;
+			await scan();
 		} catch (e) {
-			status = `Failed to connect to ${ssid}: ${e}`;
+			status = `Failed: ${e}`;
 		}
 	}
 
@@ -90,54 +89,76 @@
 		try {
 			await invoke("connect_wifi", { ssid, password: pw });
 			status = `Connected to ${ssid}`;
+			await scan();
 		} catch {
-			status = `Failed to connect to ${ssid}: wrong password?`;
+			status = "Wrong password?";
 		}
 	}
 
-	function signalLabel(signal: number): string {
-		return `${Math.min(100, Math.max(0, signal))}%`;
+	function bars(signal: number): number {
+		if (signal >= 75) return 4;
+		if (signal >= 50) return 3;
+		if (signal >= 25) return 2;
+		return 1;
 	}
 </script>
 
-<ViewScaffold title="Network">
-	<Group title="Wi-Fi">
-		<Row label="Wi-Fi radio">
-			<button class="switch" class:on={radioEnabled} role="switch" aria-checked={radioEnabled} aria-label="Wi-Fi radio" onclick={() => toggleRadio(!radioEnabled)}>
-				<span class="knob"></span>
-			</button>
-		</Row>
+<ViewScaffold title="Wi-Fi">
+	<Group title="Radio">
+		<SwitchField label="Wi-Fi" hint={radioEnabled ? "On" : "Off"} bind:value={() => radioEnabled, (v) => toggleRadio(v)} />
+		{#if ethernetLabel}
+			<InfoRow label="Ethernet" value={ethernetLabel} />
+		{/if}
 	</Group>
 
-	{#if ethernetLabel}
-		<Group title="Ethernet">
-			<InfoRow label="Status" value={ethernetLabel} />
+	{#if activeNet}
+		<Group title="This network">
+			<div class="wifi">
+				<div class="bars on">
+					{#each [1, 2, 3, 4] as n (n)}
+						<b style="height: {3 + n * 3}px" class:lit={bars(activeNet.signal) >= n}></b>
+					{/each}
+				</div>
+				<div class="ssid">
+					<strong>{activeNet.ssid}</strong>
+					<small>{activeNet.secured ? "Secured" : "Open"} · {activeNet.signal}%</small>
+				</div>
+				<span class="pill on">Connected</span>
+			</div>
 		</Group>
 	{/if}
 
-	<Group title="Available networks" wide>
+	<Group title="Nearby" wide>
 		<div class="list">
-			{#if networks === null}
+			{#if scanning && networks === null}
 				<div class="empty">
-					<Wifi size={40} />
-					<span>Not scanned yet</span>
-					<span class="hint">Press Scan to see nearby networks.</span>
+					<Wifi size={36} />
+					<span>Scanning…</span>
 				</div>
-			{:else if networks.length === 0}
+			{:else if networks === null}
 				<div class="empty">
-					<WifiOff size={40} />
+					<Wifi size={36} />
+					<span>No scan yet</span>
+				</div>
+			{:else if nearby.length === 0 && !activeNet}
+				<div class="empty">
+					<WifiOff size={36} />
 					<span>No networks found</span>
-					<span class="hint">Try Scan again, or check Wi-Fi radio is on.</span>
 				</div>
 			{:else}
-				{#each networks as net (net.ssid)}
-					<div class="net-row">
-						<span class="ssid" class:active={net.active}>{net.ssid}{net.active ? " (connected)" : ""}</span>
+				{#each nearby as net (net.ssid)}
+					<div class="wifi">
+						<div class="bars">
+							{#each [1, 2, 3, 4] as n (n)}
+								<b style="height: {3 + n * 3}px" class:lit={bars(net.signal) >= n}></b>
+							{/each}
+						</div>
+						<div class="ssid">
+							{net.ssid}
+							<small>{net.known ? "Saved" : net.secured ? "Secured" : "Open"}</small>
+						</div>
 						{#if net.secured}<Lock size={14} />{/if}
-						<span class="signal">{signalLabel(net.signal)}</span>
-						{#if !net.active}
-							<button class="connect" onclick={() => connect(net.ssid, net.secured, net.known)}>Connect</button>
-						{/if}
+						<button class="btn" onclick={() => connect(net.ssid, net.secured, net.known)}>Connect</button>
 					</div>
 				{/each}
 			{/if}
@@ -145,52 +166,28 @@
 
 		{#if pendingSsid}
 			<div class="pw-row">
-				<input type="password" bind:value={password} placeholder="Password" />
-				<button class="connect" onclick={connectWithPassword}>Connect</button>
+				<input type="password" bind:value={password} placeholder="Password for {pendingSsid}" />
+				<button class="btn primary" onclick={connectWithPassword}>Connect</button>
 			</div>
 		{/if}
 		{#if status}
 			<span class="status">{status}</span>
 		{/if}
-
-		<button class="scan" disabled={scanning} onclick={scan}>{scanning ? "Scanning…" : "Scan"}</button>
+		<button class="btn" disabled={scanning} onclick={scan}>{scanning ? "Scanning…" : "Scan"}</button>
 	</Group>
 
-	<Group title="Advanced" hint="VPN, 802.1x, and static IP configuration aren't covered here.">
-		<button class="secondary" onclick={() => invoke("open_connection_editor")}>Open connection editor</button>
+	<Group title="Advanced">
+		<button class="btn" onclick={() => invoke("open_connection_editor")}>Connection editor</button>
 	</Group>
 </ViewScaffold>
 
 <style>
-	.switch {
-		width: 40px;
-		height: 22px;
-		border-radius: 999px;
-		border: none;
-		background-color: var(--overlay);
-		padding: 2px;
-		cursor: pointer;
-		display: flex;
-		align-items: center;
-	}
-	.switch.on {
-		background-color: var(--accent);
-		justify-content: flex-end;
-	}
-	.knob {
-		width: 18px;
-		height: 18px;
-		border-radius: 50%;
-		background-color: var(--on-surface);
-	}
-
 	.list {
-		min-height: 100px;
-		max-height: 260px;
+		min-height: 72px;
+		max-height: 280px;
 		overflow-y: auto;
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
 	}
 
 	.empty {
@@ -198,79 +195,80 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 6px;
-		padding: var(--space-xl, 20px) 0;
+		padding: 20px 0;
 		opacity: 0.6;
 	}
 
-	.hint {
-		font-size: var(--font-size-secondary, 12px);
-	}
-
-	.net-row {
+	.wifi {
 		display: flex;
 		align-items: center;
-		gap: var(--space-sm, 8px);
-		background-color: var(--surface);
-		border-radius: var(--radius-secondary, 6px);
-		padding: var(--space-sm, 8px) var(--space-md, 12px);
+		gap: 10px;
+		padding: 10px 2px;
+	}
+
+	.wifi + .wifi {
+		border-top: 1px solid var(--line);
+	}
+
+	.bars {
+		display: flex;
+		align-items: flex-end;
+		gap: 2px;
+		height: 14px;
+		width: 16px;
+		flex-shrink: 0;
+	}
+
+	.bars b {
+		width: 3px;
+		background: color-mix(in srgb, var(--fg) 22%, transparent);
+		border-radius: 1px;
+		display: block;
+	}
+
+	.bars b.lit,
+	.bars.on b.lit {
+		background: var(--accent);
 	}
 
 	.ssid {
 		flex: 1;
+		min-width: 0;
 	}
 
-	.ssid.active {
-		font-weight: bold;
-	}
-
-	.signal {
-		opacity: 0.6;
-		font-size: var(--font-size-secondary, 12px);
+	.ssid small {
+		display: block;
+		color: var(--muted);
+		font-size: 11px;
 	}
 
 	.pw-row {
 		display: flex;
-		gap: var(--space-sm, 8px);
+		gap: 8px;
+		margin-top: 8px;
 	}
 
 	.pw-row input {
 		flex: 1;
-		background-color: var(--surface);
-		color: var(--on-surface);
+		background: var(--bg);
 		border: 1px solid transparent;
-		border-radius: var(--radius-secondary, 6px);
-		padding: var(--space-xs, 4px) var(--space-sm, 8px);
+		border-radius: 10px;
+		padding: 6px 10px;
 	}
 
 	.status {
-		opacity: 0.6;
-		font-size: var(--font-size-secondary, 12px);
+		display: block;
+		margin: 8px 0;
+		color: var(--muted);
+		font-size: 12px;
 	}
 
-	button.connect,
-	button.scan,
-	button.secondary {
-		border: none;
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-xs, 4px) var(--space-md, 12px);
-		cursor: pointer;
-		background-color: var(--accent);
-		color: var(--on-accent);
-	}
-
-	button.secondary {
-		background-color: var(--bg);
-		color: var(--on-surface);
-		align-self: flex-start;
-		padding: var(--space-sm, 8px) var(--space-lg, 16px);
-	}
-
-	button.scan {
+	.btn {
+		margin-top: 10px;
 		align-self: flex-start;
 	}
 
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
+	.wifi .btn {
+		margin-top: 0;
 	}
 </style>

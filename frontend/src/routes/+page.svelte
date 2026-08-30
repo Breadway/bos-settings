@@ -2,68 +2,65 @@
 	import { onMount, setContext } from "svelte";
 	import { listen } from "@tauri-apps/api/event";
 	import Sidebar from "$lib/components/Sidebar.svelte";
+	import Titlebar from "$lib/components/Titlebar.svelte";
 	import Placeholder from "$lib/components/Placeholder.svelte";
-	import { DEFAULT_PAGE } from "$lib/sidebar";
-	import { NAVIGATE_KEY, type Navigate } from "$lib/nav";
+	import { go, nav, NAVIGATE_KEY, type Navigate } from "$lib/nav.svelte";
 	import { initTheme } from "$lib/theme";
 	import { VIEWS } from "$lib/views/registry";
+	import "$lib/styles/app.css";
 
-	let activePage = $state(DEFAULT_PAGE);
-	let ActiveView = $derived(VIEWS[activePage]);
-	setContext<Navigate>(NAVIGATE_KEY, (page) => {
-		activePage = page;
-	});
+	let ActiveView = $derived(VIEWS[nav.page]);
+
+	setContext<Navigate>(NAVIGATE_KEY, go);
 
 	onMount(() => {
 		initTheme();
-		// Screenshot mode only (src-tauri's screenshot.rs) — lets the Rust
-		// core drive which sidebar section is showing for a capture without
-		// a real user ever clicking the sidebar.
 		const unlisten = listen<string>("screenshot-set-view", (event) => {
-			activePage = event.payload;
+			go(event.payload);
 		});
+		const onKey = (e: KeyboardEvent) => {
+			if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+				e.preventDefault();
+				nav.searchNonce += 1;
+				go("home");
+			}
+		};
+		window.addEventListener("keydown", onKey);
 		return () => {
 			unlisten.then((f) => f());
+			window.removeEventListener("keydown", onKey);
 		};
 	});
 </script>
 
-<div class="shell">
-	<Sidebar bind:activePage />
-	<main class="content">
-		{#if ActiveView}
-			<ActiveView />
-		{:else}
-			<Placeholder page={activePage} />
-		{/if}
-	</main>
+<div class="app">
+	<Titlebar />
+	<div class="shell">
+		<Sidebar />
+		<main class="content">
+			{#key nav.page}
+				{#if ActiveView}
+					<ActiveView />
+				{:else}
+					<Placeholder page={nav.page} />
+				{/if}
+			{/key}
+		</main>
+	</div>
 </div>
 
 <style>
-	:global(*) {
-		box-sizing: border-box;
-	}
-
-	:global(html, body) {
-		margin: 0;
-		border: none;
-		outline: none;
-		height: 100%;
-		color-scheme: dark;
-		background-color: var(--bg, #0c0c0c);
-		color: var(--fg);
-		font-family: var(--font-family, sans-serif);
-		font-size: var(--font-size-base, 14px);
-	}
-
-	:global(#svelte) {
-		height: 100%;
+	.app {
+		display: flex;
+		flex-direction: column;
+		height: 100vh;
+		background-color: var(--bg, #12161c);
 	}
 
 	.shell {
 		display: flex;
-		height: 100vh;
-		background-color: var(--bg, #0c0c0c);
+		flex: 1;
+		min-height: 0;
 	}
 
 	.content {

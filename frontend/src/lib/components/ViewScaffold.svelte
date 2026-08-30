@@ -1,40 +1,64 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
+	import { getContext } from "svelte";
+	import { EMBEDDED_KEY } from "$lib/embed";
 
-	let { title, children }: { title: string; children: Snippet } = $props();
+	let { title, lede, children }: { title: string; lede?: string; children: Snippet } = $props();
+	const embedded = getContext<boolean>(EMBEDDED_KEY) ?? false;
 </script>
 
-<div class="view">
-	<h1 class="title">{title}</h1>
-	<div class="content">
+{#if embedded}
+	<div class="embed">
 		{@render children()}
 	</div>
-</div>
+{:else}
+	<div class="view">
+		<h1 class="title">{title}</h1>
+		{#if lede}
+			<p class="lede">{lede}</p>
+		{/if}
+		<div class="content">
+			{@render children()}
+		</div>
+	</div>
+{/if}
 
 <style>
 	.view {
-		padding: var(--space-xl, 20px) var(--space-xl, 20px) 48px;
-		height: 100%;
-		overflow-y: auto;
+		padding: 28px 36px 56px;
+		min-height: 100%;
 	}
 
 	.title {
-		font-size: 1.6em;
-		font-weight: bold;
-		margin: 0 0 var(--space-xl, 20px);
+		font-size: 28px;
+		font-weight: 600;
+		letter-spacing: -0.04em;
+		margin: 0 auto;
+		max-width: 920px;
+		width: 100%;
 	}
 
-	/* Groups lay out as a responsive grid rather than a single narrow
-	   column — on a wide (tiled/maximized) window that means multiple
-	   independent setting groups sit side by side instead of one column
-	   with a wall of empty space either side. `.group.wide` (device
-	   lists, thumbnail grids, log views — anything that reads badly
-	   squeezed into a card) opts out via `grid-column: 1 / -1`. */
-	.content {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-		gap: var(--space-xl, 20px) 32px;
-		align-items: start;
-		max-width: 1400px;
+	.lede {
+		margin: 6px auto 0;
+		color: var(--muted, color-mix(in oklab, var(--fg) 58%, transparent));
+		font-size: 14px;
+		line-height: 1.45;
+		max-width: 920px;
+		width: 100%;
+	}
+
+	.content,
+	.embed {
+		display: flex;
+		flex-direction: column;
+		gap: 18px;
+		max-width: 920px;
+		width: 100%;
+		margin-top: 22px;
+		margin-inline: auto;
+	}
+
+	.embed {
+		margin-top: 0;
 	}
 </style>
