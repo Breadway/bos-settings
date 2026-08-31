@@ -11,33 +11,40 @@
 	aria-label={ariaLabel}
 	onclick={() => (value = !value)}
 >
-	<span class="knob"></span>
+	<i></i>
 </button>
 
 <style>
 	.switch {
-		width: 40px;
-		height: 22px;
+		width: 42px;
+		height: 24px;
 		flex-shrink: 0;
 		border-radius: 999px;
 		border: none;
-		background-color: var(--overlay);
+		background: color-mix(in srgb, var(--fg) 12%, transparent);
 		padding: 2px;
 		cursor: pointer;
 		display: flex;
 		align-items: center;
+		transition: background 0.18s ease;
 	}
 
 	.switch.on {
-		background-color: var(--accent);
-		justify-content: flex-end;
+		background: var(--accent);
 	}
 
-	.knob {
-		width: 18px;
-		height: 18px;
+	i {
+		width: 20px;
+		height: 20px;
 		border-radius: 50%;
-		background-color: var(--on-surface);
+		background: #efe8e6;
 		display: block;
+		transform: translateX(0);
+		transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+	}
+
+	.switch.on i {
+		transform: translateX(18px);
+		background: var(--on-accent);
 	}
 </style>

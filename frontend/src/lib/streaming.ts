@@ -1,5 +1,5 @@
 // Frontend half of the event-streaming command pattern (see
-// src/src/commands/streaming.rs) — listens for `cmd-output` lines from a
+// src/src/commands/streaming.rs)  -  listens for `cmd-output` lines from a
 // typed Tauri command that runs a hardcoded program, then resolves once
 // the process exits.
 

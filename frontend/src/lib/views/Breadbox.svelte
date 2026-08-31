@@ -45,7 +45,7 @@
 	{#if contexts}
 		<Group
 			title="Contexts"
-			hint="Launcher contexts — each lists, in priority order, the apps/categories surfaced first."
+			hint="Apps and categories shown first."
 			wide
 		>
 			{#if contexts.length === 0}

@@ -48,7 +48,7 @@
 <ViewScaffold title="Firmware">
 	<Group
 		title="Updatable devices"
-		hint="Firmware updates for hardware that supports them (UEFI, some peripherals). fwupd-refresh.timer already keeps update metadata current in the background."
+		hint="UEFI and devices that speak fwupd."
 		wide
 	>
 		<div class="list">

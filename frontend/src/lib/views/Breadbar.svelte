@@ -3,10 +3,10 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
-	import Row from "$lib/components/Row.svelte";
 	import TextField from "$lib/components/TextField.svelte";
-	import NumberField from "$lib/components/NumberField.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
+	import SliderField from "$lib/components/SliderField.svelte";
+	import Hint from "$lib/components/Hint.svelte";
+	import { debounce } from "$lib/debounce";
 	import ChevronDown from "@lucide/svelte/icons/chevron-down";
 	import ChevronRight from "@lucide/svelte/icons/chevron-right";
 
@@ -23,20 +23,33 @@
 	}
 
 	let style = $state<BreadbarStyle | null>(null);
+	let loaded = $state(false);
 	let advancedOpen = $state(false);
 	let css = $state("");
 	let cssStatus = $state("");
 	let cssSaving = $state(false);
 
+	const persist = debounce(() => {
+		if (!style) return;
+		invoke("save_breadbar_style", { style }).then(() => invoke<string>("get_breadbar_css").then((c) => (css = c)));
+	}, 320);
+
 	onMount(async () => {
 		style = await invoke<BreadbarStyle>("get_breadbar_style");
 		css = await invoke<string>("get_breadbar_css");
+		loaded = true;
 	});
 
-	async function saveStyle() {
-		await invoke("save_breadbar_style", { style });
-		css = await invoke<string>("get_breadbar_css");
-	}
+	let primed = false;
+	$effect(() => {
+		if (!loaded || !style) return;
+		JSON.stringify(style);
+		if (!primed) {
+			primed = true;
+			return;
+		}
+		persist();
+	});
 
 	async function saveCss() {
 		cssSaving = true;
@@ -55,36 +68,37 @@
 
 <ViewScaffold title="Bar">
 	{#if style}
-		<Group title="Text" hint="Applies to the clock, workspace numbers, and stat labels.">
+		<Group title="Text" hint="Clock, workspace numbers, and stats.">
 			<TextField label="Font" bind:value={style.font_family} placeholder="Varela Round" />
-			<NumberField label="Font size" bind:value={style.font_size} min={8} max={32} />
+			<SliderField label="Font size" bind:value={style.font_size} min={8} max={32} />
 		</Group>
 
 		<Group title="Bar shape">
-			<NumberField label="Corner rounding" bind:value={style.bar_border_radius} min={0} max={40} />
-			<NumberField label="Inner padding" bind:value={style.bar_padding} min={0} max={40} />
+			<SliderField label="Corner rounding" bind:value={style.bar_border_radius} min={0} max={40} />
+			<SliderField label="Inner padding" bind:value={style.bar_padding} min={0} max={40} />
 		</Group>
 
-		<Group title="Workspace indicator">
-			<NumberField label="Size" bind:value={style.workspace_font_size} min={8} max={40} />
-			<Row label="Inactive dimness">
-				<div class="opacity-row">
-					<input type="range" min="0" max="1" step="0.05" bind:value={style.workspace_inactive_opacity} />
-					<span class="pct">{Math.round(style.workspace_inactive_opacity * 100)}%</span>
-				</div>
-			</Row>
+		<Group title="Workspaces">
+			<SliderField label="Number size" bind:value={style.workspace_font_size} min={8} max={40} />
+			<SliderField
+				label="Inactive dimness"
+				bind:value={style.workspace_inactive_opacity}
+				min={0}
+				max={1}
+				step={0.05}
+			/>
 		</Group>
 
-		<Group title="Spacing & icons">
-			<NumberField label="Gap between stats" bind:value={style.stat_gap} min={0} max={40} />
-			<NumberField label="Tray icon size" bind:value={style.tray_icon_size} min={8} max={32} />
-			<NumberField label="Notification corner rounding" bind:value={style.notification_border_radius} min={0} max={24} />
+		<Group title="Spacing and icons">
+			<SliderField label="Gap between stats" bind:value={style.stat_gap} min={0} max={40} />
+			<SliderField label="Tray icon size" bind:value={style.tray_icon_size} min={8} max={32} />
+			<SliderField label="Notification rounding" bind:value={style.notification_border_radius} min={0} max={24} />
 		</Group>
 
-		<SaveButton onSave={saveStyle} />
+		<Hint text="Applies as you change it." />
 	{/if}
 
-	<Group title="Advanced" hint="Raw stylesheet. Anything set here can also be changed above — those fields edit this same file." wide>
+	<Group title="Advanced" hint="Raw CSS. Same file as the fields above." wide>
 		<button class="toggle" onclick={() => (advancedOpen = !advancedOpen)}>
 			{#if advancedOpen}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
 			Edit raw CSS
@@ -101,22 +115,6 @@
 </ViewScaffold>
 
 <style>
-	.opacity-row {
-		display: flex;
-		align-items: center;
-		gap: var(--space-sm, 8px);
-	}
-
-	.opacity-row input[type="range"] {
-		width: 120px;
-	}
-
-	.pct {
-		opacity: 0.6;
-		font-size: var(--font-size-secondary, 12px);
-		width: 4ch;
-	}
-
 	.toggle {
 		display: flex;
 		align-items: center;

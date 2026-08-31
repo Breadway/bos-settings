@@ -24,7 +24,7 @@
 	// The backend reports the GPU as a raw lspci device string, e.g.
 	// "Advanced Micro Devices, Inc. [AMD/ATI] Krackan [Radeon 840M / 860M Graphics] (rev c2)".
 	// That's too technical for a general settings page, so extract just the
-	// marketing model name. Heuristic (not exhaustive — just needs to read
+	// marketing model name. Heuristic (not exhaustive  -  just needs to read
 	// well for common vendors): drop the trailing "(rev ..)", prefer the
 	// text inside the last [...] bracket group (usually the model name),
 	// collapse "840M / 860M" style multi-model lists to the last variant,

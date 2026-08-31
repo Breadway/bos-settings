@@ -12,7 +12,7 @@
 <ViewScaffold title="Clipboard">
 	<Group
 		title="Clipboard history"
-		hint="Keeps a history of copied text/images and shows it as a popup. breadclipd (right) is the background daemon that watches the clipboard — breadclip itself is just the popup UI, launched on demand by the keybind or the button below."
+		hint="History popup. Super+V."
 	>
 		<button class="open-btn" onclick={openHistory}>Open history (SUPER+V)</button>
 	</Group>

@@ -85,7 +85,7 @@
 
 	<Group
 		title="System packages (pacman)"
-		hint="Base system, kernel, bos-settings, and republished AUR packages — the other half of what bos-update covers. Needs your password (polkit) since pacman requires root."
+		hint="Official repos. Needs your password."
 	>
 		<button disabled={busy} onclick={updateSystem}>Update system (pacman -Syu)</button>
 	</Group>

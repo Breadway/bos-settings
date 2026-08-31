@@ -44,11 +44,11 @@
 
 	let cfg = $state<BreadcrumbsConfig | null>(null);
 	// Profile names are free-text (set via "Add profile" below), not a fixed
-	// enum — populate the default-profile options from whatever profiles
+	// enum  -  populate the default-profile options from whatever profiles
 	// actually exist, rather than a hardcoded guess that can't match a
 	// user's real profile names.
 	let profileNames = $derived(cfg?.profiles.map((p) => p.name) ?? []);
-	// Saved network SSIDs feed the per-profile network pickers below — no
+	// Saved network SSIDs feed the per-profile network pickers below  -  no
 	// typing an SSID by hand and hoping it matches one saved above.
 	let savedSsids = $derived(cfg?.networks.map((n) => n.ssid).filter((s) => s.trim().length > 0) ?? []);
 
@@ -112,7 +112,7 @@
 
 		<Group
 			title="Saved networks"
-			hint="Password is write-only — leave it blank to keep an already-saved secret or let NetworkManager remember it after the first connect. Breadcrumbs never writes a PSK back into breadcrumbs.toml; new passwords go only to networks.toml (0600) and are cleared there after the first successful connect."
+			hint="Leave password blank to keep the saved one."
 			wide
 		>
 			<div class="list">

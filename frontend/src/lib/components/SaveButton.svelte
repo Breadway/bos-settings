@@ -19,7 +19,7 @@
 </script>
 
 <div class="row">
-	<button disabled={saving} onclick={save}>Save</button>
+	<button class="btn primary" disabled={saving} onclick={save}>Save</button>
 	<span class="status">{status}</span>
 </div>
 
@@ -28,28 +28,11 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-md, 12px);
-		margin-top: var(--space-lg, 16px);
-		/* Always spans the full grid width, regardless of how many
-		   Group columns the rest of the page laid out above it. */
-		grid-column: 1 / -1;
-	}
-
-	button {
-		background-color: var(--accent);
-		color: var(--on-accent);
-		border: none;
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-sm, 8px) var(--space-lg, 16px);
-		cursor: pointer;
-	}
-
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
+		margin-top: 4px;
 	}
 
 	.status {
-		opacity: 0.6;
+		color: var(--muted, color-mix(in oklab, var(--fg) 58%, transparent));
 		font-size: var(--font-size-secondary, 12px);
 	}
 </style>

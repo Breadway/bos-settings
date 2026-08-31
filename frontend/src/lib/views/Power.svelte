@@ -40,7 +40,10 @@
 	}
 </script>
 
-<ViewScaffold title="Power">
+<ViewScaffold
+	title="Power & battery"
+	lede="Brightness, battery, and charge limits."
+>
 	{#if info}
 		<Group title="Battery">
 			{#each info.battery as [label, value] (label)}
@@ -63,20 +66,22 @@
 		{#if info.charge_start !== null && info.charge_end !== null}
 			<Group
 				title="Charge limits"
-				hint="Some laptops let you cap charging below 100% to slow battery wear on a machine that's mostly plugged in."
+				hint="Keeps the battery off 100% when this machine stays plugged in."
 			>
-				<Row label="Start charging below (%)">
-					<input type="number" min="0" max="100" bind:value={chargeStart} onchange={() => setChargeThreshold("start", chargeStart)} />
+				<Row label="Start charging below">
+					<input type="range" min="0" max="100" bind:value={chargeStart} onchange={() => setChargeThreshold("start", chargeStart)} />
+					<span class="pct">{chargeStart}%</span>
 				</Row>
-				<Row label="Stop charging at (%)">
-					<input type="number" min="1" max="100" bind:value={chargeEnd} onchange={() => setChargeThreshold("end", chargeEnd)} />
+				<Row label="Stop charging at">
+					<input type="range" min="1" max="100" bind:value={chargeEnd} onchange={() => setChargeThreshold("end", chargeEnd)} />
+					<span class="pct">{chargeEnd}%</span>
 				</Row>
 			</Group>
 		{/if}
 
 		<Group
 			title="TLP"
-			hint="TLP automatically applies a power-saving profile on battery and a performance profile on AC — there's no manual switch by design."
+			hint="TLP picks battery vs AC on its own."
 		>
 			<InfoRow label="Current profile" value={info.tlp_profile ?? "unknown"} />
 		</Group>
@@ -86,15 +91,6 @@
 <style>
 	input[type="range"] {
 		width: 180px;
-	}
-
-	input[type="number"] {
-		width: 8ch;
-		background-color: var(--bg);
-		color: var(--on-surface);
-		border: 1px solid transparent;
-		border-radius: var(--radius-secondary, 6px);
-		padding: var(--space-xs, 4px) var(--space-sm, 8px);
 	}
 
 	.pct {

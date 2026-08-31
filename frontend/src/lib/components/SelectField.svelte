@@ -1,13 +1,25 @@
 <script lang="ts">
 	import Row from "./Row.svelte";
 
-	let { label, value = $bindable(), options }: { label: string; value: string; options: string[] } = $props();
+	let {
+		label,
+		hint,
+		value = $bindable(),
+		options,
+		labels = {},
+	}: {
+		label: string;
+		hint?: string;
+		value: string;
+		options: string[];
+		labels?: Record<string, string>;
+	} = $props();
 </script>
 
-<Row {label}>
+<Row {label} {hint}>
 	<select bind:value>
 		{#each options as opt (opt)}
-			<option value={opt}>{opt}</option>
+			<option value={opt}>{labels[opt] ?? opt}</option>
 		{/each}
 	</select>
 </Row>
@@ -18,8 +30,8 @@
 		background-color: var(--bg);
 		color: var(--on-surface);
 		border: 1px solid transparent;
-		border-radius: var(--radius-secondary, 6px);
-		padding: var(--space-xs, 4px) var(--space-sm, 8px);
+		border-radius: var(--radius-sm, 10px);
+		padding: 6px 10px;
 	}
 
 	option {

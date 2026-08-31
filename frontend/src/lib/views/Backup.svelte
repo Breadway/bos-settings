@@ -84,7 +84,7 @@
 			log = [...log, line];
 		});
 		busy = false;
-		if (!ok) message = "Command failed — see the log.";
+		if (!ok) message = "Failed. See the log.";
 	}
 
 	async function listSnaps() {
@@ -122,7 +122,7 @@
 <ViewScaffold title="Backup">
 	<Group
 		title="Repository"
-		hint="restic to a local directory or sftp:user@host:/path. Path and password are stored in ~/.config/bos-settings/backup.toml (mode 0600). The password field is write-only."
+		hint="Local folder or sftp. Password is write-only."
 		wide
 	>
 		{#if !st}
@@ -140,7 +140,7 @@
 
 	<Group
 		title="Actions"
-		hint="This backs up your @home life — documents, configs, the stuff snapper does not. Snapshots on the Snapshots page are root (@) only. Skips caches, Trash, Steam, containers, cargo/rustup, Flatpak, node_modules, target, and .git."
+		hint="Home directory. Snapshots page is the root filesystem."
 	>
 		<div class="btn-row">
 			<button disabled={busy} onclick={() => run("restic_init")}>Init repo</button>

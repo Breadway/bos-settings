@@ -25,7 +25,7 @@
 		} catch (e) {
 			const msg = `${e}`.toLowerCase();
 			if (msg.includes("no permission")) {
-				errorHint = "This user isn't allowed to run snapper. Check ALLOW_USERS in /etc/snapper/configs/root — it should list your username.";
+				errorHint = "This user is not in ALLOW_USERS for snapper.";
 			} else if (msg.includes("unknown config") || msg.includes("no such file")) {
 				errorHint = "No snapper config exists for root yet, so nothing is being snapshotted. This should be set up automatically at install.";
 			} else {
@@ -62,10 +62,10 @@
 </script>
 
 <ViewScaffold title="Snapshots">
-	<Hint text="This is how you undo a bad update: reboot and pick the snapshot in GRUB (BOS snapshots)." />
+	<Hint text="Reboot and pick a snapshot in GRUB to undo an update." />
 	<Group
 		title="What to pick in GRUB"
-		hint="Number, date, and description match the GRUB “BOS snapshots” submenu. Reboot, then choose that entry. This page does not run snapper rollback."
+		hint="Reboot and choose that entry in GRUB."
 		wide
 	>
 		<div class="list">

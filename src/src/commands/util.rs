@@ -226,6 +226,11 @@ pub fn valid_nm_id(name: &str) -> bool {
         && !t.contains(';')
 }
 
+/// Reload Hyprland so settings.json / binds.json / monitors.json take effect now.
+pub fn hypr_reload() {
+    let _ = std::process::Command::new("hyprctl").arg("reload").status();
+}
+
 pub fn valid_printer_name(name: &str) -> bool {
     let bytes = name.as_bytes();
     !bytes.is_empty()
@@ -234,6 +239,11 @@ pub fn valid_printer_name(name: &str) -> bool {
         && bytes
             .iter()
             .all(|b| b.is_ascii_alphanumeric() || matches!(*b, b'-' | b'_' | b'.'))
+}
+
+/// ufw / snapper numeric id — digits only.
+pub fn valid_number_id(num: &str) -> bool {
+    !num.is_empty() && num.len() <= 12 && num.bytes().all(|b| b.is_ascii_digit())
 }
 
 #[cfg(test)]
@@ -278,5 +288,14 @@ mod tests {
         assert!(valid_printer_name("Canon-TS6360a"));
         assert!(!valid_printer_name("foo bar"));
         assert!(!valid_printer_name("-d"));
+    }
+
+    #[test]
+    fn number_id_is_digits_only() {
+        assert!(valid_number_id("42"));
+        assert!(!valid_number_id(""));
+        assert!(!valid_number_id("-1"));
+        assert!(!valid_number_id("12a"));
+        assert!(!valid_number_id("1 2"));
     }
 }

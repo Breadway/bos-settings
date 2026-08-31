@@ -23,6 +23,12 @@
 	onMount(async () => {
 		libraryDir = await invoke<string>("wallpaper_library_dir_display");
 		await refreshCurrent();
+		scanning = true;
+		try {
+			library = await invoke<LibraryEntry[]>("list_wallpaper_library");
+		} finally {
+			scanning = false;
+		}
 	});
 
 	async function apply(path: string) {
@@ -30,7 +36,7 @@
 		try {
 			await invoke("set_wallpaper", { path });
 			await refreshCurrent();
-			status = "Wallpaper set";
+			status = "Set";
 		} catch (e) {
 			status = `${e}`;
 		} finally {
@@ -43,51 +49,40 @@
 			title: "Choose a wallpaper",
 			filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] }],
 		});
-		if (typeof path === "string") {
-			await apply(path);
-		}
-	}
-
-	async function browseLibrary() {
-		scanning = true;
-		library = await invoke<LibraryEntry[]>("list_wallpaper_library");
-		scanning = false;
+		if (typeof path === "string") await apply(path);
 	}
 </script>
 
 <ViewScaffold title="Wallpaper">
-	<Group
-		title="Current wallpaper"
-		hint="Sets the desktop wallpaper, generates a matching pywal palette, and reloads the shared bread-theme stylesheet — the wallpaper drives the whole desktop's accent colors."
-	>
-		<div class="preview-card">
-			{#if currentPath}
-				<img class="preview" src={convertFileSrc(currentPath)} alt="Current wallpaper" />
-				<span class="path">{currentPath.split("/").pop()}</span>
-			{:else}
-				<div class="preview placeholder">No wallpaper set</div>
-			{/if}
-		</div>
-
+	<Group title="Wallpaper" hint="This also updates desktop colors.">
+		{#if currentPath}
+			<div class="hero" style="background-image: url('{convertFileSrc(currentPath)}')">
+				<span class="cap">{currentPath.split("/").pop()}</span>
+			</div>
+		{:else}
+			<div class="hero placeholder">No wallpaper</div>
+		{/if}
 		<div class="btn-row">
-			<button class="choose" onclick={chooseImage}>Choose image…</button>
+			<button class="btn primary" onclick={chooseImage}>Choose image</button>
 			<span class="status">{status}</span>
 		</div>
 	</Group>
 
 	<Group title="Library" wide>
-		{#if library === null}
-			<button class="browse" disabled={scanning} onclick={browseLibrary}>
-				{scanning ? "Scanning…" : `Browse ${libraryDir}`}
-			</button>
-		{:else if library.length === 0}
-			<div class="empty">Nothing under {libraryDir} — use Choose image… above instead.</div>
-		{:else}
+		{#if scanning && library === null}
+			<div class="empty">Loading {libraryDir}…</div>
+		{:else if library && library.length === 0}
+			<div class="empty">Nothing in {libraryDir}</div>
+		{:else if library}
 			<div class="grid">
 				{#each library as item (item.path)}
-					<button class="thumb" onclick={() => apply(item.path)} title={item.path}>
+					<button
+						class="thumb"
+						class:on={item.path === currentPath}
+						onclick={() => apply(item.path)}
+						title={item.path}
+					>
 						<img src={convertFileSrc(item.path)} alt={item.name} loading="lazy" />
-						<span class="name">{item.name}</span>
 					</button>
 				{/each}
 			</div>
@@ -96,105 +91,74 @@
 </ViewScaffold>
 
 <style>
-	.preview-card {
-		background-color: var(--surface);
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-md, 12px);
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: var(--space-sm, 8px);
-	}
-
-	.preview {
-		display: block;
-		width: 320px;
+	.hero {
 		height: 180px;
-		object-fit: cover;
-		border-radius: var(--radius-secondary, 6px);
+		border-radius: 12px;
+		background-size: cover;
+		background-position: center;
+		position: relative;
+		overflow: hidden;
 	}
 
-	.preview.placeholder {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		opacity: 0.5;
+	.hero.placeholder {
+		display: grid;
+		place-items: center;
+		background: var(--bg);
+		color: var(--muted);
 	}
 
-	.path {
-		display: block;
-		margin-top: var(--space-xs, 4px);
-		opacity: 0.6;
-		font-size: var(--font-size-secondary, 12px);
+	.cap {
+		position: absolute;
+		left: 12px;
+		bottom: 10px;
+		font-size: 12px;
+		color: #fffc;
+		background: #0006;
+		padding: 4px 8px;
+		border-radius: 6px;
 	}
 
 	.btn-row {
 		display: flex;
 		align-items: center;
-		gap: var(--space-md, 12px);
-		justify-content: center;
-		margin-top: var(--space-sm, 8px);
-	}
-
-	.choose,
-	.browse {
-		background-color: var(--accent);
-		color: var(--on-accent);
-		border: none;
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-sm, 8px) var(--space-lg, 16px);
-		cursor: pointer;
-	}
-
-	.browse {
-		background-color: var(--surface);
-		color: var(--on-surface);
-	}
-
-	.browse:disabled {
-		opacity: 0.6;
-		cursor: default;
+		gap: 12px;
+		margin-top: 12px;
 	}
 
 	.status {
-		opacity: 0.6;
-		font-size: var(--font-size-secondary, 12px);
+		color: var(--muted);
+		font-size: 12px;
 	}
 
 	.empty {
-		opacity: 0.6;
-		font-size: var(--font-size-secondary, 12px);
+		color: var(--muted);
+		font-size: 12px;
 	}
 
 	.grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-		gap: var(--space-sm, 8px);
+		grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+		gap: 8px;
 	}
 
 	.thumb {
-		background: transparent;
-		border: none;
-		cursor: pointer;
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
 		padding: 0;
+		border: 2px solid transparent;
+		border-radius: 8px;
+		overflow: hidden;
+		cursor: pointer;
+		background: transparent;
+		aspect-ratio: 16/10;
+	}
+
+	.thumb.on {
+		border-color: var(--accent);
 	}
 
 	.thumb img {
 		display: block;
 		width: 100%;
-		height: 88px;
+		height: 100%;
 		object-fit: cover;
-		border-radius: var(--radius-tertiary, 4px);
-	}
-
-	.thumb .name {
-		font-size: 11px;
-		opacity: 0.6;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 </style>

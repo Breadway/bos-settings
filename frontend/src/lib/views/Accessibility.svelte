@@ -94,7 +94,7 @@
 		{/if}
 	</Group>
 
-	<Group title="Magnifier" hint="Hyprland’s real magnifier is cursor:zoom_factor — pointer-centered zoom. Applies to this session.">
+	<Group title="Magnifier" hint="Zooms around the cursor. This session only.">
 		{#if st}
 			<NumberField label="Zoom factor" bind:value={zoom} min={1} max={8} step={0.25} />
 			<button class="primary" onclick={applyZoom}>Apply zoom</button>
