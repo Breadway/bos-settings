@@ -56,7 +56,7 @@
 <ViewScaffold title="Bakery channel">
 	<Group
 		title="Track"
-		hint="bakery track show / bakery track set. This only changes the preference — nothing is downloaded until you update."
+		hint="Nothing downloads until you update."
 	>
 		{#if !track}
 			<Hint text="Loading…" />

@@ -69,7 +69,7 @@
 </script>
 
 <ViewScaffold title="Users">
-	<Group title="Accounts" hint="Real login accounts on this machine (system/service accounts aren't shown). Your own account can't be removed from here." wide>
+	<Group title="Accounts" hint="Login accounts. You cannot delete yourself." wide>
 		<div class="list">
 			{#if accounts}
 				{#each accounts as acc (acc.username)}

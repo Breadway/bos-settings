@@ -24,107 +24,154 @@
 	let output = $state<DeviceSection | null>(null);
 	let input = $state<DeviceSection | null>(null);
 
+	function pick(devices: SoundDevice[], defaultName: string | null): number {
+		const i = devices.findIndex((d) => d.name === defaultName);
+		return i >= 0 ? i : 0;
+	}
+
 	async function loadSection(kind: "sinks" | "sources", title: string): Promise<DeviceSection> {
-		const section = await invoke<{ devices: SoundDevice[]; default_name: string | null }>("get_sound_section", { kind });
-		const selected = Math.max(0, section.devices.findIndex((d) => d.name === section.default_name));
-		return { kind, title, devices: section.devices, selected };
+		const section = await invoke<{ devices: SoundDevice[]; default_name: string | null }>("get_sound_section", {
+			kind,
+		});
+		return { kind, title, devices: section.devices, selected: pick(section.devices, section.default_name) };
 	}
 
 	onMount(async () => {
-		output = await loadSection("sinks", "Output");
-		input = await loadSection("sources", "Input");
+		try {
+			output = await loadSection("sinks", "Output");
+			input = await loadSection("sources", "Input");
+		} catch (e) {
+			console.error(e);
+			output = { kind: "sinks", title: "Output", devices: [], selected: 0 };
+			input = { kind: "sources", title: "Input", devices: [], selected: 0 };
+		}
 	});
 
+	function current(section: DeviceSection): SoundDevice | null {
+		return section.devices[section.selected] ?? section.devices[0] ?? null;
+	}
+
 	async function selectDevice(section: DeviceSection, index: number) {
+		const device = section.devices[index];
+		if (!device) return;
 		section.selected = index;
-		await invoke("set_default_sound_device", { kind: section.kind, name: section.devices[index].name });
+		await invoke("set_default_sound_device", { kind: section.kind, name: device.name });
 	}
 
 	async function setVolume(section: DeviceSection, percent: number) {
-		const device = section.devices[section.selected];
+		const device = current(section);
+		if (!device) return;
 		device.percent = percent;
-		await invoke("set_sound_volume", { kind: section.kind, name: device.name, percent });
+		await invoke("set_sound_volume", { kind: section.kind, name: device.name, percent: Math.round(percent) });
 	}
 
 	async function setMute(section: DeviceSection, mute: boolean) {
-		const device = section.devices[section.selected];
+		const device = current(section);
+		if (!device) return;
 		device.mute = mute;
 		await invoke("set_sound_mute", { kind: section.kind, name: device.name, mute });
 	}
 </script>
 
-{#snippet deviceSection(section: DeviceSection | null)}
-	{#if section}
-		<Group title={section.title}>
-			{#if section.devices.length === 0}
-				<Hint text="No devices found." />
-			{:else}
-				<Row label="Device">
-					<select
-						value={section.selected}
-						onchange={(e) => selectDevice(section, Number(e.currentTarget.value))}
-					>
-						{#each section.devices as d, i (d.name)}
-							<option value={i}>{d.description}</option>
-						{/each}
-					</select>
-				</Row>
+{#snippet sectionCard(section: DeviceSection)}
+	<Group title={section.title}>
+		{#if section.devices.length === 0}
+			<Hint text="No devices found." />
+		{:else}
+			{#each section.devices as d, i (d.name + i)}
+				<button type="button" class="dev" class:on={section.selected === i} onclick={() => selectDevice(section, i)}>
+					<span class="dev-name">{d.description || d.name}</span>
+					{#if section.selected === i}<span class="mark">In use</span>{/if}
+				</button>
+			{/each}
+			{#if current(section)}
 				<Row label="Volume">
 					<input
 						type="range"
 						min="0"
 						max="150"
-						value={section.devices[section.selected].percent}
+						value={Math.round(current(section)!.percent)}
 						oninput={(e) => setVolume(section, Number(e.currentTarget.value))}
 					/>
-					<span class="pct">{section.devices[section.selected].percent}%</span>
+					<span class="pct">{Math.round(current(section)!.percent)}%</span>
 				</Row>
 				<SwitchField
 					label="Mute"
-					bind:value={
-						() => section.devices[section.selected].mute,
-						(v) => setMute(section, v)
-					}
+					bind:value={() => current(section)!.mute, (v) => setMute(section, v)}
 				/>
 			{/if}
-		</Group>
-	{/if}
+		{/if}
+	</Group>
 {/snippet}
 
-<ViewScaffold title="Sound">
-	{@render deviceSection(output)}
-	{@render deviceSection(input)}
+<ViewScaffold title="Sound" lede="Output, input, and volume.">
+	{#if output}
+		{@render sectionCard(output)}
+	{/if}
+	{#if input}
+		{@render sectionCard(input)}
+	{/if}
 
-	<Group title="Advanced" hint="Per-app volume, port selection, and profile switching aren't covered here.">
-		<button class="secondary" onclick={() => invoke("open_mixer")}>Open advanced mixer (pavucontrol)</button>
+	<Group title="Advanced">
+		<button class="secondary" onclick={() => invoke("open_mixer")}>Per-app volume</button>
 	</Group>
 </ViewScaffold>
 
 <style>
-	select {
-		background-color: var(--bg);
-		color: var(--on-surface);
-		border: 1px solid transparent;
-		border-radius: var(--radius-secondary, 6px);
-		padding: var(--space-xs, 4px) var(--space-sm, 8px);
+	.dev {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		width: 100%;
+		text-align: left;
+		background: transparent;
+		border: none;
+		border-top: 1px solid var(--line, #ffffff12);
+		padding: 10px 2px;
+		color: inherit;
+		cursor: pointer;
+	}
+
+	.dev:first-child {
+		border-top: none;
+		padding-top: 0;
+	}
+
+	.dev.on .dev-name {
+		font-weight: 600;
+	}
+
+	.dev-name {
+		flex: 1;
+	}
+
+	.mark {
+		font-size: 11px;
+		padding: 4px 8px;
+		border-radius: 999px;
+		background: var(--accent);
+		color: var(--on-accent);
+		font-weight: 600;
 	}
 
 	input[type="range"] {
 		width: 180px;
+		accent-color: var(--accent);
 	}
 
 	.pct {
-		margin-left: var(--space-sm, 8px);
-		font-size: var(--font-size-secondary, 12px);
+		margin-left: 8px;
+		font-size: 12px;
 		opacity: 0.7;
+		min-width: 4ch;
 	}
 
 	.secondary {
 		background-color: var(--bg);
 		color: var(--on-surface);
 		border: none;
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-sm, 8px) var(--space-lg, 16px);
+		border-radius: 10px;
+		padding: 8px 16px;
 		cursor: pointer;
 		align-self: flex-start;
 	}

@@ -30,7 +30,7 @@
 
 	function toggle() {
 		if (active && critical) {
-			if (!confirm(`Stop ${unit}? This is a core part of the desktop's event handling — stopping it may affect other bread apps until it's restarted.`)) {
+			if (!confirm(`Stop ${unit}? Other bread apps may stall until it is restarted.`)) {
 				return;
 			}
 		}
@@ -57,7 +57,7 @@
 		<button onclick={openLogs}>View logs</button>
 	</div>
 	{#if hasConfig}
-		<Hint text="Save (below) only writes the config file — click Restart above for the running service to pick up the change." />
+		<Hint text="Save writes the file. Restart the service to apply." />
 	{/if}
 </Group>
 
@@ -74,16 +74,16 @@
 	}
 
 	button {
-		background-color: var(--surface);
+		background-color: var(--surface-2, var(--bg));
 		color: var(--on-surface);
-		border: none;
-		border-radius: var(--radius-primary, 8px);
+		border: 1px solid var(--line, transparent);
+		border-radius: var(--radius-sm, 10px);
 		padding: var(--space-sm, 8px) var(--space-lg, 16px);
 		cursor: pointer;
 	}
 
 	button:hover {
-		background-color: color-mix(in srgb, var(--on-surface) 14%, transparent);
+		background-color: color-mix(in srgb, var(--on-surface) 10%, transparent);
 	}
 
 	button:disabled {

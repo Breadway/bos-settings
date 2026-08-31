@@ -39,7 +39,7 @@
 <ViewScaffold title="Screenshots">
 	<Group
 		title="Keybinds"
-		hint="Read-only from binds.json. Super+Shift+S/C/P is the BOS default (region→file / region→clipboard / screen→file). Change them on the Keybinds panel."
+		hint="Change shortcuts under Keyboard."
 	>
 		{#if binds && binds.length > 0}
 			{#each binds as b (`${b.shortcut}:${b.command}`)}
@@ -52,7 +52,7 @@
 	</Group>
 
 	{#if cfg}
-		<Group title="breadshot" hint="~/.config/breadshot/config.toml — grim + slurp + wl-copy, Hyprland-aware. All keys optional.">
+		<Group title="Capture">
 			<FileField label="Save directory" bind:value={cfg.save_dir} placeholder="~/Pictures/Screenshots" mode="folder" />
 			<SwitchField label="Silent (no notifications)" bind:value={cfg.silent} />
 			<SwitchField label="Freeze screen during select" bind:value={cfg.freeze} />

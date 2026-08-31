@@ -34,7 +34,7 @@
 
 	let cfg = $state<BreadConfig | null>(null);
 	// The daemon's 4 compiled-in modules plus every *.lua file actually
-	// sitting in the configured module directory — real installed modules,
+	// sitting in the configured module directory  -  real installed modules,
 	// not a guess, so picking one to disable is a click.
 	let knownModules = $state<string[]>([]);
 

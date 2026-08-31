@@ -1,6 +1,8 @@
 use serde::Serialize;
 use tokio::process::Command;
 
+use super::util;
+
 #[derive(Serialize, Clone)]
 pub struct SnapshotRow {
     number: String,
@@ -44,6 +46,9 @@ pub async fn get_snapshots() -> Result<Vec<SnapshotRow>, String> {
 
 #[tauri::command]
 pub async fn delete_snapshot(number: String) -> Result<(), String> {
+    if !util::valid_number_id(&number) {
+        return Err("invalid snapshot number".into());
+    }
     let output = Command::new("snapper").args(["delete", &number]).status().await.map_err(|e| e.to_string())?;
     if output.success() {
         Ok(())

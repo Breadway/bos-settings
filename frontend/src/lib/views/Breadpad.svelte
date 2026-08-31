@@ -83,7 +83,7 @@
 			<NumberField label="Archive after (days)" bind:value={cfg.archive_after_days} min={0} max={3650} />
 		</Group>
 
-		<Group title="Classifier model" hint="The local model breadpad uses to guess note vs. reminder vs. task — no network needed.">
+		<Group title="Classifier model" hint="Local model. No network.">
 			<FileField label="ONNX model" bind:value={cfg.model_path} placeholder="~/.local/share/breadpad/model/classifier.onnx" extensions={["onnx"]} />
 			<FileField label="Tokenizer" bind:value={cfg.tokenizer_path} placeholder="~/.local/share/breadpad/model/tokenizer.json" extensions={["json"]} />
 		</Group>

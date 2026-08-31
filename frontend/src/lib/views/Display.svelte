@@ -2,151 +2,369 @@
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
-	import InfoRow from "$lib/components/InfoRow.svelte";
 	import Group from "$lib/components/Group.svelte";
 	import Hint from "$lib/components/Hint.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
+	import Row from "$lib/components/Row.svelte";
 
 	interface LiveMonitor {
 		name: string;
 		mode: string;
-	}
-	interface MonitorRule {
-		output: string;
-		mode: string;
-		position: string;
-		scale: string;
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+		refresh: number;
+		scale: number;
+		transform: number;
+		available_modes: string[];
 	}
 
-	let liveMonitors = $state<LiveMonitor[] | null>(null);
-	let rules = $state<MonitorRule[] | null>(null);
+	const SCALES = [
+		{ label: "100%", value: 1 },
+		{ label: "125%", value: 1.25 },
+		{ label: "150%", value: 1.5 },
+		{ label: "200%", value: 2 },
+	];
 
-	onMount(async () => {
-		liveMonitors = await invoke<LiveMonitor[]>("get_live_monitors");
-		rules = await invoke<MonitorRule[]>("get_monitor_rules");
+	const TURNS = [
+		{ label: "Landscape", value: 0 },
+		{ label: "Right", value: 1 },
+		{ label: "Upside down", value: 2 },
+		{ label: "Left", value: 3 },
+	];
+
+	const PAD = 28;
+	const STAGE_H = 300;
+
+	let monitors = $state<LiveMonitor[]>([]);
+	let selected = $state<string | null>(null);
+	let stageEl: HTMLDivElement | undefined = $state();
+	let stageW = $state(640);
+	let message = $state("");
+	let applying = $state(false);
+
+	let live = $derived(monitors.find((m) => m.name === selected) ?? null);
+
+	let view = $derived.by(() => {
+		if (monitors.length === 0) return { minX: 0, minY: 0, scale: 0.1 };
+		let minX = Infinity;
+		let minY = Infinity;
+		let maxX = -Infinity;
+		let maxY = -Infinity;
+		for (const m of monitors) {
+			const w = boxW(m);
+			const h = boxH(m);
+			minX = Math.min(minX, m.x);
+			minY = Math.min(minY, m.y);
+			maxX = Math.max(maxX, m.x + w);
+			maxY = Math.max(maxY, m.y + h);
+		}
+		const bw = Math.max(maxX - minX, 1);
+		const bh = Math.max(maxY - minY, 1);
+		const scale = Math.min((stageW - PAD * 2) / bw, (STAGE_H - PAD * 2) / bh);
+		return { minX, minY, scale };
 	});
 
-	function addRule() {
-		rules = [...(rules ?? []), { output: "", mode: "preferred", position: "auto", scale: "auto" }];
+	type Drag = { i: number; grabX: number; grabY: number; pointer: number };
+	let drag = $state<Drag | null>(null);
+
+	function rotated(m: LiveMonitor): boolean {
+		return m.transform === 1 || m.transform === 3 || m.transform === 5 || m.transform === 7;
+	}
+	function boxW(m: LiveMonitor): number {
+		return rotated(m) ? m.height : m.width;
+	}
+	function boxH(m: LiveMonitor): number {
+		return rotated(m) ? m.width : m.height;
 	}
 
-	function removeRule(i: number) {
-		rules = rules!.filter((_, idx) => idx !== i);
-		if (rules.length === 0) {
-			rules = [{ output: "", mode: "preferred", position: "auto", scale: "auto" }];
+	function screenX(m: LiveMonitor): number {
+		return PAD + (m.x - view.minX) * view.scale;
+	}
+	function screenY(m: LiveMonitor): number {
+		return PAD + (m.y - view.minY) * view.scale;
+	}
+	function screenW(m: LiveMonitor): number {
+		return Math.max(48, boxW(m) * view.scale);
+	}
+	function screenH(m: LiveMonitor): number {
+		return Math.max(32, boxH(m) * view.scale);
+	}
+
+	function nearestScale(v: number): number {
+		return SCALES.reduce((best, s) => (Math.abs(s.value - v) < Math.abs(best - v) ? s.value : best), 1);
+	}
+
+	async function refresh() {
+		monitors = await invoke<LiveMonitor[]>("get_live_monitors");
+		if (!selected || !monitors.some((m) => m.name === selected)) {
+			selected = monitors[0]?.name ?? null;
 		}
 	}
 
-	async function save() {
-		await invoke("save_monitor_rules", { rules });
+	onMount(refresh);
+
+	$effect(() => {
+		const el = stageEl;
+		if (!el) return;
+		stageW = el.clientWidth;
+		const ro = new ResizeObserver(() => {
+			stageW = el.clientWidth;
+		});
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
+
+	function snap(idx: number, x: number, y: number): { x: number; y: number } {
+		const moving = monitors[idx];
+		if (!moving) return { x, y };
+		const mw = boxW(moving);
+		const mh = boxH(moving);
+		const thresh = Math.max(16, 18 / Math.max(view.scale, 0.01));
+		let bestX = x;
+		let bestY = y;
+		let bestXd = thresh + 1;
+		let bestYd = thresh + 1;
+		for (let i = 0; i < monitors.length; i++) {
+			if (i === idx) continue;
+			const o = monitors[i];
+			const ow = boxW(o);
+			const oh = boxH(o);
+			const xs = [x - o.x, x - (o.x + ow), x + mw - o.x, x + mw - (o.x + ow)];
+			for (const d of xs) {
+				const ad = Math.abs(d);
+				if (ad < bestXd) {
+					bestXd = ad;
+					bestX = x - d;
+				}
+			}
+			const ys = [y - o.y, y - (o.y + oh), y + mh - o.y, y + mh - (o.y + oh)];
+			for (const d of ys) {
+				const ad = Math.abs(d);
+				if (ad < bestYd) {
+					bestYd = ad;
+					bestY = y - d;
+				}
+			}
+		}
+		return { x: Math.round(bestX), y: Math.round(bestY) };
+	}
+
+	function onDown(e: PointerEvent, i: number) {
+		const m = monitors[i];
+		if (!m || !stageEl) return;
+		selected = m.name;
+		const rect = stageEl.getBoundingClientRect();
+		const px = e.clientX - rect.left;
+		const py = e.clientY - rect.top;
+		drag = { i, grabX: px - screenX(m), grabY: py - screenY(m), pointer: e.pointerId };
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		e.preventDefault();
+	}
+
+	function onMove(e: PointerEvent) {
+		if (!drag || !stageEl) return;
+		const rect = stageEl.getBoundingClientRect();
+		const px = e.clientX - rect.left - drag.grabX;
+		const py = e.clientY - rect.top - drag.grabY;
+		const wx = view.minX + (px - PAD) / view.scale;
+		const wy = view.minY + (py - PAD) / view.scale;
+		const snapped = snap(drag.i, wx, wy);
+		monitors[drag.i].x = snapped.x;
+		monitors[drag.i].y = snapped.y;
+		monitors = [...monitors];
+	}
+
+	async function onUp(e: PointerEvent) {
+		if (!drag) return;
+		if (e.pointerId !== drag.pointer && e.type !== "pointerleave") return;
+		drag = null;
+		await apply();
+	}
+
+	async function apply() {
+		if (monitors.length === 0) return;
+		applying = true;
+		message = "";
+		try {
+			await invoke("apply_monitor_layout", { monitors });
+			await refresh();
+		} catch (err) {
+			message = `${err}`;
+		} finally {
+			applying = false;
+		}
+	}
+
+	async function setScale(value: number) {
+		if (!live) return;
+		live.scale = value;
+		monitors = [...monitors];
+		await apply();
+	}
+
+	async function setTransform(value: number) {
+		if (!live) return;
+		live.transform = value;
+		monitors = [...monitors];
+		await apply();
+	}
+
+	async function setMode(modeStr: string) {
+		if (!live) return;
+		const cleaned = modeStr.replace(/Hz$/i, "");
+		const [res, hz] = cleaned.split("@");
+		const [w, h] = (res ?? "").split("x");
+		const width = Number(w);
+		const height = Number(h);
+		const refresh = Number(hz);
+		if (!width || !height) return;
+		live.width = width;
+		live.height = height;
+		if (refresh) live.refresh = refresh;
+		live.mode = `${width}x${height} @ ${Math.round(live.refresh)}Hz`;
+		monitors = [...monitors];
+		await apply();
 	}
 </script>
 
-<ViewScaffold title="Display">
-	<Group title="Connected monitors">
-		{#if liveMonitors && liveMonitors.length > 0}
-			{#each liveMonitors as m (m.name)}
-				<InfoRow label={m.name} value={m.mode} />
-			{/each}
+<ViewScaffold title="Displays" lede="Drag to arrange. Edges snap. Changes apply now.">
+	<Group title="Arrangement" wide>
+		{#if monitors.length === 0}
+			<Hint text="No monitors detected." />
 		{:else}
-			<Hint text="No monitors detected (is Hyprland running?)" />
+			<div
+				class="mon-stage"
+				role="application"
+				aria-label="Monitor arrangement canvas. Drag to reorder monitors."
+				bind:this={stageEl}
+				onpointermove={onMove}
+				onpointerup={onUp}
+				onpointercancel={onUp}
+			>
+				{#each monitors as m, i (m.name)}
+					<button
+						type="button"
+						class="mon"
+						class:sel={selected === m.name}
+						class:dragging={drag?.i === i}
+						style="left:{screenX(m)}px; top:{screenY(m)}px; width:{screenW(m)}px; height:{screenH(m)}px;"
+						onpointerdown={(e) => onDown(e, i)}
+					>
+						<div class="screen"></div>
+						<div class="chin">{m.name}</div>
+					</button>
+				{/each}
+			</div>
+			<Hint text={applying ? "Applying…" : "Drag a panel. It sticks when you let go."} />
 		{/if}
 	</Group>
 
-	<Group title="Advanced">
-		<button class="secondary" onclick={() => invoke("open_hyprland_conf")}>Open hyprland.lua in editor</button>
-		<button class="secondary" onclick={() => invoke("open_keybinds_viewer")}>View keybinds (breadhelp)</button>
-	</Group>
-
-	{#if rules}
-		<Group
-			title="Layout"
-			hint="One row per monitor rule. Leave Output blank to match any monitor (the default — works on any hardware). Applies on next login/reload."
-			wide
-		>
-			{#each rules as rule, i (i)}
-				<div class="rule-row">
-					<label>Output <input type="text" bind:value={rule.output} placeholder="any (blank = all)" class="w-output" /></label>
-					<label>Mode <input type="text" bind:value={rule.mode} placeholder="preferred / 1920x1080@60" class="w-mode" /></label>
-					<label>Position <input type="text" bind:value={rule.position} placeholder="auto / 0x0" class="w-position" /></label>
-					<label>Scale <input type="text" bind:value={rule.scale} placeholder="auto / 1" class="w-scale" /></label>
-					<button class="remove" onclick={() => removeRule(i)}>Remove</button>
+	{#if live}
+		<Group title={live.name}>
+			<Row label="Resolution">
+				{#if live.available_modes.length > 0}
+					<select value={`${live.width}x${live.height}@${live.refresh.toFixed(2)}Hz`} onchange={(e) => setMode(e.currentTarget.value)}>
+						{#each live.available_modes as mode (mode)}
+							<option value={mode}>{mode}</option>
+						{/each}
+					</select>
+				{:else}
+					<span class="mode">{live.mode}</span>
+				{/if}
+			</Row>
+			<Row label="Scale">
+				<div class="pills">
+					{#each SCALES as s (s.value)}
+						<button type="button" class="pill" class:on={nearestScale(live.scale) === s.value} onclick={() => setScale(s.value)}>
+							{s.label}
+						</button>
+					{/each}
 				</div>
-			{/each}
-			<button class="add" onclick={addRule}>Add monitor rule</button>
-
-			<SaveButton onSave={save} />
+			</Row>
+			<Row label="Rotation">
+				<div class="pills">
+					{#each TURNS as t (t.value)}
+						<button type="button" class="pill" class:on={live.transform % 4 === t.value} onclick={() => setTransform(t.value)}>
+							{t.label}
+						</button>
+					{/each}
+				</div>
+			</Row>
+			<Row label="Position">
+				<span class="mode">{live.x}, {live.y}</span>
+			</Row>
+			{#if message}
+				<Hint text={message} />
+			{/if}
 		</Group>
 	{/if}
 </ViewScaffold>
 
 <style>
-	.rule-row {
+	.mon-stage {
+		position: relative;
+		height: 300px;
+		background: var(--bg);
+		border-radius: 12px;
+		overflow: hidden;
+		touch-action: none;
+		user-select: none;
+	}
+
+	.mon {
+		position: absolute;
+		border-radius: 10px;
+		background: var(--surface-2, var(--surface));
+		border: 2px solid color-mix(in srgb, var(--fg) 10%, transparent);
+		box-shadow: 0 12px 28px #0005;
 		display: flex;
-		align-items: center;
-		gap: var(--space-sm, 8px);
-		margin-bottom: var(--space-xs, 4px);
-		flex-wrap: wrap;
+		flex-direction: column;
+		cursor: grab;
+		padding: 0;
+		color: inherit;
+		overflow: hidden;
 	}
 
-	.rule-row label {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: var(--font-size-secondary, 12px);
+	.mon.sel {
+		border-color: var(--accent);
+		z-index: 2;
 	}
 
-	.w-output {
-		width: 12ch;
-	}
-	.w-mode {
-		width: 18ch;
-	}
-	.w-position {
-		width: 10ch;
-	}
-	.w-scale {
-		width: 8ch;
+	.mon.dragging {
+		cursor: grabbing;
+		z-index: 3;
 	}
 
-	input[type="text"] {
-		background-color: var(--bg);
+	.screen {
+		flex: 1;
+		margin: 6px 6px 0;
+		border-radius: 5px;
+		background: linear-gradient(160deg, var(--surface) 10%, var(--accent) 140%);
+		pointer-events: none;
+	}
+
+	.chin {
+		height: 22px;
+		display: grid;
+		place-items: center;
+		font-size: 11px;
+		color: var(--muted);
+		pointer-events: none;
+	}
+
+	.mode {
+		color: var(--muted);
+		font-size: 13px;
+	}
+
+	select {
+		color-scheme: dark;
+		background: var(--bg);
 		color: var(--on-surface);
 		border: 1px solid transparent;
-		border-radius: var(--radius-secondary, 6px);
-		padding: var(--space-xs, 4px) var(--space-sm, 8px);
-	}
-
-	input:focus {
-		outline: none;
-		border-color: var(--accent);
-	}
-
-	button {
-		border: none;
-		border-radius: var(--radius-primary, 8px);
-		cursor: pointer;
-	}
-
-	.remove {
-		background-color: var(--red);
-		color: var(--on-red);
-		padding: var(--space-xs, 4px) var(--space-md, 12px);
-	}
-
-	.add {
-		background-color: var(--surface);
-		color: var(--on-surface);
-		margin-top: var(--space-sm, 8px);
-		padding: var(--space-xs, 4px) var(--space-md, 12px);
-		align-self: flex-start;
-	}
-
-	.secondary {
-		background-color: var(--bg);
-		color: var(--on-surface);
-		padding: var(--space-sm, 8px) var(--space-lg, 16px);
-		align-self: flex-start;
-		margin-bottom: var(--space-xs, 4px);
+		border-radius: 10px;
+		padding: 6px 10px;
+		max-width: 28ch;
 	}
 </style>

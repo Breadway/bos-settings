@@ -254,7 +254,9 @@ pub fn get_keybinds() -> BindsPayload {
 
 #[tauri::command]
 pub fn save_keybinds(file: BindsFile, kind: SchemaKind) -> Result<(), String> {
-    save(&file, kind).map_err(|e| e.to_string())
+    save(&file, kind).map_err(|e| e.to_string())?;
+    super::util::hypr_reload();
+    Ok(())
 }
 
 #[cfg(test)]

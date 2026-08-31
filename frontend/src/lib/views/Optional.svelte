@@ -38,7 +38,7 @@
 			log = [...log, line];
 		});
 		busy = false;
-		if (!ok) message = "Install failed — see the log.";
+		if (!ok) message = "Install failed. See the log.";
 		await refresh();
 		return ok;
 	}

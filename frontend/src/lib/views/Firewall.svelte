@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Row from "$lib/components/Row.svelte";
@@ -22,12 +23,28 @@
 	let newRule = $state("");
 	let log = $state<string[]>([]);
 
+	onMount(refresh);
+
+	function friendlyError(raw: string): string {
+		const s = raw.toLowerCase();
+		if (
+			s.includes("polkit") ||
+			s.includes("pkexec") ||
+			s.includes("password") ||
+			s.includes("authentication") ||
+			s.includes("controlling terminal")
+		) {
+			return "Need your password to read firewall rules.";
+		}
+		return raw;
+	}
+
 	async function refresh() {
 		try {
 			status = await invoke<FirewallStatus>("get_firewall_status");
 			enabledSensitive = true;
 		} catch (e) {
-			status = { error: `${e}` };
+			status = { error: friendlyError(`${e}`) };
 		}
 	}
 
@@ -66,10 +83,7 @@
 </script>
 
 <ViewScaffold title="Firewall">
-	<Group
-		title="Firewall"
-		hint="Reading and changing firewall state needs your password (polkit) — ufw requires root even just to check status."
-	>
+	<Group title="Firewall" hint="Needs your password.">
 		<Row label="Firewall enabled">
 			<button
 				class="switch"
@@ -95,7 +109,7 @@
 	<Group title="Rules" wide>
 		<div class="list">
 			{#if status === "unloaded"}
-				<EmptyState icon={Shield} title="Status not loaded" hint="Click Refresh below to check the firewall's current state." />
+				<EmptyState icon={Shield} title="Loading…" hint="May ask for your password." />
 			{:else if "error" in status}
 				<EmptyState icon={ShieldAlert} title="Couldn't read firewall status" hint={status.error} />
 			{:else if status.rules.length === 0}

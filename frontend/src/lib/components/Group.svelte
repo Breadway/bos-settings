@@ -22,33 +22,35 @@
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
+		background: var(--surface);
+		border: 1px solid var(--line, color-mix(in srgb, var(--fg) 8%, transparent));
+		border-radius: var(--radius, 14px);
+		padding: 16px 18px;
 	}
 
 	.group.wide {
-		grid-column: 1 / -1;
+		width: 100%;
 	}
 
 	.title {
 		font-weight: 600;
-		font-size: 1.05em;
-		margin: 0 0 var(--space-sm, 8px);
+		font-size: 13px;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--muted, color-mix(in oklab, var(--fg) 58%, transparent));
+		margin: 0 0 12px;
 	}
 
 	.hint {
-		opacity: 0.75;
+		color: var(--muted, color-mix(in oklab, var(--fg) 58%, transparent));
 		font-size: var(--font-size-secondary, 12px);
 		line-height: 1.4;
-		margin: 0 0 var(--space-sm, 8px);
+		margin: -6px 0 12px;
 	}
 
 	.rows {
 		display: flex;
 		flex-direction: column;
-		/* Flex children default to refusing to shrink below their content's
-		   natural width (min-width: auto) — without this, a button/input
-		   with enough text overflows past the grid column's actual pixel
-		   width instead of wrapping, visually spilling into the next
-		   column. */
 		min-width: 0;
 	}
 

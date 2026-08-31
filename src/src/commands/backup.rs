@@ -239,7 +239,7 @@ pub fn valid_restore_target(path: &Path) -> bool {
         return false;
     }
     let normalized = normalize_abs(path);
-    if normalized == PathBuf::from("/") {
+    if normalized == *"/" {
         return false;
     }
     normalized != normalize_abs(&home_dir())

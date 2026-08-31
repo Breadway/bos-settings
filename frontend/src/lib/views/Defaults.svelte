@@ -4,7 +4,7 @@
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
 	import Hint from "$lib/components/Hint.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
+	import Row from "$lib/components/Row.svelte";
 
 	interface DesktopApp {
 		id: string;
@@ -34,25 +34,23 @@
 	async function save() {
 		if (!st) return;
 		await invoke("save_default_apps", { input: { current: st.current } });
-		st = await invoke<DefaultsStatus>("get_default_apps");
 	}
 </script>
 
 <ViewScaffold title="Default apps">
-	<Group title="MIME associations" hint={st ? `Read and written at ${st.path}. Terminal also writes ~/.config/xdg-terminals.list.` : "Loading…"} wide>
+	<Group title="Apps" wide>
 		{#if st}
 			{#each CATEGORIES as cat (cat.id)}
-				<div class="field-row">
-					<span class="label">{cat.label}</span>
-					<select bind:value={st.current[cat.id]}>
-						<option value="">—</option>
+				<Row label={cat.label}>
+					<select bind:value={st.current[cat.id]} onchange={save}>
+						<option value="">Not set</option>
 						{#each st.options[cat.id] ?? [] as app (app.id)}
 							<option value={app.id}>{app.name}</option>
 						{/each}
 					</select>
-				</div>
+				</Row>
 			{/each}
-			<SaveButton onSave={save} />
+			<Hint text="Applies as you change it." />
 		{:else}
 			<Hint text="Loading…" />
 		{/if}
@@ -60,45 +58,18 @@
 </ViewScaffold>
 
 <style>
-	.field-row {
-		display: flex;
-		align-items: center;
-		gap: var(--space-lg, 16px);
-		background-color: var(--surface);
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-md, 12px) var(--space-lg, 16px);
-		margin-bottom: var(--space-sm, 8px);
-	}
-
-	:global(.field-row + .field-row) {
-		margin-top: calc(var(--space-sm, 8px) * -1);
-		border-top: 1px solid var(--bg);
-		border-top-left-radius: 0;
-		border-top-right-radius: 0;
-	}
-
-	:global(.field-row:has(+ .field-row)) {
-		border-bottom-left-radius: 0;
-		border-bottom-right-radius: 0;
-		margin-bottom: 0;
-	}
-
-	.label {
-		flex: 1;
-	}
-
 	select {
 		color-scheme: dark;
-		background-color: var(--bg);
+		background: var(--bg);
 		color: var(--on-surface);
 		border: 1px solid transparent;
-		border-radius: var(--radius-secondary, 6px);
-		padding: var(--space-xs, 4px) var(--space-sm, 8px);
-		max-width: 28ch;
+		border-radius: 10px;
+		padding: 6px 10px;
+		min-width: 22ch;
+		max-width: 36ch;
 	}
 
 	select:focus {
-		outline: none;
 		border-color: var(--accent);
 	}
 </style>

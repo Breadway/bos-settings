@@ -51,10 +51,30 @@ fn hypr_path(name: &str) -> std::path::PathBuf {
     config::config_dir().join("hypr").join(name)
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct LiveMonitor {
-    name: String,
-    mode: String,
+    pub name: String,
+    pub mode: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub refresh: f64,
+    pub scale: f64,
+    pub transform: u32,
+    pub available_modes: Vec<String>,
+}
+
+fn json_i32(v: &serde_json::Value, key: &str) -> Option<i32> {
+    v.get(key)?.as_i64().map(|n| n as i32).or_else(|| v.get(key)?.as_f64().map(|n| n.round() as i32))
+}
+
+fn json_u32(v: &serde_json::Value, key: &str) -> Option<u32> {
+    v.get(key)?.as_u64().map(|n| n as u32).or_else(|| v.get(key)?.as_f64().map(|n| n.round() as u32))
+}
+
+fn json_f64(v: &serde_json::Value, key: &str) -> Option<f64> {
+    v.get(key)?.as_f64().or_else(|| v.get(key)?.as_u64().map(|n| n as f64))
 }
 
 #[tauri::command]
@@ -69,13 +89,101 @@ pub fn get_live_monitors() -> Vec<LiveMonitor> {
     monitors
         .iter()
         .filter_map(|m| {
-            let name = m.get("name")?.as_str()?;
-            let w = m.get("width")?.as_u64()?;
-            let h = m.get("height")?.as_u64()?;
-            let refresh = m.get("refreshRate")?.as_f64()?;
-            Some(LiveMonitor { name: name.to_string(), mode: format!("{w}x{h} @ {refresh:.0}Hz") })
+            let name = m.get("name")?.as_str()?.to_string();
+            let width = json_u32(m, "width")?;
+            let height = json_u32(m, "height")?;
+            let refresh = json_f64(m, "refreshRate").unwrap_or(60.0);
+            let x = json_i32(m, "x").unwrap_or(0);
+            let y = json_i32(m, "y").unwrap_or(0);
+            let scale = json_f64(m, "scale").unwrap_or(1.0).max(0.1);
+            let transform = json_u32(m, "transform").unwrap_or(0);
+            let available_modes = m
+                .get("availableModes")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|x| x.as_str().map(str::to_string))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            Some(LiveMonitor {
+                name,
+                mode: format!("{width}x{height} @ {refresh:.0}Hz"),
+                x,
+                y,
+                width,
+                height,
+                refresh,
+                scale,
+                transform,
+                available_modes,
+            })
         })
         .collect()
+}
+
+fn write_monitor_rules(rules: &[MonitorRule]) -> Result<(), String> {
+    let file = MonitorsFile { monitors: rules.to_vec() };
+    let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
+    config::atomic_write(&config_path(), &json).map_err(|e| e.to_string())
+}
+
+fn lua_ident(name: &str) -> Result<(), String> {
+    if name.is_empty()
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
+        return Err(format!("bad monitor name '{name}'"));
+    }
+    Ok(())
+}
+
+/// Live-apply a layout via BOS Hyprland `hl.monitor()`, then persist monitors.json.
+#[tauri::command]
+pub fn apply_monitor_layout(monitors: Vec<LiveMonitor>) -> Result<(), String> {
+    if monitors.is_empty() {
+        return Err("no monitors".into());
+    }
+    let mut stmts = Vec::new();
+    let mut rules = Vec::new();
+    for m in &monitors {
+        lua_ident(&m.name)?;
+        let refresh = if m.refresh > 1.0 { m.refresh.round() as u32 } else { 60 };
+        let mode = format!("{}x{}@{refresh}", m.width.max(1), m.height.max(1));
+        let position = format!("{}x{}", m.x, m.y);
+        let scale = if (m.scale - 1.0).abs() < 0.001 {
+            "1".to_string()
+        } else {
+            format!("{:.2}", m.scale)
+        };
+        let transform = m.transform.min(7);
+        stmts.push(format!(
+            "hl.monitor({{ output = \"{}\", mode = \"{mode}\", position = \"{position}\", scale = \"{scale}\", transform = {transform}, vrr = false }})",
+            m.name
+        ));
+        rules.push(MonitorRule {
+            output: m.name.clone(),
+            mode,
+            position,
+            scale,
+        });
+    }
+    let lua = stmts.join("; ");
+    let output = std::process::Command::new("hyprctl")
+        .args(["eval", &lua])
+        .output()
+        .map_err(|e| e.to_string())?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if stdout != "ok" {
+        let low = stdout.to_lowercase();
+        if low.contains("unknown request") || low.contains("unknown command") || stdout.is_empty() {
+            return Err("Live layout needs BOS Hyprland (hyprctl eval / hl.monitor).".into());
+        }
+        return Err(format!("hyprctl: {stdout}"));
+    }
+    write_monitor_rules(&rules)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -90,9 +198,9 @@ pub fn get_monitor_rules() -> Vec<MonitorRule> {
 
 #[tauri::command]
 pub fn save_monitor_rules(rules: Vec<MonitorRule>) -> Result<(), String> {
-    let file = MonitorsFile { monitors: rules };
-    let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
-    config::atomic_write(&config_path(), &json).map_err(|e| e.to_string())
+    write_monitor_rules(&rules)?;
+    super::util::hypr_reload();
+    Ok(())
 }
 
 /// Opens `hyprland.lua` in `$EDITOR` (nano if unset) inside a terminal —

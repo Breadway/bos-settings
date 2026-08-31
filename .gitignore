@@ -32,3 +32,8 @@ logs/
 
 # Claude Code local agent state
 .claude/
+
+# .freebuff local tool state (not for commit)
+.freebuff/
+# graphify knowledge-graph output (local tool cache, not for commit)
+graphify-out/

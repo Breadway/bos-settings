@@ -9,7 +9,7 @@
 	import SaveButton from "$lib/components/SaveButton.svelte";
 	import Switch from "$lib/components/Switch.svelte";
 
-	// Mirrors src-tauri/src/commands/keybinds.rs's `Bind` — `action`/`key`/
+	// Mirrors src-tauri/src/commands/keybinds.rs's `Bind`  -  `action`/`key`/
 	// `mods` are the only fields every bind has; everything else (`command`,
 	// `direction`, `workspace`, `options`, breadhelp's `label`/`category`/
 	// `demo_cmd`, ...) round-trips through serde's `#[serde(flatten)]` as
@@ -35,7 +35,7 @@
 	}
 
 	// Every action actually seen in real binds.json files (BOS's shipped
-	// flat schema and this app's own dev MultiLayout config) — an `action`
+	// flat schema and this app's own dev MultiLayout config)  -  an `action`
 	// dropdown beats free-typing a dispatcher name from memory. "Custom…"
 	// keeps anything not in this list reachable without blocking on it.
 	const KNOWN_ACTIONS = [
@@ -56,7 +56,7 @@
 	] as const;
 
 	// The editable, per-row UI state a bind gets flattened into on load and
-	// reconstructed back into a `Bind` on save — same trade-off the GTK
+	// reconstructed back into a `Bind` on save  -  same trade-off the GTK
 	// version made with individual `Entry` widgets per field.
 	interface EditRow {
 		action: string;
@@ -64,7 +64,7 @@
 		mods: string;
 		// Whether `mods` has been explicitly set (present in the loaded JSON,
 		// or touched by the user since). `None`/absent means "fall back to
-		// default_mods"; `Some([])` — an explicitly *empty* mods list — means
+		// default_mods"; `Some([])`  -  an explicitly *empty* mods list  -  means
 		// "use no modifiers at all, even though default_mods exists" (real
 		// BOS binds rely on this for e.g. bare media keys). Collapsing both
 		// cases to "omit when empty" would silently turn an explicit
@@ -77,12 +77,123 @@
 		// key they don't know about (label/category/demo_cmd, or an action
 		// shape this editor has no dedicated fields for) survives untouched.
 		extraValue: Record<string, unknown>;
-		// Raw-JSON view of `extraValue`, kept in sync both directions —
+		// Raw-JSON view of `extraValue`, kept in sync both directions  - 
 		// only actually shown when `advancedOpen` is true, or for an action
 		// not in `KNOWN_ACTIONS` (nothing dedicated to show instead).
 		extraText: string;
 		extraError: boolean;
 		advancedOpen: boolean;
+		capturing: boolean;
+	}
+
+	const ACTION_LABELS: Record<string, string> = {
+		exec: "Run command",
+		close: "Close window",
+		fullscreen: "Fullscreen",
+		float: "Float window",
+		pseudo: "Fake fullscreen",
+		resize: "Resize",
+		focus: "Go to workspace",
+		focus_last: "Last workspace",
+		move: "Move window to workspace",
+		move_dir: "Move window",
+		resize_dir: "Resize window",
+		layout: "Layout",
+		drag: "Mouse drag",
+		exit: "Exit Hyprland",
+	};
+
+	const KEY_LABELS: Record<string, string> = {
+		RETURN: "Enter",
+		SPACE: "Space",
+		ESCAPE: "Esc",
+		BACKSPACE: "Backspace",
+		TAB: "Tab",
+		SUPER: "Super",
+		CTRL: "Ctrl",
+		ALT: "Alt",
+		SHIFT: "Shift",
+		XF86AudioRaiseVolume: "Vol +",
+		XF86AudioLowerVolume: "Vol -",
+		XF86AudioMute: "Mute",
+		XF86AudioMicMute: "Mic mute",
+		XF86MonBrightnessUp: "Bright +",
+		XF86MonBrightnessDown: "Bright -",
+		XF86AudioNext: "Next",
+		XF86AudioPrev: "Prev",
+		XF86AudioPlay: "Play",
+		Print: "Print",
+	};
+
+	const CODE_TO_HYPR: Record<string, string> = {
+		Space: "SPACE",
+		Enter: "RETURN",
+		Escape: "ESCAPE",
+		Backspace: "BACKSPACE",
+		Tab: "TAB",
+		AudioVolumeUp: "XF86AudioRaiseVolume",
+		AudioVolumeDown: "XF86AudioLowerVolume",
+		AudioVolumeMute: "XF86AudioMute",
+		AudioMicMute: "XF86AudioMicMute",
+		BrightnessUp: "XF86MonBrightnessUp",
+		BrightnessDown: "XF86MonBrightnessDown",
+		MediaTrackNext: "XF86AudioNext",
+		MediaTrackPrevious: "XF86AudioPrev",
+		MediaPlayPause: "XF86AudioPlay",
+		PrintScreen: "Print",
+	};
+
+	function keyLabel(k: string): string {
+		return KEY_LABELS[k] ?? k;
+	}
+
+	function bindTitle(row: EditRow): string {
+		if (row.action === "exec") {
+			const cmd = String(row.extraValue.command ?? "");
+			if (cmd.includes("set-volume") && cmd.includes("+")) return "Volume up";
+			if (cmd.includes("set-volume") && cmd.includes("-")) return "Volume down";
+			if (cmd.includes("set-mute") && cmd.includes("SINK")) return "Mute";
+			if (cmd.includes("set-mute") && cmd.includes("SOURCE")) return "Mute mic";
+			if (cmd.includes("brightnessctl") && cmd.includes("+")) return "Brightness up";
+			if (cmd.includes("brightnessctl") && cmd.includes("-")) return "Brightness down";
+			if (cmd.includes("playerctl next")) return "Next track";
+			if (cmd.includes("playerctl previous")) return "Previous track";
+			if (cmd.includes("playerctl play-pause")) return "Play/pause";
+			if (cmd) return cmd.split(/\s+/)[0].split("/").pop() ?? "Command";
+		}
+		return ACTION_LABELS[row.action] ?? row.action;
+	}
+
+	function keyChips(row: EditRow): string[] {
+		const mods = textToMods(row.mods);
+		const key = row.key.trim();
+		return [...mods, key].filter(Boolean).map(keyLabel);
+	}
+
+	function hyprFromEvent(e: KeyboardEvent): { mods: string[]; key: string } | null {
+		if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return null;
+		const mods: string[] = [];
+		if (e.metaKey) mods.push("SUPER");
+		if (e.ctrlKey) mods.push("CTRL");
+		if (e.altKey) mods.push("ALT");
+		if (e.shiftKey) mods.push("SHIFT");
+		let key = CODE_TO_HYPR[e.code] ?? CODE_TO_HYPR[e.key];
+		if (!key) {
+			if (e.code.startsWith("Key") && e.code.length === 4) key = e.code.slice(3);
+			else if (e.code.startsWith("Digit")) key = e.code.slice(5);
+			else if (e.code.startsWith("F") && /^F\d+$/.test(e.code)) key = e.code;
+			else key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+		}
+		return { mods, key };
+	}
+
+	function allRows(): EditRow[] {
+		return [...globalsRows, ...commonRows, ...bindingsRows, ...Object.values(layoutRows).flat()];
+	}
+
+	function beginCapture(row: EditRow) {
+		for (const r of allRows()) r.capturing = false;
+		row.capturing = true;
 	}
 
 	function syncExtraText(row: EditRow) {
@@ -114,7 +225,7 @@
 	}
 
 	// Hyprland workspace refs mix bare integers ("1") and relative tokens
-	// ("e+1", "e-1") in the same field — keep whichever shape the user typed
+	// ("e+1", "e-1") in the same field  -  keep whichever shape the user typed
 	// instead of forcing everything through one type.
 	function parseWorkspaceValue(s: string): string | number | undefined {
 		const trimmed = s.trim();
@@ -143,13 +254,14 @@
 			extraText: "",
 			extraError: false,
 			advancedOpen: false,
+			capturing: false,
 		};
 		syncExtraText(row);
 		return row;
 	}
 
 	function rowToBind(r: EditRow): Bind {
-		// `drag` binds are only meaningful as a mouse bind — there's no
+		// `drag` binds are only meaningful as a mouse bind  -  there's no
 		// dedicated field for `options.mouse` (nothing to configure, it's
 		// always true), so pin it here rather than exposing a checkbox
 		// whose only correct state is "on".
@@ -193,6 +305,7 @@
 			extraText: "",
 			extraError: false,
 			advancedOpen: false,
+			capturing: false,
 		};
 	}
 
@@ -208,13 +321,32 @@
 	let newLayoutName = $state("");
 	let loadError = $state("");
 
-	onMount(async () => {
+	onMount(() => {
+		const onKey = (e: KeyboardEvent) => {
+			const row = allRows().find((r) => r.capturing);
+			if (!row) return;
+			const mapped = hyprFromEvent(e);
+			if (!mapped) return;
+			e.preventDefault();
+			row.mods = mapped.mods.join(", ");
+			row.modsTouched = true;
+			row.key = mapped.key;
+			row.capturing = false;
+		};
+		window.addEventListener("keydown", onKey);
+		void loadKeybinds();
+		// Register cleanup synchronously so Svelte types the onMount
+		// callback as returning a function (not a Promise-of-function).
+		return () => window.removeEventListener("keydown", onKey);
+	});
+
+	async function loadKeybinds() {
 		try {
 			const p = await invoke<BindsPayload>("get_keybinds");
 			kind = p.kind;
 			// Rust's `#[serde(skip_serializing_if = ...)]` on every one of
 			// these fields means an empty one is OMITTED from the JSON
-			// entirely, not sent as `[]`/`{}`/`""` — every field here needs
+			// entirely, not sent as `[]`/`{}`/`""`  -  every field here needs
 			// a `??` fallback, not just the ones that are "usually" empty.
 			activeLayout = p.file.active_layout ?? "";
 			defaultMods = modsToText(p.file.default_mods ?? []);
@@ -229,7 +361,7 @@
 		} catch (e) {
 			loadError = String(e);
 		}
-	});
+	}
 
 	function addLayout() {
 		const name = newLayoutName.trim();
@@ -248,7 +380,7 @@
 	// A row whose "extra" column currently holds text that doesn't parse as
 	// JSON keeps its *last successfully parsed* value in `extraValue` (see
 	// `onExtraInput`) rather than losing it on every keystroke while the
-	// user is mid-edit — but that means saving while such a row is still
+	// user is mid-edit  -  but that means saving while such a row is still
 	// showing invalid/incomplete text would silently write that stale (or,
 	// for a brand new row, empty) value instead of what's actually on
 	// screen. Block save entirely until every row's extra JSON is valid, so
@@ -349,7 +481,7 @@
 			oninput={(e) => setExtra(row, "layout", e.currentTarget.value)}
 		/>
 	{:else if row.action === "drag"}
-		<span class="extra-note">Mouse-drag bind — nothing else to set.</span>
+		<span class="extra-note">Mouse-drag bind.</span>
 	{:else if row.action === "close" || row.action === "fullscreen" || row.action === "float" || row.action === "pseudo" || row.action === "resize" || row.action === "focus_last" || row.action === "exit"}
 		<span class="extra-note">No extra options for this action.</span>
 	{:else}
@@ -375,30 +507,19 @@
 		{#each rows as row, i (i)}
 			<div class="bind-card">
 				<div class="bind-top">
-					<input
-						class="mods"
-						type="text"
-						placeholder="SUPER, SHIFT"
-						bind:value={row.mods}
-						oninput={() => (row.modsTouched = true)}
-					/>
-					<input class="key" type="text" placeholder="key" bind:value={row.key} />
-					<select
-						class="action-select"
-						value={KNOWN_ACTIONS.includes(row.action as (typeof KNOWN_ACTIONS)[number]) ? row.action : "__custom__"}
-						onchange={(e) => {
-							const v = e.currentTarget.value;
-							row.action = v === "__custom__" ? "" : v;
-						}}
-					>
-						{#each KNOWN_ACTIONS as a (a)}
-							<option value={a}>{a}</option>
-						{/each}
-						<option value="__custom__">Custom…</option>
-					</select>
-					{#if !KNOWN_ACTIONS.includes(row.action as (typeof KNOWN_ACTIONS)[number])}
-						<input class="action-custom" type="text" placeholder="action name" bind:value={row.action} />
-					{/if}
+					<span class="what">{bindTitle(row)}</span>
+					<button type="button" class="capture" class:listening={row.capturing} onclick={() => beginCapture(row)}>
+						{#if row.capturing}
+							Press a key
+						{:else if keyChips(row).length}
+							{#each keyChips(row) as k, ki (`${k}-${ki}`)}
+								{#if ki > 0}<span class="plus">+</span>{/if}
+								<span class="kbd">{k}</span>
+							{/each}
+						{:else}
+							Set shortcut
+						{/if}
+					</button>
 					<button type="button" class="remove" onclick={() => onRemove(i)}>Remove</button>
 				</div>
 				<div class="bind-bottom">
@@ -436,7 +557,7 @@
 		{:else if kind === "flat"}
 			<Group
 				title="Defaults"
-				hint={`Mods/Key pick the shortcut; Action picks what it does. Choosing a known action (exec, move_dir, focus, ...) shows the fields it actually needs — e.g. a Command box for exec — instead of raw JSON. "Advanced" reveals the underlying JSON per bind for anything not covered (or breadhelp's label/category metadata). This machine's binds.json uses BOS's flat schema (no keyboard-layout switching), so that's all there is. Applies on next login/reload.`}
+				hint="Click a shortcut, then press the keys. Save when you are done."
 			>
 				<TextField label="Default mods" bind:value={defaultMods} placeholder="SUPER" />
 			</Group>
@@ -453,7 +574,7 @@
 		{:else}
 			<Group
 				title="Layout"
-				hint={`Mods/Key pick the shortcut; Action picks what it does. Choosing a known action (exec, move_dir, focus, ...) shows the fields it actually needs — e.g. a Command box for exec — instead of raw JSON. "Advanced" reveals the underlying JSON per bind for anything not covered. Applies on next login/reload.`}
+				hint="Click a shortcut, then press the keys. Save when you are done."
 			>
 				{#if layoutOrder.length > 0}
 					<SelectField label="Active layout" bind:value={activeLayout} options={layoutOrder} />
@@ -512,9 +633,13 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-xs, 4px);
-		background-color: var(--surface);
-		border-radius: var(--radius-secondary, 6px);
-		padding: var(--space-sm, 8px) var(--space-md, 12px);
+		padding: 10px 2px;
+		border-top: 1px solid var(--line);
+	}
+
+	.bind-card:first-child {
+		border-top: none;
+		padding-top: 0;
 	}
 
 	.bind-top,
@@ -523,6 +648,34 @@
 		align-items: center;
 		gap: var(--space-sm, 8px);
 		flex-wrap: wrap;
+	}
+
+	.what {
+		flex: 1;
+		min-width: 12ch;
+	}
+
+	.capture {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		background: color-mix(in srgb, var(--fg) 6%, transparent);
+		border: 1px solid var(--line);
+		border-radius: 10px;
+		padding: 6px 10px;
+		color: inherit;
+		cursor: pointer;
+		min-height: 32px;
+	}
+
+	.capture.listening {
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+
+	.plus {
+		opacity: 0.4;
+		padding: 0 1px;
 	}
 
 	.bind-card input,
@@ -542,26 +695,6 @@
 
 	.bind-card input.error {
 		border-color: var(--red);
-	}
-
-	.mods {
-		width: 14ch;
-		flex-shrink: 0;
-	}
-
-	.key {
-		width: 9ch;
-		flex-shrink: 0;
-	}
-
-	.action-select {
-		width: 11ch;
-		flex-shrink: 0;
-	}
-
-	.action-custom {
-		width: 11ch;
-		flex-shrink: 0;
 	}
 
 	.extra-wide {

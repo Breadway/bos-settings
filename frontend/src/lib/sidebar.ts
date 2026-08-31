@@ -1,106 +1,23 @@
-// Ports src/ui/sidebar.rs's declarative item lists verbatim. Grouped by task,
-// not "app vs system internals" — a user thinks "I want to change my Wi-Fi",
-// not "which of these is a bread-ecosystem app" (why breadcrumbs/Wi-Fi
-// Profiles lives in System, not Personalization).
-
 import type { Component } from "svelte";
+import House from "@lucide/svelte/icons/house";
 import Wifi from "@lucide/svelte/icons/wifi";
-import Network from "@lucide/svelte/icons/network";
 import Bluetooth from "@lucide/svelte/icons/bluetooth";
-import Shield from "@lucide/svelte/icons/shield";
+import Monitor from "@lucide/svelte/icons/monitor";
 import Volume2 from "@lucide/svelte/icons/volume-2";
 import BatteryFull from "@lucide/svelte/icons/battery-full";
-import Clock from "@lucide/svelte/icons/clock";
-import Monitor from "@lucide/svelte/icons/monitor";
-import Keyboard from "@lucide/svelte/icons/keyboard";
-import Rocket from "@lucide/svelte/icons/rocket";
-import Users from "@lucide/svelte/icons/users";
 import Palette from "@lucide/svelte/icons/palette";
-import Image from "@lucide/svelte/icons/image";
-import LayoutGrid from "@lucide/svelte/icons/layout-grid";
-import Grid3x3 from "@lucide/svelte/icons/grid-3x3";
-import Clipboard from "@lucide/svelte/icons/clipboard";
-import NotebookPen from "@lucide/svelte/icons/notebook-pen";
-import Search from "@lucide/svelte/icons/search";
-import Cog from "@lucide/svelte/icons/cog";
-import Package from "@lucide/svelte/icons/package";
-import RefreshCw from "@lucide/svelte/icons/refresh-cw";
-import History from "@lucide/svelte/icons/history";
-import Info from "@lucide/svelte/icons/info";
-import Lock from "@lucide/svelte/icons/lock";
-import Camera from "@lucide/svelte/icons/camera";
 import AppWindow from "@lucide/svelte/icons/app-window";
-import CircleHelp from "@lucide/svelte/icons/circle-help";
+import Keyboard from "@lucide/svelte/icons/keyboard";
+import LayoutGrid from "@lucide/svelte/icons/layout-grid";
+import Shield from "@lucide/svelte/icons/shield";
 import Download from "@lucide/svelte/icons/download";
-import Printer from "@lucide/svelte/icons/printer";
-import ShieldEllipsis from "@lucide/svelte/icons/shield-ellipsis";
-import Moon from "@lucide/svelte/icons/moon";
-import Languages from "@lucide/svelte/icons/languages";
-import Accessibility from "@lucide/svelte/icons/accessibility";
-import AppWindowMac from "@lucide/svelte/icons/app-window-mac";
-import GitBranch from "@lucide/svelte/icons/git-branch";
-import Archive from "@lucide/svelte/icons/archive";
-import Boxes from "@lucide/svelte/icons/boxes";
+import Info from "@lucide/svelte/icons/info";
 
 export interface SidebarItem {
-	/** Must match a key in the view component map (see routing in +page.svelte). */
 	id: string;
 	label: string;
-	/** Dim second line — the underlying binary/config name, for items whose
-	 * human label doesn't already make that obvious. */
-	sublabel?: string;
 	icon: Component;
 }
-
-export const SYSTEM_ITEMS: SidebarItem[] = [
-	{ id: "network", label: "Network", icon: Wifi },
-	{ id: "breadcrumbs", label: "Wi-Fi Profiles", sublabel: "breadcrumbs", icon: Network },
-	{ id: "vpn", label: "VPN / WireGuard", sublabel: "NetworkManager", icon: ShieldEllipsis },
-	{ id: "bluetooth", label: "Bluetooth", icon: Bluetooth },
-	{ id: "printing", label: "Printing", sublabel: "CUPS", icon: Printer },
-	{ id: "firewall", label: "Firewall", icon: Shield },
-	{ id: "sound", label: "Sound", icon: Volume2 },
-	{ id: "power", label: "Power", icon: BatteryFull },
-	{ id: "datetime", label: "Date & Time", icon: Clock },
-	{ id: "hyprland", label: "Display", sublabel: "monitors.json", icon: Monitor },
-	{ id: "nightlight", label: "Night light", sublabel: "hyprsunset", icon: Moon },
-	{ id: "breadmon", label: "Monitors", sublabel: "breadmon", icon: AppWindow },
-	{ id: "breadlock", label: "Lock & greet", sublabel: "breadlock", icon: Lock },
-	{ id: "keybinds", label: "Keybinds", sublabel: "binds.json", icon: Keyboard },
-	{ id: "ime", label: "Input method", sublabel: "fcitx5", icon: Languages },
-	{ id: "accessibility", label: "Accessibility", icon: Accessibility },
-	{ id: "breadshot", label: "Screenshots", sublabel: "breadshot", icon: Camera },
-	{ id: "autostart", label: "Startup Apps", sublabel: "autostart.json", icon: Rocket },
-	{ id: "users", label: "Users", icon: Users },
-];
-
-export const PERSONALIZATION_ITEMS: SidebarItem[] = [
-	{ id: "appearance", label: "Appearance", sublabel: "settings.json", icon: Palette },
-	{ id: "breadpaper", label: "Wallpaper", sublabel: "breadpaper", icon: Image },
-	{ id: "breadbar", label: "Bar", sublabel: "breadbar", icon: LayoutGrid },
-	{ id: "breadbox", label: "Launcher", sublabel: "breadbox", icon: Grid3x3 },
-	{ id: "breadclip", label: "Clipboard", sublabel: "breadclipd", icon: Clipboard },
-	{ id: "breadpad", label: "Notes", sublabel: "breadpad", icon: NotebookPen },
-	{ id: "breadsearch", label: "File Search", sublabel: "breadsearch", icon: Search },
-	{ id: "defaults", label: "Default apps", sublabel: "mimeapps.list", icon: AppWindowMac },
-	{ id: "bread", label: "Daemon", sublabel: "breadd", icon: Cog },
-];
-
-export const MAINTENANCE_ITEMS: SidebarItem[] = [
-	{ id: "updates", label: "Updates", icon: Download },
-	{ id: "packages", label: "Packages", icon: Package },
-	{ id: "aur", label: "AUR", icon: Search },
-	{ id: "firmware", label: "Firmware", icon: RefreshCw },
-	{ id: "snapshots", label: "Snapshots", icon: History },
-	{ id: "channel", label: "Bakery channel", sublabel: "track", icon: GitBranch },
-	{ id: "backup", label: "Backup", sublabel: "restic", icon: Archive },
-	{ id: "optional", label: "Optional software", icon: Boxes },
-];
-
-export const ABOUT_ITEMS: SidebarItem[] = [
-	{ id: "breadhelp", label: "Help", sublabel: "breadhelp", icon: CircleHelp },
-	{ id: "about", label: "About", icon: Info },
-];
 
 export interface SidebarSection {
 	title: string | null;
@@ -108,10 +25,88 @@ export interface SidebarSection {
 }
 
 export const SIDEBAR_SECTIONS: SidebarSection[] = [
-	{ title: "System", items: SYSTEM_ITEMS },
-	{ title: "Personalization", items: PERSONALIZATION_ITEMS },
-	{ title: "Maintenance", items: MAINTENANCE_ITEMS },
-	{ title: null, items: ABOUT_ITEMS },
+	{ title: "Overview", items: [{ id: "home", label: "Home", icon: House }] },
+	{
+		title: "Devices",
+		items: [
+			{ id: "network", label: "Wi-Fi & internet", icon: Wifi },
+			{ id: "bluetooth", label: "Bluetooth", icon: Bluetooth },
+			{ id: "displays", label: "Displays", icon: Monitor },
+			{ id: "sound", label: "Sound", icon: Volume2 },
+			{ id: "power", label: "Power & battery", icon: BatteryFull },
+		],
+	},
+	{
+		title: "Desktop",
+		items: [
+			{ id: "appearance", label: "Appearance", icon: Palette },
+			{ id: "desktop", label: "Bar & apps", icon: AppWindow },
+			{ id: "input", label: "Keyboard & mouse", icon: Keyboard },
+			{ id: "apps", label: "Default apps", icon: LayoutGrid },
+		],
+	},
+	{
+		title: "System",
+		items: [
+			{ id: "privacy", label: "Privacy & users", icon: Shield },
+			{ id: "system", label: "Updates & backup", icon: Download },
+			{ id: "about", label: "About", icon: Info },
+		],
+	},
 ];
 
-export const DEFAULT_PAGE = "about";
+/** Old sidebar ids (screenshot CLI, in-app jumps) → hub page + optional tab. */
+export const PAGE_ALIASES: Record<string, { page: string; tab?: string }> = {
+	home: { page: "home" },
+	network: { page: "network" },
+	vpn: { page: "network", tab: "vpn" },
+	breadcrumbs: { page: "network", tab: "breadcrumbs" },
+	bluetooth: { page: "bluetooth" },
+	displays: { page: "displays" },
+	hyprland: { page: "displays", tab: "hyprland" },
+	nightlight: { page: "displays", tab: "nightlight" },
+	breadmon: { page: "displays", tab: "breadmon" },
+	sound: { page: "sound" },
+	power: { page: "power" },
+	appearance: { page: "appearance" },
+	breadpaper: { page: "appearance", tab: "breadpaper" },
+	desktop: { page: "desktop" },
+	breadbar: { page: "desktop", tab: "breadbar" },
+	breadbox: { page: "desktop", tab: "breadbox" },
+	breadlock: { page: "desktop", tab: "breadlock" },
+	breadshot: { page: "desktop", tab: "breadshot" },
+	autostart: { page: "desktop", tab: "autostart" },
+	breadclip: { page: "desktop", tab: "more" },
+	breadpad: { page: "desktop", tab: "more" },
+	breadsearch: { page: "desktop", tab: "more" },
+	bread: { page: "desktop", tab: "more" },
+	breadhelp: { page: "desktop", tab: "more" },
+	more: { page: "desktop", tab: "more" },
+	input: { page: "input" },
+	keybinds: { page: "input", tab: "keybinds" },
+	ime: { page: "input", tab: "ime" },
+	accessibility: { page: "input", tab: "accessibility" },
+	apps: { page: "apps" },
+	defaults: { page: "apps" },
+	optional: { page: "apps", tab: "optional" },
+	printing: { page: "apps", tab: "printing" },
+	privacy: { page: "privacy" },
+	firewall: { page: "privacy" },
+	users: { page: "privacy", tab: "users" },
+	system: { page: "system" },
+	updates: { page: "system" },
+	packages: { page: "system", tab: "packages" },
+	aur: { page: "system", tab: "aur" },
+	firmware: { page: "system", tab: "firmware" },
+	snapshots: { page: "system", tab: "snapshots" },
+	backup: { page: "system", tab: "backup" },
+	channel: { page: "system", tab: "channel" },
+	about: { page: "about" },
+	datetime: { page: "about", tab: "datetime" },
+};
+
+export const DEFAULT_PAGE = "home";
+
+export function resolvePage(id: string): { page: string; tab?: string } {
+	return PAGE_ALIASES[id] ?? { page: id };
+}
