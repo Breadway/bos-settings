@@ -4,25 +4,57 @@
 	import { open } from "@tauri-apps/plugin-dialog";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
+	import SwitchField from "$lib/components/SwitchField.svelte";
 
 	interface LibraryEntry {
 		path: string;
 		name: string;
 	}
+	interface LiveMonitor {
+		name: string;
+		mode: string;
+	}
+	interface OutputWallpaper {
+		output: string;
+		path: string;
+	}
 
-	let currentPath = $state<string | null>(null);
+	let monitors = $state<LiveMonitor[]>([]);
+	let byOutput = $state<Record<string, string>>({});
+	let globalPath = $state<string | null>(null);
+	let selected = $state<string | null>(null);
+	let sameOnAll = $state(true);
+
 	let status = $state("");
 	let libraryDir = $state("");
 	let library = $state<LibraryEntry[] | null>(null);
 	let scanning = $state(false);
 
-	async function refreshCurrent() {
-		currentPath = await invoke<string | null>("get_current_wallpaper");
+	// The wallpaper the current selection resolves to: the global one when
+	// "same on every monitor" is on, otherwise the selected monitor's own
+	// (falling back to the global if that monitor was never set explicitly).
+	let activePath = $derived(
+		sameOnAll ? globalPath : (selected && byOutput[selected]) || globalPath,
+	);
+
+	const perMonitor = $derived(monitors.length > 1);
+
+	async function refresh() {
+		globalPath = await invoke<string | null>("get_current_wallpaper");
+		const list = await invoke<OutputWallpaper[]>("get_wallpapers_by_output");
+		byOutput = Object.fromEntries(list.map((o) => [o.output, o.path]));
+		monitors = await invoke<LiveMonitor[]>("get_live_monitors");
+		if (!selected || !monitors.some((m) => m.name === selected)) {
+			selected = monitors[0]?.name ?? null;
+		}
 	}
 
 	onMount(async () => {
 		libraryDir = await invoke<string>("wallpaper_library_dir_display");
-		await refreshCurrent();
+		await refresh();
+		// Start in per-monitor mode only if the monitors genuinely disagree.
+		const distinct = new Set(Object.values(byOutput));
+		sameOnAll = distinct.size <= 1;
 		scanning = true;
 		try {
 			library = await invoke<LibraryEntry[]>("list_wallpaper_library");
@@ -34,8 +66,12 @@
 	async function apply(path: string) {
 		status = "Setting…";
 		try {
-			await invoke("set_wallpaper", { path });
-			await refreshCurrent();
+			if (sameOnAll || !selected) {
+				await invoke("set_wallpaper", { path });
+			} else {
+				await invoke("set_wallpaper_on", { output: selected, path });
+			}
+			await refresh();
 			status = "Set";
 		} catch (e) {
 			status = `${e}`;
@@ -51,13 +87,39 @@
 		});
 		if (typeof path === "string") await apply(path);
 	}
+
+	function shortName(p: string | null): string {
+		return p ? (p.split("/").pop() ?? p) : "";
+	}
 </script>
 
 <ViewScaffold title="Wallpaper">
-	<Group title="Wallpaper" hint="This also updates desktop colors.">
-		{#if currentPath}
-			<div class="hero" style="background-image: url('{convertFileSrc(currentPath)}')">
-				<span class="cap">{currentPath.split("/").pop()}</span>
+	<Group title="Wallpaper" hint="This also sets the desktop colors — each monitor's accent comes from its own wallpaper.">
+		{#if perMonitor}
+			<SwitchField label="Use the same wallpaper on every monitor" bind:value={sameOnAll} />
+		{/if}
+
+		{#if perMonitor && !sameOnAll}
+			<div class="mons">
+				{#each monitors as m (m.name)}
+					<button
+						type="button"
+						class="mon"
+						class:on={selected === m.name}
+						title={m.mode}
+						onclick={() => (selected = m.name)}
+					>
+						{m.name}
+					</button>
+				{/each}
+			</div>
+		{/if}
+
+		{#if activePath}
+			<div class="hero" style="background-image: url('{convertFileSrc(activePath)}')">
+				<span class="cap">
+					{#if perMonitor && !sameOnAll}{selected} · {/if}{shortName(activePath)}
+				</span>
 			</div>
 		{:else}
 			<div class="hero placeholder">No wallpaper</div>
@@ -78,7 +140,7 @@
 				{#each library as item (item.path)}
 					<button
 						class="thumb"
-						class:on={item.path === currentPath}
+						class:on={item.path === activePath}
 						onclick={() => apply(item.path)}
 						title={item.path}
 					>
@@ -91,6 +153,30 @@
 </ViewScaffold>
 
 <style>
+	.mons {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		margin: 4px 0 12px;
+	}
+
+	.mon {
+		padding: 6px 11px;
+		border-radius: 999px;
+		font-size: 12px;
+		background: color-mix(in srgb, var(--fg) 6%, transparent);
+		border: 1px solid var(--line, color-mix(in srgb, var(--fg) 8%, transparent));
+		color: var(--fg);
+		cursor: pointer;
+	}
+
+	.mon.on {
+		background: var(--accent);
+		color: var(--on-accent);
+		border-color: transparent;
+		font-weight: 600;
+	}
+
 	.hero {
 		height: 180px;
 		border-radius: 12px;
