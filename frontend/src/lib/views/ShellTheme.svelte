@@ -101,13 +101,11 @@
 		<Group title="Apply">
 			<Hint
 				text={switched
-					? "Restart the bar and launcher (or log out and back in) to switch to this theme."
-					: "A theme change takes effect when the bar and launcher restart, or on the next login."}
+					? "The bar restarts itself to pick up the new theme; the launcher applies it next time you open it."
+					: "The bar restarts itself on a theme change; the launcher applies it on its next open. Use the button below if something looks stuck."}
 			/>
 			<div class="foot">
-				<button class="btn primary" disabled={busy} onclick={restart}>
-					Restart bar &amp; launcher
-				</button>
+				<button class="btn" disabled={busy} onclick={restart}>Restart bar &amp; launcher</button>
 			</div>
 		</Group>
 	{/if}

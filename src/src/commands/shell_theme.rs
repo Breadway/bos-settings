@@ -6,12 +6,14 @@
 //!
 //! `bread_theme::shell::list()` enumerates every discoverable theme (user
 //! config → system dir → compiled-in builtins). Setting `active` is a
-//! non-destructive `toml_edit` write; a running breadbar picks the change
-//! up live via its own `bread_theme::shell::watch()` (colours and CSS
-//! tokens re-resolve without a restart). Two things it *cannot* hot-apply:
-//! window-spec changes (a bottom-anchored theme like `daylight` moves the
-//! bar), and breadbox — which reads `shell::load()` once at startup and has
-//! no watch. `restart_shell_apps` covers both.
+//! non-destructive `toml_edit` write.
+//!
+//! A running breadbar watches `shell.toml` (`bread_theme::shell::watch()`)
+//! and, on an `active` change, re-execs itself so the full theme applies —
+//! geometry and widget structure, not just CSS tokens. breadbox re-reads
+//! the theme on each launcher open. So a plain write here is normally
+//! enough; `restart_shell_apps` stays as a manual fallback (an old breadbar
+//! without self-restart, or a failed re-exec).
 
 use serde::Serialize;
 
