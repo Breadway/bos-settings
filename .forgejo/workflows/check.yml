@@ -1,0 +1,33 @@
+name: check
+
+# Lint + test on work branches AND on `main` — a push to `main` publishes a
+# dev-track build (dev-release.yml), so it should be clippy'd and tested
+# first. Before this the only CI here was the dev/rc/release publish
+# workflows, none of which run clippy or the test suite.
+#
+# The Tauri crate lives at ./src (not the usual src-tauri). clippy and the
+# test suite don't need the built frontend (frontendDist is only consumed by
+# a release `cargo build`), so this stays fast — no `npm` step.
+#
+# fmt is not gated yet: the tree isn't `cargo fmt` clean and normalising it
+# is a separate change.
+on:
+  push:
+    branches: ['feature/**', 'fix/**', 'main']
+
+jobs:
+  check:
+    runs-on: [self-hosted, hestia]
+    steps:
+      - name: checkout
+        run: |
+          set -euo pipefail
+          rm -rf src && mkdir src
+          git clone --branch "${GITHUB_REF_NAME}" --depth 1 \
+            "https://git.breadway.dev/${GITHUB_REPOSITORY}.git" src
+
+      - name: clippy
+        run: cd src/src && cargo clippy --all-targets --locked -- -D warnings
+
+      - name: test
+        run: cd src/src && cargo test --locked
