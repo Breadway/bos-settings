@@ -45,7 +45,13 @@ export const SEARCH_INDEX: SearchHit[] = [
 	{
 		page: "appearance",
 		label: "Wallpaper",
-		keywords: "wallpaper theme palette pywal breadpaper accent",
+		keywords: "wallpaper theme palette pywal breadpaper accent per monitor multi monitor background",
+	},
+	{
+		page: "appearance",
+		tab: "shelltheme",
+		label: "Shell theme",
+		keywords: "shell theme breadbar breadbox bar launcher style liquid motion glass workbench spotlight daylight layout animation",
 	},
 	{
 		page: "appearance",
