@@ -34,6 +34,7 @@ pub mod packages;
 pub mod power;
 pub mod printing;
 pub mod service;
+pub mod shell_theme;
 pub mod snapshots;
 pub mod sound;
 pub mod streaming;
