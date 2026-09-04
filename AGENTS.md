@@ -14,7 +14,7 @@ This is not a GTK4 app. There is no `package.yml` pacman workflow here; bakery i
 
 ## Remotes
 
-- `origin` — Forgejo (`git.breadway.dev` via Hestia, SSH) — authoritative.
+- `origin` — Forgejo (`git.breadway.dev`, SSH) — authoritative.
 - `github` — GitHub mirror. Push `origin` only; the github remote auto-mirrors.
 
 ## CI
