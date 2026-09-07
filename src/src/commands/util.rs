@@ -241,7 +241,7 @@ pub fn valid_printer_name(name: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(*b, b'-' | b'_' | b'.'))
 }
 
-/// ufw / snapper numeric id — digits only.
+/// ufw / snapper numeric id: digits only.
 pub fn valid_number_id(num: &str) -> bool {
     !num.is_empty() && num.len() <= 12 && num.bytes().all(|b| b.is_ascii_digit())
 }

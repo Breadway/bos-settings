@@ -1,7 +1,7 @@
 name: dev release
 
 # Publishes a dev-track build on every push to `main` (the trunk
-# branch — there is no separate `dev` branch). See bread-ecosystem's
+# branch; there is no separate `dev` branch). See bread-ecosystem's
 # docs/release-channels.md for the release-track policy this is part of.
 on:
   push:
@@ -21,9 +21,9 @@ jobs:
       # bos-settings is a Tauri app: Cargo.toml lives at src/src/Cargo.toml
       # (checkout root is named "src" by convention above; the repo's own
       # Rust backend is also in a dir called "src", not the usual
-      # src-tauri — hence src/src below), and the Rust build expects the
+      # src-tauri, hence src/src below), and the Rust build expects the
       # frontend already built at frontend/build (tauri.conf.json's
-      # frontendDist) — that only happens automatically under `cargo
+      # frontendDist); that only happens automatically under `cargo
       # tauri build`, so it's run explicitly here since this workflow
       # just uses plain `cargo build`.
       - name: build frontend
@@ -41,7 +41,7 @@ jobs:
           set -euo pipefail
           cd src
           # Base the dev version off the latest published stable tag,
-          # not Cargo.toml — Cargo.toml can go stale relative to the last
+          # not Cargo.toml: Cargo.toml can go stale relative to the last
           # real release, which would make a dev build sort as OLDER than
           # what's already installed and bakery would correctly refuse it.
           LATEST_TAG="$(git ls-remote --tags --refs \
@@ -71,7 +71,7 @@ jobs:
           cp src/bakery.toml "${PKG_DIR}/bakery.toml"
           ln -sfn "${VERSION}" "/srv/breadway-dl/dev/bos-settings/latest"
 
-      # No GitHub Release upload — dev, like the other non-stable track,
+      # No GitHub Release upload: dev, like the other non-stable track,
       # is only distributed via dl.breadway.dev/dev/.
       - name: regenerate dev index.json
         env:
@@ -79,7 +79,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${MINISIGN_SEC_KEY:-}" ]; then
-            echo "::error::BAKERY_MINISIGN_SEC_KEY_PATH secret not set — refusing to regenerate dev index.json unsigned (would leave a stale signature mismatched against fresh content and break bakery for everyone on the dev track)"
+            echo "::error::BAKERY_MINISIGN_SEC_KEY_PATH secret not set: refusing to regenerate dev index.json unsigned (would leave a stale signature mismatched against fresh content and break bakery for everyone on the dev track)"
             exit 1
           fi
           rm -rf /tmp/bread-ecosystem-ci-* 2>/dev/null || true

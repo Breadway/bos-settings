@@ -1,5 +1,5 @@
 //! Read-only system info, plus the one thing worth making writable: hostname.
-//! BOS is a rolling release (no fixed version number to show — `os-release`
+//! BOS is a rolling release (no fixed version number to show; `os-release`
 //! ships `BUILD_ID=rolling` on purpose), so there's no "BOS 1.2.3" readout
 //! here the way a point-release distro's About panel would have one.
 
@@ -88,7 +88,7 @@ async fn gpu() -> String {
     text.lines()
         // "Display controller" covers integrated GPUs some laptop chipsets
         // (this dev laptop's AMD Radeon 860M included) report under instead
-        // of "VGA compatible controller" — without it those show "unknown".
+        // of "VGA compatible controller"; without it those show "unknown".
         .find(|l| {
             l.contains("VGA compatible controller")
                 || l.contains("3D controller")

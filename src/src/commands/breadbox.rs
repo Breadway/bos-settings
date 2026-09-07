@@ -1,5 +1,5 @@
-//! breadbox config.toml — launcher contexts. Schema mirrors breadbox-shared
-//! (`#[serde(rename = "context")]` — the TOML key is `[[context]]`,
+//! breadbox config.toml: launcher contexts. Schema mirrors breadbox-shared
+//! (`#[serde(rename = "context")]`, the TOML key is `[[context]]`,
 //! singular, despite the Rust field being `contexts`), with `name` +
 //! `priority`, an ordered list of app/category hints. The context array is
 //! rewritten on save; any other top-level keys/comments are preserved.

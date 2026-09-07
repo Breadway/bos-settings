@@ -1,5 +1,5 @@
 //! Aggregated Updates page: pacman -Qu, bakery dry-run, fwupd devices.
-//! Rollback is Snapshots / grub-btrfs — not `snapper rollback`.
+//! Rollback is Snapshots / grub-btrfs, not `snapper rollback`.
 
 use serde::Serialize;
 use tokio::process::Command;
@@ -68,7 +68,7 @@ fn parse_pacman_qu(text: &str) -> Vec<PendingUpdate> {
             if line.is_empty() {
                 return None;
             }
-            // "name old -> new" — extra fields after new are ignored.
+            // "name old -> new"; extra fields after new are ignored.
             let mut parts = line.split_whitespace();
             let name = parts.next()?.to_string();
             let current = parts.next()?.to_string();

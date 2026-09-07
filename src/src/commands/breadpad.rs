@@ -1,4 +1,4 @@
-//! breadpad.toml — the breadpad notes/reminders config. Schema mirrors
+//! breadpad.toml: the breadpad notes/reminders config. Schema mirrors
 //! breadpad-shared/src/config.rs (settings, model + model.ollama, reminders,
 //! calendar). Edited non-destructively (calendar password + model paths
 //! are preserved across saves).
@@ -62,7 +62,7 @@ pub fn get_breadpad_config() -> BreadpadConfig {
         calendar_enabled: config::get_bool(&doc, &["calendar", "enabled"]).unwrap_or(false),
         calendar_url: config::get_str(&doc, &["calendar", "url"]).unwrap_or_default(),
         calendar_username: config::get_str(&doc, &["calendar", "username"]).unwrap_or_default(),
-        // Write-only to the webview, same as restic — never round-trip the secret.
+        // Write-only to the webview, same as restic; never round-trip the secret.
         calendar_password: String::new(),
     }
 }

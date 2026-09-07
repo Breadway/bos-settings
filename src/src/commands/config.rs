@@ -5,7 +5,7 @@
 //! credentials). Saved-network passwords live in breadcrumbs' separate
 //! `networks.toml`, not in breadcrumbs.toml. To edit safely we parse
 //! the file into a `toml_edit::DocumentMut`, mutate only the specific keys the
-//! UI exposes, and write the document back — preserving everything else,
+//! UI exposes, and write the document back, preserving everything else,
 //! formatting and comments included.
 
 use std::error::Error;
@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use toml_edit::{value, Array, DocumentMut, Item, Table, Value};
 
 /// Load a TOML file into an editable document. A missing file yields an
-/// empty document so the UI still renders with defaults — normal for a fresh
+/// empty document so the UI still renders with defaults, normal for a fresh
 /// install. A file that *exists* but fails to parse is far more dangerous:
 /// falling back to an empty document there means the next Save (see
 /// `save_doc`) overwrites it with only the UI-modelled keys, silently
@@ -35,9 +35,9 @@ pub fn save_doc(path: &Path, doc: &DocumentMut) -> Result<(), Box<dyn Error>> {
 /// before overwriting it.
 ///
 /// Every config-writing view in this app (TOML via `save_doc` above, and the
-/// plain-JSON views — keybinds, autostart, appearance/settings.json,
+/// plain-JSON views (keybinds, autostart, appearance/settings.json,
 /// monitors.json, breadbar's CSS) goes through this instead of a bare
-/// `std::fs::write` — see `bread_utils::atomic::write_atomic_backed_up`'s
+/// `std::fs::write`; see `bread_utils::atomic::write_atomic_backed_up`'s
 /// doc comment for why (crash/power-loss safety via temp-then-rename, plus
 /// a `.bak` of whatever was there before).
 pub fn atomic_write(path: &Path, contents: &str) -> std::io::Result<()> {
@@ -125,7 +125,7 @@ pub fn set_str_list(doc: &mut DocumentMut, path: &[&str], items: &[String]) {
     set_item(doc, path, Item::Value(Value::Array(arr)));
 }
 
-/// Set a string key, or remove it entirely when the value is empty — keeps
+/// Set a string key, or remove it entirely when the value is empty; keeps
 /// optional fields out of the file rather than persisting `key = ""`.
 pub fn set_str_or_remove(doc: &mut DocumentMut, path: &[&str], v: &str) {
     if v.is_empty() {

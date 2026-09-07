@@ -64,7 +64,7 @@ pub async fn set_wifi_radio(enabled: bool) -> Result<(), String> {
 }
 
 /// Scan + list Wi-Fi networks, deduplicated by SSID (keeping the strongest
-/// signal — the same AP shows once per band/BSSID otherwise).
+/// signal: the same AP shows once per band/BSSID otherwise).
 #[tauri::command]
 pub async fn scan_wifi() -> Vec<WifiNetwork> {
     let _ = Command::new("nmcli").args(["dev", "wifi", "rescan"]).output().await;

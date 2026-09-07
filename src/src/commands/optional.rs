@@ -1,4 +1,4 @@
-//! Curated optional software. Not an AUR dump — four explicit offers,
+//! Curated optional software. Not an AUR dump: four explicit offers,
 //! each installed through a typed command (bakery or allowlisted pacman).
 
 use serde::Serialize;
@@ -55,7 +55,7 @@ pub fn get_optional_software() -> OptionalStatus {
                 id: "breadcast".into(),
                 title: "breadcast".into(),
                 detail:
-                    "Optional bread-ecosystem app. Installed through bakery — it is not on the ISO."
+                    "Optional bread-ecosystem app. Installed through bakery; it is not on the ISO."
                         .into(),
                 installed: breadcast,
                 via: "bakery".into(),
@@ -86,7 +86,7 @@ pub fn get_optional_software() -> OptionalStatus {
     }
 }
 
-/// User Flathub remote — no root. Flatpak itself is installed separately
+/// User Flathub remote, no root. Flatpak itself is installed separately
 /// via the allowlisted pacman command when missing.
 #[tauri::command]
 pub async fn enable_flathub() -> Result<(), String> {

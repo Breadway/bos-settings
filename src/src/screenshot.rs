@@ -1,5 +1,5 @@
 //! `--screenshot` CLI mode: switch the Svelte SPA to the named sidebar
-//! section, capture it via grim, then exit — driven by
+//! section, capture it via grim, then exit; driven by
 //! `bread-ecosystem`'s `bread-capture` orchestrator, or run standalone for
 //! one-off captures.
 //!
@@ -8,19 +8,19 @@
 //! tao/wry (Tauri's Linux backend), not gtk4-rs directly. Instead this
 //! waits a fixed [`INITIAL_SETTLE_DELAY`] on Tauri's own async runtime after
 //! `setup()` runs for the page's first paint (JS bundle parse + Svelte
-//! mount) — longer than the native apps' settle delays, since a webview's
-//! first paint is a full page load, not just GTK widget layout — then emits
+//! mount), longer than the native apps' settle delays, since a webview's
+//! first paint is a full page load, not just GTK widget layout, then emits
 //! a `screenshot-set-view` event the frontend listens for
 //! (`+page.svelte`'s `onMount`) to switch `activePage` exactly like a real
 //! sidebar click would, then waits [`VIEW_SETTLE_DELAY`] more for that
 //! view's own data to load (each section fetches its own state over Tauri
 //! commands on mount) before capturing. The window itself is a plain,
 //! non-layer-shell toplevel (per `tauri.conf.json`'s fixed 960x640 size),
-//! so — same reasoning as breadman/breadhelp — a full known-size canvas
+//! so, same reasoning as breadman/breadhelp, a full known-size canvas
 //! capture is enough; no geometry to track.
 //!
 //! View names match `frontend/src/lib/sidebar.ts`'s item ids exactly (see
-//! `KNOWN_VIEWS`) — every one of them has a real registered component (see
+//! `KNOWN_VIEWS`); every one of them has a real registered component (see
 //! `frontend/src/lib/views/registry.ts`), no Placeholder fallbacks to skip.
 
 use bread_utils::screenshot_cli::{validate_pair, DEFAULT_HEIGHT, DEFAULT_WIDTH};
@@ -29,7 +29,7 @@ use std::time::Duration;
 use tauri::Emitter;
 
 const INITIAL_SETTLE_DELAY: Duration = Duration::from_millis(2000);
-/// Applied after switching views — shorter than the initial load (no full
+/// Applied after switching views: shorter than the initial load (no full
 /// page/JS reload, just a component swap + that view's own Tauri-command
 /// data fetch), but the About page alone needed 2s for its fetch to land
 /// (see the initial-pass commit), so this stays generous rather than
@@ -92,7 +92,7 @@ pub struct ScreenshotRequest {
 }
 
 /// `None` for a normal run. Exits the process with an error for an unknown
-/// view, or if the `--screenshot` / `--output` pair is incomplete — before
+/// view, or if the `--screenshot` / `--output` pair is incomplete, before
 /// any Tauri setup happens.
 pub fn parse(args: &[String]) -> Option<ScreenshotRequest> {
     let mut view = None;

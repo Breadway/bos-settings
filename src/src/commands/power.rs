@@ -1,5 +1,5 @@
 //! Battery/power status (upower), brightness (brightnessctl), and TLP's
-//! current profile. Deliberately no AC/Battery/Performance *switcher* — TLP
+//! current profile. Deliberately no AC/Battery/Performance *switcher*: TLP
 //! automatically picks a profile by power source, so this only exposes
 //! controls for things that are actually user choices: brightness, and
 //! charge thresholds where the hardware supports them.
@@ -104,7 +104,7 @@ async fn brightness_pct() -> Option<u32> {
 }
 
 /// Charge-threshold sysfs paths, only Some when the running kernel driver
-/// actually exposes them — genuinely hardware-dependent, not every install
+/// actually exposes them: genuinely hardware-dependent, not every install
 /// will have this.
 fn charge_threshold_paths() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
     let base = std::path::Path::new("/sys/class/power_supply");
@@ -178,7 +178,7 @@ pub async fn set_charge_threshold(which: String, percent: i64) -> Result<(), Str
         return Err("No charge threshold support on this hardware".into());
     };
     let path = if which == "start" { start } else { end };
-    // GNU tee writes stdin to its path operands — the percent must be piped,
+    // GNU tee writes stdin to its path operands; the percent must be piped,
     // not passed as a second path argument.
     let input = format!("{percent}\n");
     if util::run_with_stdin(&["pkexec", "tee", &path.display().to_string()], &input).await {

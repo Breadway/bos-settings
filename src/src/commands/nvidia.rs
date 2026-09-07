@@ -15,7 +15,7 @@ use super::util::{self, command_exists, pacman_installed};
 /// NVD_BACKEND is the current VA-API hint. No WLR_* / GBM_BACKEND.
 const NVIDIA_LUA: &str = "\
 -- Written by bos-nvidia-setup. hyprland.lua dofiles this only when it exists.
--- Hyprland 0.56 (Aquamarine) — no WLR_* variables.
+-- Hyprland 0.56 (Aquamarine): no WLR_* variables.
 -- https://wiki.hypr.land/Nvidia/
 hl.env(\"LIBVA_DRIVER_NAME\", \"nvidia\")
 hl.env(\"__GLX_VENDOR_LIBRARY_NAME\", \"nvidia\")
@@ -117,7 +117,7 @@ fn default_packages() -> Vec<String> {
 fn generic_offer() -> NvidiaOffer {
     NvidiaOffer {
         gpu: "NVIDIA GPU".into(),
-        reason: "BOS found an NVIDIA device. Install the proprietary driver only if you want it — nouveau stays otherwise.".into(),
+        reason: "BOS found an NVIDIA device. Install the proprietary driver only if you want it; nouveau stays otherwise.".into(),
         packages: default_packages(),
         installed: nvidia_ready(),
     }

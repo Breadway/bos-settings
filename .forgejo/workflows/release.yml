@@ -19,9 +19,9 @@ jobs:
       # bos-settings is a Tauri app: Cargo.toml lives at src/src/Cargo.toml
       # (checkout root is named "src" by convention above; the repo's own
       # Rust backend is also in a dir called "src", not the usual
-      # src-tauri — hence src/src below), and the Rust build expects the
+      # src-tauri, hence src/src below), and the Rust build expects the
       # frontend already built at frontend/build (tauri.conf.json's
-      # frontendDist) — that only happens automatically under `cargo
+      # frontendDist); that only happens automatically under `cargo
       # tauri build`, so it's run explicitly here since this workflow
       # just uses plain `cargo build`.
       - name: build frontend
@@ -55,7 +55,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${MINISIGN_SEC_KEY:-}" ]; then
-            echo "::error::BAKERY_MINISIGN_SEC_KEY_PATH secret not set — refusing to regenerate index.json unsigned (would leave a stale signature mismatched against fresh content and break bakery for everyone)"
+            echo "::error::BAKERY_MINISIGN_SEC_KEY_PATH secret not set: refusing to regenerate index.json unsigned (would leave a stale signature mismatched against fresh content and break bakery for everyone)"
             exit 1
           fi
           rm -rf /tmp/bread-ecosystem-ci-* 2>/dev/null || true
