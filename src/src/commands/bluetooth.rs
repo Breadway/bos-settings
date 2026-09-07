@@ -1,9 +1,9 @@
-//! Bluetooth over `bluetoothctl`'s non-interactive mode — no D-Bus
+//! Bluetooth over `bluetoothctl`'s non-interactive mode, no D-Bus
 //! dependency needed, same "shell out to the standard CLI" choice as
-//! Network (nmcli). None of this needs `pkexec` — BlueZ's D-Bus policy
+//! Network (nmcli). None of this needs `pkexec`: BlueZ's D-Bus policy
 //! already allows the active session user.
 //!
-//! Pairing only covers "Just Works" Simple Secure Pairing — bluetoothd's
+//! Pairing only covers "Just Works" Simple Secure Pairing; bluetoothd's
 //! own built-in default agent auto-accepts that for most audio/HID
 //! devices. A device that requires PIN/passkey confirmation isn't
 //! supported (would need this app to register its own bluetoothd agent);
@@ -109,7 +109,7 @@ pub async fn bt_forget(address: String) -> Result<(), String> {
     }
 }
 
-/// Pairs, then confirms it actually landed in the paired-device cache —
+/// Pairs, then confirms it actually landed in the paired-device cache:
 /// bluetoothctl's exit code alone isn't a reliable signal for pairing.
 #[tauri::command]
 pub async fn bt_pair(address: String) -> Result<(), String> {

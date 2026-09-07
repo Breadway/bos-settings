@@ -1,4 +1,4 @@
-//! Live systemd `--user` unit status plus start/stop/restart/logs — every
+//! Live systemd `--user` unit status plus start/stop/restart/logs; every
 //! bread-ecosystem panel whose app is actually a daemon (not just a config
 //! file) gets this. Ported from `src/ui/widgets.rs`'s `service_control`;
 //! the `critical`-unit confirm-before-stop behavior moves to the frontend
@@ -85,7 +85,7 @@ pub async fn service_action(unit: String, action: ServiceAction) -> Result<(), S
     }
 }
 
-/// Opens a terminal following the unit's journal — same as today's GTK
+/// Opens a terminal following the unit's journal, same as today's GTK
 /// panel, no reason to pull an open-ended `journalctl -f` tail into the
 /// webview.
 #[tauri::command]

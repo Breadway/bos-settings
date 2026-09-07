@@ -1,4 +1,4 @@
-//! Screenshots (breadshot). Binds are read-only here — edit them on the
+//! Screenshots (breadshot). Binds are read-only here; edit them on the
 //! Keybinds panel. Config lives at `~/.config/breadshot/config.toml` and
 //! matches breadshot's own `Config` (every field optional).
 
@@ -73,7 +73,7 @@ pub fn save_breadshot_config(cfg: BreadshotConfig) -> Result<(), String> {
 }
 
 /// Documented BOS defaults (SUPER+Shift+S/C/P) used when binds.json has no
-/// breadshot exec entries — still accurate as a cheatsheet even on a
+/// breadshot exec entries; still accurate as a cheatsheet even on a
 /// machine whose binds were rewritten.
 fn documented_defaults() -> Vec<ShotBind> {
     vec![
@@ -130,7 +130,7 @@ pub fn get_breadshot_binds() -> Vec<ShotBind> {
     }
 }
 
-/// Interactive region capture, clipboard only — no file written.
+/// Interactive region capture, clipboard only; no file written.
 #[tauri::command]
 pub fn breadshot_region_clipboard() {
     let _ = std::process::Command::new("breadshot")

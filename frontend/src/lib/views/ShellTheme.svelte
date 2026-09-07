@@ -17,7 +17,7 @@
 	let busy = $state(false);
 	let status = $state("");
 	// Set once the user switches, so the restart prompt gains emphasis.
-	// breadbar/breadbox don't hot-reload a shell-theme change today — it
+	// breadbar/breadbox don't hot-reload a shell-theme change today; it
 	// takes effect when they restart or on the next login.
 	let switched = $state(false);
 

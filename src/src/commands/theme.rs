@@ -3,14 +3,14 @@
 //!
 //! `bread-theme` rewrites every file it generates with a temp-then-rename
 //! (atomic replace), which kills a direct file watch (inotify reports
-//! `DELETE_SELF` and never re-arms) — so this watches the *parent directory*
+//! `DELETE_SELF` and never re-arms), so this watches the *parent directory*
 //! and filters by path instead, the same strategy `bread_theme::gtk`'s
 //! `watch_theme_file` / `ensure_themes_watch` use for the GTK apps.
 //!
 //! Three inputs can change the colours the settings window should show: the
 //! shared `theme.css` (global wallpaper change / `bread-theme reload`); the
 //! `palettes/<output>.json` + `themes/<output>.css` for the monitor this
-//! window is on (`breadpaper set_on` on any monitor, focused or not — which
+//! window is on (`breadpaper set_on` on any monitor, focused or not, which
 //! never rewrites `theme.css`); and the window being dragged onto a
 //! different monitor. The directory watch is recursive so it catches the
 //! first two; a `WindowEvent::Moved` handler catches the third.
@@ -20,7 +20,7 @@ use std::path::Path;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
 
-/// Initial theme fetch — called once by the frontend at startup.
+/// Initial theme fetch; called once by the frontend at startup.
 #[tauri::command]
 pub fn get_theme_css(window: tauri::WebviewWindow) -> String {
     render_theme_css(&palette_for_window(&window))
@@ -46,7 +46,7 @@ fn render_theme_css(palette: &bread_theme::Palette) -> String {
     // `:root { --name: ... }` block. They format the canonical `color_pairs`
     // list every GTK app shares, so the webview accents on the same slot as
     // the rest of the desktop:
-    //   --accent  = color4  (was color1 here — pywal's ANSI red, the slot
+    //   --accent  = color4  (was color1 here, pywal's ANSI red, the slot
     //                        reserved for errors; made --accent == --red ==
     //                        --on-accent == --on-red)
     //   --red     = color1  (now distinct from --accent again)
@@ -151,7 +151,7 @@ pub fn watch_and_emit(app: &AppHandle) {
         return;
     }
 
-    // Leaked to stay alive for the process lifetime — this app has exactly
+    // Leaked to stay alive for the process lifetime; this app has exactly
     // one theme watcher, created once at startup, never torn down.
     app.manage(WatcherHandle(watcher));
 

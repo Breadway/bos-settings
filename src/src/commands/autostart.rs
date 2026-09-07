@@ -1,4 +1,4 @@
-//! hypr/autostart.json — the *extra*, user-toggleable autostart apps. The
+//! hypr/autostart.json: the *extra*, user-toggleable autostart apps. The
 //! core bootstrap sequence stays hardcoded in hyprland.lua on purpose (it's
 //! timing/order-sensitive infrastructure, not something this panel exposes).
 
