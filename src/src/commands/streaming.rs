@@ -1,6 +1,6 @@
 //! Shared event-streaming runner for the genuinely long-running operations
 //! (package/firmware updates) where the GTK app treated output as "watch
-//! the log scroll" — the Tauri-side analog of `stream_command_then`'s
+//! the log scroll": the Tauri-side analog of `stream_command_then`'s
 //! async_channel → glib::spawn_future_local pipeline, using Tauri's event
 //! bus instead of a GLib main-loop channel.
 //!
@@ -112,7 +112,7 @@ pub(crate) async fn run_hardcoded_env(
     child.wait().await.map(|s| s.success()).unwrap_or(false)
 }
 
-/// bakery package names are `foo`, `foo-bar`, `foo_bar` — reject flags,
+/// bakery package names are `foo`, `foo-bar`, `foo_bar`; reject flags,
 /// paths, and anything else that would change `bakery update`'s shape.
 fn valid_bakery_pkg(name: &str) -> bool {
     let bytes = name.as_bytes();

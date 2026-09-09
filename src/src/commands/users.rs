@@ -1,4 +1,4 @@
-//! User account management — add/remove users, change passwords. Everything
+//! User account management: add/remove users, change passwords. Everything
 //! here needs root (useradd/userdel/chpasswd), so every action goes through
 //! `pkexec`.
 
@@ -74,7 +74,7 @@ fn valid_username(name: &str) -> bool {
         .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(*b, b'_' | b'-'))
 }
 
-/// chpasswd reads `user:password` lines — a `:`, `\n`, or `\r` in either
+/// chpasswd reads `user:password` lines; a `:`, `\n`, or `\r` in either
 /// field injects extra passwd entries or shifts columns.
 fn valid_chpasswd_password(password: &str) -> bool {
     !password.is_empty()

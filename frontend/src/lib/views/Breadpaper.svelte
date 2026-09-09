@@ -94,7 +94,7 @@
 </script>
 
 <ViewScaffold title="Wallpaper">
-	<Group title="Wallpaper" hint="This also sets the desktop colors — each monitor's accent comes from its own wallpaper.">
+	<Group title="Wallpaper" hint="This also sets the desktop colors: each monitor's accent comes from its own wallpaper.">
 		{#if perMonitor}
 			<SwitchField label="Use the same wallpaper on every monitor" bind:value={sameOnAll} />
 		{/if}

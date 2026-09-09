@@ -1,31 +1,31 @@
-//! hypr/binds.json — Hyprland keybind editor, read by
+//! hypr/binds.json: Hyprland keybind editor, read by
 //! `scripts/ui/binds.lua` on the Hyprland side (see hyprland.lua).
 //!
 //! This file has TWO real on-disk shapes, and which one applies depends on
 //! the machine:
 //!
-//! - **Flat** (`default_mods` + a single `bindings` array) — what BOS itself
+//! - **Flat** (`default_mods` + a single `bindings` array): what BOS itself
 //!   ships (`iso/airootfs/etc/skel/.config/hypr/binds.json`, read by the
 //!   BOS-shipped `scripts/input/binds.lua`). No layouts. Each bind carries
 //!   `label`/`category`/`demo_cmd` fields breadhelp depends on for its
 //!   cheatsheet and guided tour.
 //! - **MultiLayout** (`globals`/`common`/one `layouts` entry per keyboard
-//!   layout) — a personal, per-machine schema some dev setups use instead,
+//!   layout): a personal, per-machine schema some dev setups use instead,
 //!   read by a different, personal `binds.lua`.
 //!
 //! `SchemaKind` detects which shape is actually on disk (from the top-level
-//! key set) and `save()` always emits that SAME shape back — see
+//! key set) and `save()` always emits that SAME shape back; see
 //! `SchemaKind::detect` and `save_to`. Loading a real BOS (Flat) file under
 //! the wrong assumption and saving it back would silently drop the
-//! `bindings` key entirely — still valid JSON, so the Lua `pcall`
+//! `bindings` key entirely; still valid JSON, so the Lua `pcall`
 //! failsafes on the reading side would never catch it.
 //!
 //! Each bind's shape also varies by `action` (`exec` needs `command`,
 //! `move_dir` needs `direction`, workspace-focus needs `workspace`, mouse
 //! binds need `options.mouse`, ...). Rather than modelling every action's
-//! field set as its own row layout — which would mean a combinatorial
+//! field set as its own row layout, which would mean a combinatorial
 //! explosion of widgets and silently dropping any action shape this editor
-//! doesn't already know about — `action`/`key`/`mods` get real fields (the
+//! doesn't already know about; `action`/`key`/`mods` get real fields (the
 //! ones every bind has) and everything else round-trips through
 //! `#[serde(flatten)]` into a small inline-JSON column, same trade-off the
 //! other Hyprland JSON editors (appearance.rs, hyprland.rs, autostart.rs)
@@ -48,14 +48,14 @@ use super::config;
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SchemaKind {
-    /// `{ "default_mods": [...], "bindings": [...] }` — BOS's real shipped
+    /// `{ "default_mods": [...], "bindings": [...] }`: BOS's real shipped
     /// shape. No layout-switching UI applies; there's nothing to switch.
     Flat,
-    /// `{ "active_layout", "default_mods", "globals", "common", "layouts" }`
-    /// — the personal, multi-keyboard-layout schema this editor was
+    /// `{ "active_layout", "default_mods", "globals", "common", "layouts" }`,
+    /// the personal, multi-keyboard-layout schema this editor was
     /// originally built against.
     MultiLayout,
-    /// Neither key set matched — an empty file, a totally different shape,
+    /// Neither key set matched: an empty file, a totally different shape,
     /// or unparsable JSON. Loading still renders (empty), but `save()`
     /// refuses outright rather than guessing a shape and risking silently
     /// destroying whatever the real file's actual schema was.
@@ -83,22 +83,22 @@ pub struct Bind {
     action: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     key: Option<String>,
-    /// `None` (key omitted) means "fall back to `default_mods`"; `Some(_)`
-    /// — including `Some(vec![])` — means "use exactly this, even if that's
+    /// `None` (key omitted) means "fall back to `default_mods`"; `Some(_)`,
+    /// including `Some(vec![])`, means "use exactly this, even if that's
     /// no modifiers at all." Real BOS binds rely on that distinction (e.g.
     /// media keys pin `"mods": []` on purpose so they never inherit
     /// `default_mods`), so this can't collapse both cases to "omit the
-    /// key" the way a bare `Vec<String>` with `skip_serializing_if` would —
+    /// key" the way a bare `Vec<String>` with `skip_serializing_if` would;
     /// that would silently turn an explicit "no mods" into "use the
     /// default" the next time this editor saves the file.
     #[serde(skip_serializing_if = "Option::is_none")]
     mods: Option<Vec<String>>,
-    /// Everything else a bind can carry — `command`, `direction`,
+    /// Everything else a bind can carry: `command`, `direction`,
     /// `workspace`, `x`, `y`, `layout`, `options`, `label`, `category`,
     /// `demo_cmd`, and any action shape not yet invented. Edited on the
     /// frontend as compact inline JSON. This flatten is what keeps
-    /// breadhelp's `label`/`category`/`demo_cmd` fields — which this
-    /// editor's UI has no dedicated widgets for — alive across a full
+    /// breadhelp's `label`/`category`/`demo_cmd` fields (which this
+    /// editor's UI has no dedicated widgets for) alive across a full
     /// load/save round trip instead of being silently dropped.
     #[serde(flatten)]
     extra: Map<String, Value>,
@@ -115,12 +115,12 @@ pub struct BindsFile {
     globals: Vec<Bind>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     common: Vec<Bind>,
-    /// A `BTreeMap` (alphabetical), not the file's original insertion order
-    /// — same "whole-file round trip, formatting not preserved" trade-off as
+    /// A `BTreeMap` (alphabetical), not the file's original insertion order,
+    /// same "whole-file round trip, formatting not preserved" trade-off as
     /// the rest of this file's JSON-config siblings.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     layouts: BTreeMap<String, Vec<Bind>>,
-    /// Flat-schema bind list — BOS's real shipped shape. Only ever populated
+    /// Flat-schema bind list: BOS's real shipped shape. Only ever populated
     /// when `SchemaKind::Flat` was detected at load time; stays empty (and
     /// so omitted, see `to_json`) for a MultiLayout file.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -143,7 +143,7 @@ fn config_path() -> std::path::PathBuf {
 
 fn load_from(path: &Path) -> (BindsFile, SchemaKind) {
     let Ok(text) = std::fs::read_to_string(path) else {
-        // No file yet (fresh install/environment) — nothing on disk to
+        // No file yet (fresh install/environment): nothing on disk to
         // misdetect or destroy. BOS itself ships the flat schema, so a new
         // file defaults to Flat rather than the personal MultiLayout schema
         // this editor originally assumed.
@@ -151,7 +151,7 @@ fn load_from(path: &Path) -> (BindsFile, SchemaKind) {
     };
     let kind = match serde_json::from_str::<Value>(&text) {
         Ok(Value::Object(top_level)) => SchemaKind::detect(&top_level),
-        // Unparsable JSON, or valid JSON that isn't even an object — treat
+        // Unparsable JSON, or valid JSON that isn't even an object; treat
         // as Unknown so save() refuses rather than silently overwriting
         // whatever this file actually was with an empty default.
         _ => SchemaKind::Unknown,
@@ -165,8 +165,8 @@ fn load() -> (BindsFile, SchemaKind) {
 }
 
 /// Serialize `f` in exactly the shape `kind` implies:
-/// - `Flat` -> `{ "default_mods": [...], "bindings": [...] }`, nothing else
-///   — no `active_layout`/`globals`/`common`/`layouts` keys, even if the
+/// - `Flat` -> `{ "default_mods": [...], "bindings": [...] }`, nothing else,
+///   no `active_layout`/`globals`/`common`/`layouts` keys, even if the
 ///   struct happens to carry empty values for them.
 /// - `MultiLayout` -> today's existing shape (whatever fields are
 ///   non-empty), via `BindsFile`'s own `Serialize` impl.
@@ -186,7 +186,7 @@ fn save_to(path: &Path, f: &BindsFile, kind: SchemaKind) -> std::io::Result<()> 
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "binds.json's schema wasn't recognized (expected a \"bindings\" key, or one of \
-             \"globals\"/\"common\"/\"layouts\") — refusing to save so nothing gets silently \
+             \"globals\"/\"common\"/\"layouts\"); refusing to save so nothing gets silently \
              overwritten. Fix or remove the file, then reopen this panel.",
         ));
     }
@@ -264,7 +264,7 @@ mod tests {
     use super::*;
 
     /// A representative slice of BOS's real shipped `binds.json`
-    /// (`iso/airootfs/etc/skel/.config/hypr/binds.json`, flat schema) —
+    /// (`iso/airootfs/etc/skel/.config/hypr/binds.json`, flat schema),
     /// chosen to exercise the extra-field variety breadhelp reads (`label`,
     /// `category`, `demo_cmd`), an explicit `mods: []` override, a nested
     /// `options` object, and both integer and string `workspace` values.
@@ -308,7 +308,7 @@ mod tests {
         let original: Value = serde_json::from_str(REAL_BOS_FLAT_FIXTURE).unwrap();
         let saved = to_json(&file, kind);
 
-        // Flat save must emit EXACTLY {default_mods, bindings} — no
+        // Flat save must emit EXACTLY {default_mods, bindings}; no
         // active_layout/globals/common/layouts keys leaking in.
         let saved_obj = saved.as_object().expect("flat save must be a JSON object");
         assert_eq!(
@@ -323,9 +323,9 @@ mod tests {
             "Flat schema must round-trip as exactly {{default_mods, bindings}}"
         );
 
-        // The `bindings` array — and every per-bind extra field (label,
+        // The `bindings` array, and every per-bind extra field (label,
         // category, demo_cmd, mods, options, integer vs string workspace,
-        // ...) — must survive the round trip semantically untouched.
+        // ...) must survive the round trip semantically untouched.
         assert_eq!(saved["bindings"], original["bindings"]);
         assert_eq!(saved["default_mods"], original["default_mods"]);
     }

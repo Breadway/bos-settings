@@ -1,5 +1,5 @@
 //! Display: live-connected-monitor readout (from `hyprctl monitors -j`) plus
-//! an editor for `hypr/monitors.json` — the monitor *layout* Hyprland itself
+//! an editor for `hypr/monitors.json`: the monitor *layout* Hyprland itself
 //! reads at login. Like appearance.rs/autostart.rs, a plain typed struct
 //! round-tripped whole (JSON has no comments to preserve).
 //!
@@ -203,7 +203,7 @@ pub fn save_monitor_rules(rules: Vec<MonitorRule>) -> Result<(), String> {
     Ok(())
 }
 
-/// Opens `hyprland.lua` in `$EDITOR` (nano if unset) inside a terminal —
+/// Opens `hyprland.lua` in `$EDITOR` (nano if unset) inside a terminal;
 /// spawning a TUI editor with no terminal to attach to is a silent no-op.
 #[tauri::command]
 pub fn open_hyprland_conf() {

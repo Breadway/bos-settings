@@ -1,4 +1,4 @@
-//! breadsearch/config.toml — semantic search indexer (breadmill) + GUI.
+//! breadsearch/config.toml: semantic search indexer (breadmill) + GUI.
 //! Schema mirrors breadsearch-shared::Config ([index], [search], [model], [power]).
 
 use serde::{Deserialize, Serialize};

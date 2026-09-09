@@ -1,10 +1,10 @@
-//! breadbar/style.css — CSS overrides for the bar. No systemd unit (breadbar
+//! breadbar/style.css: CSS overrides for the bar. No systemd unit (breadbar
 //! is launched directly by hyprland.lua's exec-once); SIGHUP is its own
 //! documented live-reload mechanism.
 //!
 //! The file has a fixed, hand-written structure (see the shipped template's
-//! comments), so the common properties users actually tweak — font, bar
-//! chrome, workspace indicator, spacing, tray/notification radii — are
+//! comments), so the common properties users actually tweak (font, bar
+//! chrome, workspace indicator, spacing, tray/notification radii) are
 //! exposed as a typed `BreadbarStyle` struct. `get`/`set_value` locate a
 //! known `selector { ... }` block and rewrite just one declaration's value
 //! inside it, leaving comments, ordering, and every unmodeled property
@@ -73,7 +73,7 @@ pub fn get_breadbar_css() -> String {
 
 /// Saves the CSS and sends breadbar SIGHUP to live-reload it. Returns
 /// whether the reload signal was actually delivered (`false` just means
-/// breadbar isn't running — the file is saved either way).
+/// breadbar isn't running; the file is saved either way).
 #[tauri::command]
 pub fn save_breadbar_css(css: String) -> Result<bool, String> {
     config::atomic_write(&css_path(), &css).map_err(|e| e.to_string())?;

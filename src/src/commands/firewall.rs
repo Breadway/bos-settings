@@ -1,6 +1,6 @@
 //! ufw firewall rules. `ufw status` itself requires root (confirmed against
 //! the installed ufw script), so unlike every other read-only panel, this
-//! doesn't query eagerly — the frontend only calls `get_firewall_status`
+//! doesn't query eagerly; the frontend only calls `get_firewall_status`
 //! when the user clicks Refresh, deferring the one unavoidable polkit
 //! prompt to an explicit action instead of forcing it on app open.
 
@@ -81,7 +81,7 @@ pub async fn set_firewall_enabled(enabled: bool) -> Result<(), String> {
 }
 
 /// Port, optional `/tcp`/`/udp`, or optional space-separated proto. No
-/// service names, IPs, or flags — those become extra `ufw allow` operands.
+/// service names, IPs, or flags; those become extra `ufw allow` operands.
 fn valid_firewall_rule(rule: &str) -> bool {
     let rule = rule.trim();
     if rule.is_empty() || rule.len() > 16 || rule.starts_with('-') {

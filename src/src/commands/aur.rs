@@ -1,8 +1,8 @@
-//! AUR search via yay — graphical discovery beyond bakery's bread ecosystem
+//! AUR search via yay: graphical discovery beyond bakery's bread ecosystem
 //! and [breadway]'s own republished packages.
 //!
 //! Installing opens a terminal running `yay -S <pkg>` instead of a silent
-//! `--noconfirm` install — deliberate, not a shortcut skipped. AUR packages
+//! `--noconfirm` install: deliberate, not a shortcut skipped. AUR packages
 //! run arbitrary maintainer-supplied build scripts, and yay's interactive
 //! PKGBUILD diff review (plus the sudo prompt) is the actual safety
 //! mechanism against a malicious/compromised package; automating it away
@@ -32,7 +32,7 @@ pub async fn search_aur(query: String) -> Vec<AurResult> {
     let mut results = Vec::new();
     let mut lines = text.lines().peekable();
     while let Some(header) = lines.next() {
-        // "aur/name version (+votes score) [Orphaned]" — name/version are
+        // "aur/name version (+votes score) [Orphaned]": name/version are
         // always the first two whitespace-separated fields after "aur/".
         let Some(rest) = header.strip_prefix("aur/") else {
             continue;

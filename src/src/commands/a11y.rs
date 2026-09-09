@@ -1,6 +1,6 @@
 //! Accessibility toggles that actually do something on Hyprland.
 //! Orca launches. Magnifier is Hyprland `cursor:zoom_factor`. Sticky/slow
-//! keys are not exposed by Hyprland or xkeyboard-config rules — the UI
+//! keys are not exposed by Hyprland or xkeyboard-config rules; the UI
 //! must show that honestly rather than a dead switch.
 
 use serde::Serialize;

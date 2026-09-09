@@ -1,4 +1,4 @@
-//! `~/.config/bread/shell.toml` — the `active = "<id>"` key selects the
+//! `~/.config/bread/shell.toml`: the `active = "<id>"` key selects the
 //! **shell theme**: breadbar/breadbox chrome, layout, and animation style
 //! (`liquid-motion`, `glass-workbench`, `spotlight`, `daylight`). This is a
 //! single global selector; per-monitor differences come from the wallpaper
@@ -9,7 +9,7 @@
 //! non-destructive `toml_edit` write.
 //!
 //! A running breadbar watches `shell.toml` (`bread_theme::shell::watch()`)
-//! and, on an `active` change, re-execs itself so the full theme applies —
+//! and, on an `active` change, re-execs itself so the full theme applies:
 //! geometry and widget structure, not just CSS tokens. breadbox re-reads
 //! the theme on each launcher open. So a plain write here is normally
 //! enough; `restart_shell_apps` stays as a manual fallback (an old breadbar
@@ -23,7 +23,7 @@ fn shell_toml_path() -> std::path::PathBuf {
     config::config_dir().join("bread/shell.toml")
 }
 
-/// Default when `shell.toml` is missing or has no `active` — matches
+/// Default when `shell.toml` is missing or has no `active`; matches
 /// `bread_theme::shell`'s own hardcoded fallback.
 const DEFAULT_THEME_ID: &str = "liquid-motion";
 
@@ -31,7 +31,7 @@ const DEFAULT_THEME_ID: &str = "liquid-motion";
 pub struct ShellThemeInfo {
     id: String,
     name: String,
-    /// `"builtin"`, `"system"`, or `"user"` — for a source badge in the picker.
+    /// `"builtin"`, `"system"`, or `"user"`, for a source badge in the picker.
     source: String,
 }
 
@@ -64,7 +64,7 @@ pub fn get_active_shell_theme() -> String {
 }
 
 /// Writes `active = "<id>"` into `shell.toml`, preserving any other keys and
-/// comments. Rejects an id that isn't a discoverable theme — a typo would
+/// comments. Rejects an id that isn't a discoverable theme; a typo would
 /// silently fall breadbar/breadbox back to the builtin with no error.
 #[tauri::command]
 pub fn set_active_shell_theme(id: String) -> Result<(), String> {
@@ -80,7 +80,7 @@ pub fn set_active_shell_theme(id: String) -> Result<(), String> {
 /// Restart breadbar and breadbox so a shell-theme change takes full effect:
 /// breadbar's live watch handles colours/tokens but not window geometry
 /// (anchors, exclusive zone), and breadbox has no watch at all. Detached so
-/// the new processes outlive this settings process. Best-effort — a missing
+/// the new processes outlive this settings process. Best-effort; a missing
 /// binary or a compositor without them running is not an error.
 #[tauri::command]
 pub fn restart_shell_apps() -> Result<(), String> {
@@ -89,7 +89,7 @@ pub fn restart_shell_apps() -> Result<(), String> {
     }
     std::thread::sleep(std::time::Duration::from_millis(250));
     spawn_detached("breadbar", &[]);
-    // Matches `~/.config/hypr/autostart.json` — breadbox runs as a command
+    // Matches `~/.config/hypr/autostart.json`: breadbox runs as a command
     // bus (`breadbox listen`); the launcher window is spawned on demand.
     spawn_detached("breadbox", &["listen"]);
     Ok(())
@@ -100,7 +100,7 @@ fn spawn_detached(prog: &str, args: &[&str]) {
     // `setsid -f` forks the target into its own session and exits at once;
     // the target is reparented to init, so it never becomes a zombie of
     // this settings process. `.status()` reaps `setsid` itself (it returns
-    // immediately) so that doesn't linger either — a plain `.spawn()` here
+    // immediately) so that doesn't linger either; a plain `.spawn()` here
     // leaves a `<defunct>` entry behind for every restart.
     let _ = Command::new("setsid")
         .arg("-f")
