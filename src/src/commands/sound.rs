@@ -1,5 +1,5 @@
 //! Output/input volume and device selection over PipeWire's pulse
-//! compatibility layer (`pactl`) — the same surface hyprland.lua's media
+//! compatibility layer (`pactl`), the same surface hyprland.lua's media
 //! keys already use via `wpctl`. `pactl` is used here instead because it
 //! can enumerate devices with human-readable descriptions and switch the
 //! default in one command; `wpctl` cannot easily do either.

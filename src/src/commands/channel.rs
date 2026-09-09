@@ -1,4 +1,4 @@
-//! Bakery track (stable / beta / dev). Preference only — `bakery update
+//! Bakery track (stable / beta / dev). Preference only; `bakery update
 //! --all` afterwards actually installs the new track's builds.
 
 use serde::Serialize;
@@ -58,7 +58,7 @@ pub async fn set_bakery_track(track: String) -> Result<BakeryTrack, String> {
     let track = track.trim().to_ascii_lowercase();
     if !TRACKS.contains(&track.as_str()) {
         return Err(format!(
-            "unknown track '{track}' — expected stable, beta, or dev"
+            "unknown track '{track}': expected stable, beta, or dev"
         ));
     }
     let output = Command::new("bakery")

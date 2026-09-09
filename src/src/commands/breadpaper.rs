@@ -1,4 +1,4 @@
-//! breadpaper — wallpaper manager. No config file to edit here; breadpaper
+//! breadpaper: wallpaper manager. No config file to edit here; breadpaper
 //! takes no persistent settings, just an image path via its CLI
 //! (`breadpaper set <path>` / `breadpaper get`). These commands are a thin
 //! backend for that CLI so wallpaper (and the pywal-driven theme it
@@ -80,7 +80,7 @@ pub async fn set_wallpaper(path: String) -> Result<(), String> {
     if ok {
         Ok(())
     } else {
-        Err("breadpaper failed — see terminal/journal".into())
+        Err("breadpaper failed: see terminal/journal".into())
     }
 }
 
@@ -98,7 +98,7 @@ fn current_json_path() -> PathBuf {
 
 /// The wallpaper breadpaper last set on each output. Read straight from
 /// `current.json` rather than shelling `breadpaper --output <n> get` once
-/// per monitor — it's the same file breadpaper's `get_on` reads, and a
+/// per monitor; it's the same file breadpaper's `get_on` reads, and a
 /// settings window can have several monitors to report.
 #[tauri::command]
 pub fn get_wallpapers_by_output() -> Vec<OutputWallpaper> {
@@ -138,7 +138,7 @@ pub async fn set_wallpaper_on(output: String, path: String) -> Result<(), String
     if ok {
         Ok(())
     } else {
-        Err("breadpaper failed — see terminal/journal".into())
+        Err("breadpaper failed: see terminal/journal".into())
     }
 }
 
@@ -149,7 +149,7 @@ pub struct LibraryEntry {
 }
 
 /// Lists wallpapers under the library dir. Bounded/depth-limited (see the
-/// constants above) — this is gated behind an explicit "Browse" click on
+/// constants above); this is gated behind an explicit "Browse" click on
 /// the frontend, not run at app launch, same "costs real time, gated
 /// behind a button" posture as the network view's Wi-Fi scan.
 #[tauri::command]

@@ -1,5 +1,5 @@
 //! Timezone + NTP, over `timedatectl`. `systemd-timesyncd` is enabled by
-//! default, so NTP sync is on out of the box — this is mostly for picking a
+//! default, so NTP sync is on out of the box; this is mostly for picking a
 //! timezone and confirming sync is healthy.
 
 use serde::Serialize;
@@ -97,7 +97,7 @@ pub async fn set_timezone(tz: String) -> Result<(), String> {
     if output.status.success() {
         Ok(())
     } else {
-        Err("Error — check the timezone name".into())
+        Err("Error: check the timezone name".into())
     }
 }
 

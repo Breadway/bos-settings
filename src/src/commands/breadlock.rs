@@ -2,7 +2,7 @@
 //!
 //! Super+L is `loginctl lock-session`; hypridle's lock_cmd / idle listener
 //! then starts breadlock. This panel edits `~/.config/breadlock/breadlock.toml`
-//! (appearance + fail timeout) — it does not, and cannot, configure PAM.
+//! (appearance + fail timeout); it does not, and cannot, configure PAM.
 //! breadgreet is the greetd greeter; its live config is typically
 //! `/etc/greetd/breadgreet.toml` (system, owned by the greeter user) and is
 //! not written from here.
@@ -91,7 +91,7 @@ pub fn save_breadlock_config(cfg: BreadlockConfig) -> Result<(), String> {
     config::save_doc(&path, &doc).map_err(|e| e.to_string())
 }
 
-/// First existing packaged example, if any — the panel links this rather
+/// First existing packaged example, if any; the panel links this rather
 /// than pretending the in-app editor is the whole schema.
 #[tauri::command]
 pub fn breadlock_example_path() -> Option<String> {

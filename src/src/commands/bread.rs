@@ -1,4 +1,4 @@
-//! breadd.toml — the bread daemon config. Schema mirrors
+//! breadd.toml: the bread daemon config. Schema mirrors
 //! breadd/src/core/config.rs (daemon, lua, modules, adapters, events,
 //! notifications). Edited non-destructively via `commands::config`.
 
@@ -57,9 +57,9 @@ pub fn get_bread_config() -> BreadConfig {
 
 /// Real, pickable module names for the "Disabled modules" field: breadd's
 /// four compiled-in modules (bread/breadd/src/lua/mod.rs's `BUILTIN_*`
-/// registry — these aren't files on disk, so a directory scan alone would
+/// registry, these aren't files on disk, so a directory scan alone would
 /// miss them) plus every `.lua` file actually sitting in the configured
-/// module directory (the user's own custom widgets/modules — the common
+/// module directory (the user's own custom widgets/modules, the common
 /// case in practice, going by real configs seen in the wild).
 #[tauri::command]
 pub fn list_bread_modules() -> Vec<String> {
@@ -87,7 +87,7 @@ pub fn list_bread_modules() -> Vec<String> {
     modules
 }
 
-/// Expands a leading `~/` against `$HOME` — breadd's own config resolution
+/// Expands a leading `~/` against `$HOME`: breadd's own config resolution
 /// (`Config::lua_module_path`) does the same for this exact field.
 fn expand_home(path: &str) -> std::path::PathBuf {
     if let Some(rest) = path.strip_prefix("~/") {

@@ -1,6 +1,6 @@
 //! restic backups of `$HOME`. Repo path + password live in
 //! `~/.config/bos-settings/backup.toml` (0600). The password is write-only
-//! to the webview — empty on save keeps the stored secret.
+//! to the webview; empty on save keeps the stored secret.
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -219,7 +219,7 @@ pub async fn restic_backup(app: AppHandle, session_id: String) -> bool {
     .await
 }
 
-/// `~/bos-restore-<id>`. Never `$HOME` itself — restore writes into a new
+/// `~/bos-restore-<id>`. Never `$HOME` itself: restore writes into a new
 /// directory so a bad snapshot cannot clobber the live home.
 pub fn default_restore_dir(snapshot: &str) -> PathBuf {
     home_dir().join(format!("bos-restore-{snapshot}"))

@@ -1,4 +1,4 @@
-//! breadcrumbs.toml — Wi-Fi profile state machine. Schema mirrors
+//! breadcrumbs.toml: Wi-Fi profile state machine. Schema mirrors
 //! breadcrumbs/src/config.rs:
 //!   [settings]              scalar tunables  (this file)
 //!   [profiles.<name>]       per-location profile (networks, tailscale, …)
@@ -12,7 +12,7 @@
 //!
 //! `[settings]` is edited in place via toml_edit; `profiles` are rewritten
 //! from their editor on save. `[[networks]]` is never written back into
-//! breadcrumbs.toml — leftover inline blocks from pre-split configs are
+//! breadcrumbs.toml; leftover inline blocks from pre-split configs are
 //! read once (only if `networks.toml` is missing) and migrated on the
 //! next save. Other keys/comments in breadcrumbs.toml are preserved.
 
@@ -36,7 +36,7 @@ pub struct Network {
     ssid: String,
     /// Write-only from the UI's point of view. `get_breadcrumbs_config`
     /// never returns a stored PSK (always `None`). On save, `None` / empty
-    /// means "keep whatever is already in networks.toml, or omit — NM
+    /// means "keep whatever is already in networks.toml, or omit; NM
     /// remembers." A non-empty value is written only to networks.toml.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     password: Option<String>,
@@ -303,7 +303,7 @@ fn load_from(settings_path: &Path, net_path: &Path) -> BreadcrumbsConfig {
             nmcli_wait: config::get_i64(&doc, &["settings", "nmcli_wait"]).unwrap_or(8),
             watch_interval: config::get_i64(&doc, &["settings", "watch_interval"]).unwrap_or(12),
         },
-        // Never ship a stored PSK to the webview — the password field is
+        // Never ship a stored PSK to the webview; the password field is
         // write-only (empty = keep existing / let NM remember).
         networks: redact_passwords(load_networks(&doc, net_path)),
         profiles: read_profiles(&doc),

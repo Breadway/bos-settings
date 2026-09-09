@@ -1,9 +1,9 @@
-//! hypr/settings.json — Hyprland gaps/borders/blur/shadow/input, read by
+//! hypr/settings.json: Hyprland gaps/borders/blur/shadow/input, read by
 //! `scripts/ui/settings.lua` on the Hyprland side. No comments to preserve,
 //! so it's a plain typed struct round-tripped whole.
 //!
 //! `Default` here must stay in sync with `scripts/ui/settings.lua`'s
-//! `DEFAULTS` table on the Hyprland side — two different languages/
+//! `DEFAULTS` table on the Hyprland side: two different languages/
 //! processes reading the same file, neither able to import the other's
 //! defaults.
 

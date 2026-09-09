@@ -1,6 +1,6 @@
 name: check
 
-# Lint + test on work branches AND on `main` — a push to `main` publishes a
+# Lint + test on work branches AND on `main`: a push to `main` publishes a
 # dev-track build (dev-release.yml), so it should be clippy'd and tested
 # first. Before this the only CI here was the dev/rc/release publish
 # workflows, none of which run clippy or the test suite.
@@ -8,7 +8,7 @@ name: check
 # The Tauri crate lives at ./src (not the usual src-tauri). clippy and the
 # test suite don't need the *built* frontend, but `tauri::generate_context!`
 # panics at compile time if the `frontendDist` dir (../frontend/build) is
-# missing, so we stub an empty one — still no `npm` step, still fast.
+# missing, so we stub an empty one; still no `npm` step, still fast.
 #
 # fmt is not gated yet: the tree isn't `cargo fmt` clean and normalising it
 # is a separate change.
