@@ -10,8 +10,8 @@ name: check
 # panics at compile time if the `frontendDist` dir (../frontend/build) is
 # missing, so we stub an empty one; still no `npm` step, still fast.
 #
-# fmt is not gated yet: the tree isn't `cargo fmt` clean and normalising it
-# is a separate change.
+# The tree was normalised with a dedicated `cargo fmt --all` commit (see
+# .git-blame-ignore-revs), so fmt is now gated too.
 on:
   push:
     branches: ['feature/**', 'fix/**', 'main']
@@ -29,6 +29,9 @@ jobs:
 
       - name: stub frontendDist
         run: mkdir -p src/frontend/build
+
+      - name: fmt
+        run: cd src/src && cargo fmt --all -- --check
 
       - name: clippy
         run: cd src/src && cargo clippy --all-targets --locked -- -D warnings
