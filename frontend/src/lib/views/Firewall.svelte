@@ -99,9 +99,9 @@
 		</Row>
 	</Group>
 
-	<Group title="Add rule" hint={'e.g. "8080/tcp", "22/tcp", or a service name like "OpenSSH".'}>
+	<Group title="Add rule" hint={'A port, optionally with a protocol. e.g. "22", "8080/tcp", "53/udp".'}>
 		<div class="add-row">
-			<input type="text" bind:value={newRule} placeholder="port/proto or service name" />
+			<input type="text" bind:value={newRule} placeholder="port/proto, e.g. 8080/tcp" />
 			<button class="allow" onclick={addRule}>Allow</button>
 		</div>
 	</Group>
