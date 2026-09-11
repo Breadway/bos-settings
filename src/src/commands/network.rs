@@ -29,7 +29,12 @@ async fn radio_enabled() -> bool {
 }
 
 async fn ethernet_status() -> Option<String> {
-    let out = Command::new("nmcli").args(["-t", "-f", "DEVICE,TYPE,STATE"]).arg("dev").output().await.ok()?;
+    let out = Command::new("nmcli")
+        .args(["-t", "-f", "DEVICE,TYPE,STATE"])
+        .arg("dev")
+        .output()
+        .await
+        .ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     text.lines().find_map(|l| {
         let mut cols = l.splitn(3, ':');
@@ -39,10 +44,19 @@ async fn ethernet_status() -> Option<String> {
 }
 
 async fn known_connection_names() -> HashSet<String> {
-    let Ok(out) = Command::new("nmcli").args(["-t", "-f", "NAME"]).arg("con").arg("show").output().await else {
+    let Ok(out) = Command::new("nmcli")
+        .args(["-t", "-f", "NAME"])
+        .arg("con")
+        .arg("show")
+        .output()
+        .await
+    else {
         return HashSet::new();
     };
-    String::from_utf8_lossy(&out.stdout).lines().map(str::to_string).collect()
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::to_string)
+        .collect()
 }
 
 #[derive(Serialize)]
@@ -53,13 +67,20 @@ pub struct NetworkInfo {
 
 #[tauri::command]
 pub async fn get_network_info() -> NetworkInfo {
-    NetworkInfo { radio_enabled: radio_enabled().await, ethernet: ethernet_status().await }
+    NetworkInfo {
+        radio_enabled: radio_enabled().await,
+        ethernet: ethernet_status().await,
+    }
 }
 
 #[tauri::command]
 pub async fn set_wifi_radio(enabled: bool) -> Result<(), String> {
     let val = if enabled { "on" } else { "off" };
-    Command::new("nmcli").args(["radio", "wifi", val]).status().await.map_err(|e| e.to_string())?;
+    Command::new("nmcli")
+        .args(["radio", "wifi", val])
+        .status()
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -67,9 +88,22 @@ pub async fn set_wifi_radio(enabled: bool) -> Result<(), String> {
 /// signal: the same AP shows once per band/BSSID otherwise).
 #[tauri::command]
 pub async fn scan_wifi() -> Vec<WifiNetwork> {
-    let _ = Command::new("nmcli").args(["dev", "wifi", "rescan"]).output().await;
+    let _ = Command::new("nmcli")
+        .args(["dev", "wifi", "rescan"])
+        .output()
+        .await;
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-    let Ok(out) = Command::new("nmcli").args(["-t", "-f", "SSID,SIGNAL,SECURITY,IN-USE", "dev", "wifi", "list"]).output().await
+    let Ok(out) = Command::new("nmcli")
+        .args([
+            "-t",
+            "-f",
+            "SSID,SIGNAL,SECURITY,IN-USE",
+            "dev",
+            "wifi",
+            "list",
+        ])
+        .output()
+        .await
     else {
         return Vec::new();
     };
@@ -79,7 +113,9 @@ pub async fn scan_wifi() -> Vec<WifiNetwork> {
     for line in text.lines() {
         let mut cols = line.splitn(4, ':');
         let (ssid, signal, security, in_use) = (cols.next(), cols.next(), cols.next(), cols.next());
-        let Some(ssid) = ssid.filter(|s| !s.is_empty()) else { continue };
+        let Some(ssid) = ssid.filter(|s| !s.is_empty()) else {
+            continue;
+        };
         let signal: i32 = signal.and_then(|s| s.parse().ok()).unwrap_or(0);
         let net = WifiNetwork {
             ssid: ssid.to_string(),
@@ -88,7 +124,14 @@ pub async fn scan_wifi() -> Vec<WifiNetwork> {
             active: in_use == Some("*"),
             known: known.contains(ssid),
         };
-        by_ssid.entry(ssid.to_string()).and_modify(|existing| if net.signal > existing.signal { *existing = net.clone() }).or_insert(net);
+        by_ssid
+            .entry(ssid.to_string())
+            .and_modify(|existing| {
+                if net.signal > existing.signal {
+                    *existing = net.clone()
+                }
+            })
+            .or_insert(net);
     }
     let mut list: Vec<_> = by_ssid.into_values().collect();
     list.sort_by_key(|n| std::cmp::Reverse(n.signal));
@@ -102,11 +145,20 @@ pub async fn connect_wifi(ssid: String, password: Option<String>) -> Result<(), 
     }
     let known = known_connection_names().await;
     let output = if let Some(password) = password {
-        Command::new("nmcli").args(["dev", "wifi", "connect", &ssid, "password", &password]).output().await
+        Command::new("nmcli")
+            .args(["dev", "wifi", "connect", &ssid, "password", &password])
+            .output()
+            .await
     } else if known.contains(&ssid) {
-        Command::new("nmcli").args(["con", "up", &ssid]).output().await
+        Command::new("nmcli")
+            .args(["con", "up", &ssid])
+            .output()
+            .await
     } else {
-        Command::new("nmcli").args(["dev", "wifi", "connect", &ssid]).output().await
+        Command::new("nmcli")
+            .args(["dev", "wifi", "connect", &ssid])
+            .output()
+            .await
     }
     .map_err(|e| e.to_string())?;
     if output.status.success() {
