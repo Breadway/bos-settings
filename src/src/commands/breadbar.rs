@@ -45,19 +45,29 @@ fn find_block(css: &str, selector: &str) -> Option<(usize, usize)> {
 fn get_value(css: &str, selector: &str, property: &str) -> Option<String> {
     let (start, end) = find_block(css, selector)?;
     let body = &css[start..end];
-    let re = Regex::new(&format!(r"(?m)^\s*{}\s*:\s*([^;]+);", regex::escape(property))).ok()?;
+    let re = Regex::new(&format!(
+        r"(?m)^\s*{}\s*:\s*([^;]+);",
+        regex::escape(property)
+    ))
+    .ok()?;
     Some(re.captures(body)?.get(1)?.as_str().trim().to_string())
 }
 
 fn set_value(css: &str, selector: &str, property: &str, new_value: &str) -> Option<String> {
     let (start, end) = find_block(css, selector)?;
     let body = &css[start..end];
-    let re = Regex::new(&format!(r"(?m)(^\s*{}\s*:\s*)([^;]+)(;)", regex::escape(property))).ok()?;
+    let re = Regex::new(&format!(
+        r"(?m)(^\s*{}\s*:\s*)([^;]+)(;)",
+        regex::escape(property)
+    ))
+    .ok()?;
     if !re.is_match(body) {
         return None;
     }
     let new_body = re
-        .replace(body, |caps: &Captures| format!("{}{}{}", &caps[1], new_value, &caps[3]))
+        .replace(body, |caps: &Captures| {
+            format!("{}{}{}", &caps[1], new_value, &caps[3])
+        })
         .into_owned();
     Some(format!("{}{}{}", &css[..start], new_body, &css[end..]))
 }
@@ -85,26 +95,40 @@ pub fn get_breadbar_style() -> BreadbarStyle {
     let css = std::fs::read_to_string(css_path()).unwrap_or_default();
     BreadbarStyle {
         font_family: get_value(&css, "*", "font-family")
-            .and_then(|v| v.split(',').next().map(|s| s.trim().trim_matches(['\'', '"']).to_string()))
+            .and_then(|v| {
+                v.split(',')
+                    .next()
+                    .map(|s| s.trim().trim_matches(['\'', '"']).to_string())
+            })
             .unwrap_or_else(|| "Varela Round".to_string()),
-        font_size: get_value(&css, "*", "font-size").map(|v| strip_px(&v)).unwrap_or(14),
+        font_size: get_value(&css, "*", "font-size")
+            .map(|v| strip_px(&v))
+            .unwrap_or(14),
         bar_border_radius: get_value(&css, "window.breadbar", "border-radius")
             .map(|v| strip_px(&v))
             .unwrap_or(0),
-        bar_padding: get_value(&css, "window.breadbar", "padding").map(|v| strip_px(&v)).unwrap_or(0),
+        bar_padding: get_value(&css, "window.breadbar", "padding")
+            .map(|v| strip_px(&v))
+            .unwrap_or(0),
         workspace_inactive_opacity: get_value(&css, ".workspace-btn", "opacity")
             .and_then(|v| v.trim().parse().ok())
             .unwrap_or(0.45),
         workspace_font_size: get_value(&css, ".workspace-btn", "font-size")
             .map(|v| strip_px(&v))
             .unwrap_or(20),
-        stat_gap: get_value(&css, ".stat-pair", "margin-right").map(|v| strip_px(&v)).unwrap_or(12),
+        stat_gap: get_value(&css, ".stat-pair", "margin-right")
+            .map(|v| strip_px(&v))
+            .unwrap_or(12),
         tray_icon_size: get_value(&css, ".tray-btn image", "-gtk-icon-size")
             .map(|v| strip_px(&v))
             .unwrap_or(16),
-        notification_border_radius: get_value(&css, "window.breadbar-notification", "border-radius")
-            .map(|v| strip_px(&v))
-            .unwrap_or(6),
+        notification_border_radius: get_value(
+            &css,
+            "window.breadbar-notification",
+            "border-radius",
+        )
+        .map(|v| strip_px(&v))
+        .unwrap_or(6),
     }
 }
 
@@ -114,15 +138,35 @@ pub fn save_breadbar_style(style: BreadbarStyle) -> Result<bool, String> {
     let px = |n: u32| format!("{n}px");
 
     let edits: [(&str, &str, String); 9] = [
-        ("*", "font-family", format!("'{}', sans-serif", style.font_family)),
+        (
+            "*",
+            "font-family",
+            format!("'{}', sans-serif", style.font_family),
+        ),
         ("*", "font-size", px(style.font_size)),
-        ("window.breadbar", "border-radius", px(style.bar_border_radius)),
+        (
+            "window.breadbar",
+            "border-radius",
+            px(style.bar_border_radius),
+        ),
         ("window.breadbar", "padding", px(style.bar_padding)),
-        (".workspace-btn", "opacity", style.workspace_inactive_opacity.to_string()),
+        (
+            ".workspace-btn",
+            "opacity",
+            style.workspace_inactive_opacity.to_string(),
+        ),
         (".workspace-btn", "font-size", px(style.workspace_font_size)),
         (".stat-pair", "margin-right", px(style.stat_gap)),
-        (".tray-btn image", "-gtk-icon-size", px(style.tray_icon_size)),
-        ("window.breadbar-notification", "border-radius", px(style.notification_border_radius)),
+        (
+            ".tray-btn image",
+            "-gtk-icon-size",
+            px(style.tray_icon_size),
+        ),
+        (
+            "window.breadbar-notification",
+            "border-radius",
+            px(style.notification_border_radius),
+        ),
     ];
 
     for (selector, property, value) in &edits {

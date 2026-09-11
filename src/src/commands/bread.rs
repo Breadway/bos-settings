@@ -41,17 +41,27 @@ pub fn get_bread_config() -> BreadConfig {
         lua_module_path: config::get_str(&doc, &["lua", "module_path"]).unwrap_or_default(),
         modules_builtin: config::get_bool(&doc, &["modules", "builtin"]).unwrap_or(true),
         modules_disable: config::get_str_list(&doc, &["modules", "disable"]),
-        adapter_hyprland: config::get_bool(&doc, &["adapters", "hyprland", "enabled"]).unwrap_or(true),
+        adapter_hyprland: config::get_bool(&doc, &["adapters", "hyprland", "enabled"])
+            .unwrap_or(true),
         adapter_udev: config::get_bool(&doc, &["adapters", "udev", "enabled"]).unwrap_or(true),
         udev_subsystems: config::get_str_list(&doc, &["adapters", "udev", "subsystems"]),
         adapter_power: config::get_bool(&doc, &["adapters", "power", "enabled"]).unwrap_or(true),
-        power_poll_interval_secs: config::get_i64(&doc, &["adapters", "power", "poll_interval_secs"]).unwrap_or(30),
-        adapter_network: config::get_bool(&doc, &["adapters", "network", "enabled"]).unwrap_or(true),
-        adapter_bluetooth: config::get_bool(&doc, &["adapters", "bluetooth", "enabled"]).unwrap_or(true),
+        power_poll_interval_secs: config::get_i64(
+            &doc,
+            &["adapters", "power", "poll_interval_secs"],
+        )
+        .unwrap_or(30),
+        adapter_network: config::get_bool(&doc, &["adapters", "network", "enabled"])
+            .unwrap_or(true),
+        adapter_bluetooth: config::get_bool(&doc, &["adapters", "bluetooth", "enabled"])
+            .unwrap_or(true),
         dedup_window_ms: config::get_i64(&doc, &["events", "dedup_window_ms"]).unwrap_or(250),
-        notif_default_timeout_ms: config::get_i64(&doc, &["notifications", "default_timeout_ms"]).unwrap_or(5000),
-        notif_default_urgency: config::get_str(&doc, &["notifications", "default_urgency"]).unwrap_or_else(|| "normal".into()),
-        notif_notify_send_path: config::get_str(&doc, &["notifications", "notify_send_path"]).unwrap_or_default(),
+        notif_default_timeout_ms: config::get_i64(&doc, &["notifications", "default_timeout_ms"])
+            .unwrap_or(5000),
+        notif_default_urgency: config::get_str(&doc, &["notifications", "default_urgency"])
+            .unwrap_or_else(|| "normal".into()),
+        notif_notify_send_path: config::get_str(&doc, &["notifications", "notify_send_path"])
+            .unwrap_or_default(),
     }
 }
 
@@ -72,7 +82,12 @@ pub fn list_bread_modules() -> Vec<String> {
 
     let doc = config::load_doc(&config_path());
     let configured = config::get_str(&doc, &["lua", "module_path"]);
-    let module_dir = expand_home(configured.as_deref().filter(|s| !s.is_empty()).unwrap_or("~/.config/bread/modules"));
+    let module_dir = expand_home(
+        configured
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("~/.config/bread/modules"),
+    );
 
     if let Ok(entries) = std::fs::read_dir(&module_dir) {
         let mut found: Vec<String> = entries
@@ -108,16 +123,56 @@ pub fn save_bread_config(cfg: BreadConfig) -> Result<(), String> {
     config::set_str_or_remove(&mut doc, &["lua", "module_path"], &cfg.lua_module_path);
     config::set_bool(&mut doc, &["modules", "builtin"], cfg.modules_builtin);
     config::set_str_list(&mut doc, &["modules", "disable"], &cfg.modules_disable);
-    config::set_bool(&mut doc, &["adapters", "hyprland", "enabled"], cfg.adapter_hyprland);
+    config::set_bool(
+        &mut doc,
+        &["adapters", "hyprland", "enabled"],
+        cfg.adapter_hyprland,
+    );
     config::set_bool(&mut doc, &["adapters", "udev", "enabled"], cfg.adapter_udev);
-    config::set_str_list(&mut doc, &["adapters", "udev", "subsystems"], &cfg.udev_subsystems);
-    config::set_bool(&mut doc, &["adapters", "power", "enabled"], cfg.adapter_power);
-    config::set_i64(&mut doc, &["adapters", "power", "poll_interval_secs"], cfg.power_poll_interval_secs);
-    config::set_bool(&mut doc, &["adapters", "network", "enabled"], cfg.adapter_network);
-    config::set_bool(&mut doc, &["adapters", "bluetooth", "enabled"], cfg.adapter_bluetooth);
-    config::set_i64(&mut doc, &["events", "dedup_window_ms"], cfg.dedup_window_ms);
-    config::set_i64(&mut doc, &["notifications", "default_timeout_ms"], cfg.notif_default_timeout_ms);
-    config::set_str(&mut doc, &["notifications", "default_urgency"], &cfg.notif_default_urgency);
-    config::set_str_or_remove(&mut doc, &["notifications", "notify_send_path"], &cfg.notif_notify_send_path);
+    config::set_str_list(
+        &mut doc,
+        &["adapters", "udev", "subsystems"],
+        &cfg.udev_subsystems,
+    );
+    config::set_bool(
+        &mut doc,
+        &["adapters", "power", "enabled"],
+        cfg.adapter_power,
+    );
+    config::set_i64(
+        &mut doc,
+        &["adapters", "power", "poll_interval_secs"],
+        cfg.power_poll_interval_secs,
+    );
+    config::set_bool(
+        &mut doc,
+        &["adapters", "network", "enabled"],
+        cfg.adapter_network,
+    );
+    config::set_bool(
+        &mut doc,
+        &["adapters", "bluetooth", "enabled"],
+        cfg.adapter_bluetooth,
+    );
+    config::set_i64(
+        &mut doc,
+        &["events", "dedup_window_ms"],
+        cfg.dedup_window_ms,
+    );
+    config::set_i64(
+        &mut doc,
+        &["notifications", "default_timeout_ms"],
+        cfg.notif_default_timeout_ms,
+    );
+    config::set_str(
+        &mut doc,
+        &["notifications", "default_urgency"],
+        &cfg.notif_default_urgency,
+    );
+    config::set_str_or_remove(
+        &mut doc,
+        &["notifications", "notify_send_path"],
+        &cfg.notif_notify_send_path,
+    );
     config::save_doc(&path, &doc).map_err(|e| e.to_string())
 }

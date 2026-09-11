@@ -85,7 +85,9 @@ pub fn set_active_shell_theme(id: String) -> Result<(), String> {
 #[tauri::command]
 pub fn restart_shell_apps() -> Result<(), String> {
     for app in ["breadbar", "breadbox"] {
-        let _ = std::process::Command::new("pkill").args(["-x", app]).status();
+        let _ = std::process::Command::new("pkill")
+            .args(["-x", app])
+            .status();
     }
     std::thread::sleep(std::time::Duration::from_millis(250));
     spawn_detached("breadbar", &[]);
