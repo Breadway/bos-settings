@@ -63,7 +63,10 @@ fn config_path() -> std::path::PathBuf {
 
 #[tauri::command]
 pub fn get_appearance() -> Appearance {
-    std::fs::read_to_string(config_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+    std::fs::read_to_string(config_path())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
 }
 
 #[tauri::command]

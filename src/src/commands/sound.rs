@@ -34,23 +34,42 @@ impl RawDevice {
         self.volume
             .values()
             .next()
-            .and_then(|v| v.value_percent.trim_end_matches('%').trim().parse::<f64>().ok())
+            .and_then(|v| {
+                v.value_percent
+                    .trim_end_matches('%')
+                    .trim()
+                    .parse::<f64>()
+                    .ok()
+            })
             .unwrap_or(0.0)
     }
 }
 
 async fn list_devices(kind: &str) -> Vec<SoundDevice> {
-    let Ok(output) = Command::new("pactl").args(["-f", "json", "list", kind]).output().await else {
+    let Ok(output) = Command::new("pactl")
+        .args(["-f", "json", "list", kind])
+        .output()
+        .await
+    else {
         return Vec::new();
     };
     let raw: Vec<RawDevice> = serde_json::from_slice(&output.stdout).unwrap_or_default();
     raw.into_iter()
-        .map(|d| SoundDevice { name: d.name.clone(), description: d.description.clone(), mute: d.mute, percent: d.percent() })
+        .map(|d| SoundDevice {
+            name: d.name.clone(),
+            description: d.description.clone(),
+            mute: d.mute,
+            percent: d.percent(),
+        })
         .collect()
 }
 
 async fn default_device_name(kind: &str) -> Option<String> {
-    let flag = if kind == "sinks" { "get-default-sink" } else { "get-default-source" };
+    let flag = if kind == "sinks" {
+        "get-default-sink"
+    } else {
+        "get-default-source"
+    };
     Command::new("pactl")
         .arg(flag)
         .output()
@@ -70,29 +89,56 @@ pub struct SoundSection {
 pub async fn get_sound_section(kind: String) -> SoundSection {
     let devices = list_devices(&kind).await;
     let default_name = default_device_name(&kind).await;
-    SoundSection { devices, default_name }
+    SoundSection {
+        devices,
+        default_name,
+    }
 }
 
 #[tauri::command]
 pub async fn set_default_sound_device(kind: String, name: String) -> Result<(), String> {
-    let flag = if kind == "sinks" { "set-default-sink" } else { "set-default-source" };
-    Command::new("pactl").args([flag, &name]).status().await.map_err(|e| e.to_string())?;
+    let flag = if kind == "sinks" {
+        "set-default-sink"
+    } else {
+        "set-default-source"
+    };
+    Command::new("pactl")
+        .args([flag, &name])
+        .status()
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn set_sound_volume(kind: String, name: String, percent: i64) -> Result<(), String> {
-    let flag = if kind == "sinks" { "set-sink-volume" } else { "set-source-volume" };
+    let flag = if kind == "sinks" {
+        "set-sink-volume"
+    } else {
+        "set-source-volume"
+    };
     let pct = format!("{percent}%");
-    Command::new("pactl").args([flag, &name, &pct]).status().await.map_err(|e| e.to_string())?;
+    Command::new("pactl")
+        .args([flag, &name, &pct])
+        .status()
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn set_sound_mute(kind: String, name: String, mute: bool) -> Result<(), String> {
-    let flag = if kind == "sinks" { "set-sink-mute" } else { "set-source-mute" };
+    let flag = if kind == "sinks" {
+        "set-sink-mute"
+    } else {
+        "set-source-mute"
+    };
     let val = if mute { "1" } else { "0" };
-    Command::new("pactl").args([flag, &name, val]).status().await.map_err(|e| e.to_string())?;
+    Command::new("pactl")
+        .args([flag, &name, val])
+        .status()
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 

@@ -33,7 +33,12 @@ fn default_scale() -> String {
 
 impl Default for MonitorRule {
     fn default() -> Self {
-        Self { output: String::new(), mode: default_mode(), position: default_position(), scale: default_scale() }
+        Self {
+            output: String::new(),
+            mode: default_mode(),
+            position: default_position(),
+            scale: default_scale(),
+        }
     }
 }
 
@@ -66,21 +71,32 @@ pub struct LiveMonitor {
 }
 
 fn json_i32(v: &serde_json::Value, key: &str) -> Option<i32> {
-    v.get(key)?.as_i64().map(|n| n as i32).or_else(|| v.get(key)?.as_f64().map(|n| n.round() as i32))
+    v.get(key)?
+        .as_i64()
+        .map(|n| n as i32)
+        .or_else(|| v.get(key)?.as_f64().map(|n| n.round() as i32))
 }
 
 fn json_u32(v: &serde_json::Value, key: &str) -> Option<u32> {
-    v.get(key)?.as_u64().map(|n| n as u32).or_else(|| v.get(key)?.as_f64().map(|n| n.round() as u32))
+    v.get(key)?
+        .as_u64()
+        .map(|n| n as u32)
+        .or_else(|| v.get(key)?.as_f64().map(|n| n.round() as u32))
 }
 
 fn json_f64(v: &serde_json::Value, key: &str) -> Option<f64> {
-    v.get(key)?.as_f64().or_else(|| v.get(key)?.as_u64().map(|n| n as f64))
+    v.get(key)?
+        .as_f64()
+        .or_else(|| v.get(key)?.as_u64().map(|n| n as f64))
 }
 
 #[tauri::command]
 pub fn get_live_monitors() -> Vec<LiveMonitor> {
-    let Some(value) = bread_utils::proc::run_json("hyprctl", &["monitors", "-j"], std::time::Duration::from_secs(3))
-    else {
+    let Some(value) = bread_utils::proc::run_json(
+        "hyprctl",
+        &["monitors", "-j"],
+        std::time::Duration::from_secs(3),
+    ) else {
         return Vec::new();
     };
     let Ok(monitors) = serde_json::from_value::<Vec<serde_json::Value>>(value) else {
@@ -123,7 +139,9 @@ pub fn get_live_monitors() -> Vec<LiveMonitor> {
 }
 
 fn write_monitor_rules(rules: &[MonitorRule]) -> Result<(), String> {
-    let file = MonitorsFile { monitors: rules.to_vec() };
+    let file = MonitorsFile {
+        monitors: rules.to_vec(),
+    };
     let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
     config::atomic_write(&config_path(), &json).map_err(|e| e.to_string())
 }
@@ -149,7 +167,11 @@ pub fn apply_monitor_layout(monitors: Vec<LiveMonitor>) -> Result<(), String> {
     let mut rules = Vec::new();
     for m in &monitors {
         lua_ident(&m.name)?;
-        let refresh = if m.refresh > 1.0 { m.refresh.round() as u32 } else { 60 };
+        let refresh = if m.refresh > 1.0 {
+            m.refresh.round() as u32
+        } else {
+            60
+        };
         let mode = format!("{}x{}@{refresh}", m.width.max(1), m.height.max(1));
         let position = format!("{}x{}", m.x, m.y);
         let scale = if (m.scale - 1.0).abs() < 0.001 {
@@ -209,7 +231,10 @@ pub fn save_monitor_rules(rules: Vec<MonitorRule>) -> Result<(), String> {
 pub fn open_hyprland_conf() {
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "nano".to_string());
     let path = hypr_path("hyprland.lua");
-    let _ = std::process::Command::new("kitty").args(["-e", &editor]).arg(path).spawn();
+    let _ = std::process::Command::new("kitty")
+        .args(["-e", &editor])
+        .arg(path)
+        .spawn();
 }
 
 #[tauri::command]

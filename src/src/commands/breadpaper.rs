@@ -34,7 +34,9 @@ fn scan_wallpapers(dir: &Path) -> Vec<PathBuf> {
         if depth == 0 || out.len() >= MAX_LIBRARY_ITEMS {
             return;
         }
-        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
         let mut entries: Vec<_> = entries.flatten().collect();
         entries.sort_by_key(|e| e.file_name());
         for entry in entries {
@@ -157,7 +159,10 @@ pub fn list_wallpaper_library() -> Vec<LibraryEntry> {
     scan_wallpapers(&wallpaper_library_dir())
         .into_iter()
         .map(|p| LibraryEntry {
-            name: p.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default(),
+            name: p
+                .file_name()
+                .map(|f| f.to_string_lossy().to_string())
+                .unwrap_or_default(),
             path: p.to_string_lossy().to_string(),
         })
         .collect()
