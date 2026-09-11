@@ -20,23 +20,97 @@ use std::path::Path;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
 
+use super::hyprland::LiveMonitor;
+
 /// Initial theme fetch; called once by the frontend at startup.
 #[tauri::command]
 pub fn get_theme_css(window: tauri::WebviewWindow) -> String {
     render_theme_css(&palette_for_window(&window))
 }
 
-/// Connector name of the monitor currently showing this window, if known.
-fn monitor_name(window: &tauri::WebviewWindow) -> Option<String> {
-    window
-        .current_monitor()
-        .ok()
-        .flatten()
-        .and_then(|m| m.name().map(|s| s.to_string()))
+/// Hyprland connector (`"eDP-1"`, `"DP-2"`, ...) of the monitor currently
+/// showing `window`, if it can be resolved.
+///
+/// `tauri::Monitor::name()` does not return the Hyprland connector on
+/// Wayland: it comes back `None`, or a model string with no `palettes/*.json`
+/// behind it (see BSET-10). Its *geometry* (physical position, size, scale),
+/// however, is populated straight from the compositor (the `wl_output` bound
+/// for this surface's `wl_surface.enter`), so match that against `hyprctl
+/// monitors -j`'s per-connector geometry instead of trusting the name.
+fn resolve_connector(window: &tauri::WebviewWindow) -> Option<String> {
+    let monitor = window.current_monitor().ok().flatten()?;
+    let live = super::hyprland::get_live_monitors();
+    connector_for_geometry(
+        (monitor.position().x, monitor.position().y),
+        (monitor.size().width, monitor.size().height),
+        &live,
+    )
+}
+
+/// Pure matcher behind [`resolve_connector`], kept separate so it can be unit
+/// tested without a real window or a `hyprctl` on `PATH`.
+fn connector_for_geometry(
+    position: (i32, i32),
+    size: (u32, u32),
+    live: &[LiveMonitor],
+) -> Option<String> {
+    if live.is_empty() {
+        return None;
+    }
+    // Physical resolution is scale-independent and reported identically by
+    // both APIs, so it is by far the most reliable key: filter to it first.
+    let same_size: Vec<&LiveMonitor> = live
+        .iter()
+        .filter(|m| m.width == size.0 && m.height == size.1)
+        .collect();
+    let candidates: Vec<&LiveMonitor> = if same_size.is_empty() {
+        // Nothing matched on resolution (e.g. Tauri's cached monitor list is
+        // momentarily stale after a mode change): fall back to considering
+        // every live output rather than giving up outright.
+        live.iter().collect()
+    } else {
+        same_size
+    };
+    if candidates.len() == 1 {
+        return Some(candidates[0].name.clone());
+    }
+    // Multiple same-resolution candidates (identical monitor models, or the
+    // size fallback above): disambiguate by position. Hyprland's `x`/`y` are
+    // logical layout coordinates; Tauri's position is physical, so scale each
+    // candidate's coordinates by its own scale before comparing distances.
+    candidates
+        .into_iter()
+        .min_by(|a, b| {
+            let da = position_distance(position, a);
+            let db = position_distance(position, b);
+            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|m| m.name.clone())
+}
+
+fn position_distance(position: (i32, i32), m: &LiveMonitor) -> f64 {
+    let mx = m.x as f64 * m.scale;
+    let my = m.y as f64 * m.scale;
+    let dx = position.0 as f64 - mx;
+    let dy = position.1 as f64 - my;
+    (dx * dx + dy * dy).sqrt()
+}
+
+/// Cheap (no `hyprctl` subprocess) monitor identity, used only to detect that
+/// a window actually crossed onto a different output. `WindowEvent::Moved`
+/// fires continuously while a window is being dragged, so the per-event check
+/// must not shell out; full connector resolution only happens once an actual
+/// change is confirmed (see `watch_and_emit`).
+fn monitor_geometry(window: &tauri::WebviewWindow) -> Option<((i32, i32), (u32, u32))> {
+    let m = window.current_monitor().ok().flatten()?;
+    Some((
+        (m.position().x, m.position().y),
+        (m.size().width, m.size().height),
+    ))
 }
 
 fn palette_for_window(window: &tauri::WebviewWindow) -> bread_theme::Palette {
-    monitor_name(window)
+    resolve_connector(window)
         .map(|name| bread_theme::load_palette_for(&name))
         .unwrap_or_else(bread_theme::load_palette)
 }
@@ -80,7 +154,7 @@ fn is_relevant_theme_path(path: &Path, shared: &Path, app: &AppHandle) -> bool {
     }
     match app
         .get_webview_window("main")
-        .and_then(|w| monitor_name(&w))
+        .and_then(|w| resolve_connector(&w))
     {
         Some(name) => {
             path == bread_theme::output_palette_path(&name)
@@ -160,7 +234,7 @@ pub fn watch_and_emit(app: &AppHandle) {
     // monitor change.
     if let Some(window) = app.get_webview_window("main") {
         let app_for_move = app.clone();
-        let last_monitor = Mutex::new(monitor_name(&window));
+        let last_geometry = Mutex::new(monitor_geometry(&window));
         window.on_window_event(move |event| {
             if !matches!(event, tauri::WindowEvent::Moved(_)) {
                 return;
@@ -168,10 +242,12 @@ pub fn watch_and_emit(app: &AppHandle) {
             let Some(w) = app_for_move.get_webview_window("main") else {
                 return;
             };
-            let now = monitor_name(&w);
-            let mut guard = last_monitor.lock().unwrap_or_else(|e| e.into_inner());
+            let now = monitor_geometry(&w);
+            let mut guard = last_geometry.lock().unwrap_or_else(|e| e.into_inner());
             if *guard != now {
                 *guard = now;
+                // Geometry changed, i.e. the window is now on a different
+                // output: re-render, which resolves the new connector.
                 emit_current_theme(&app_for_move);
             }
         });
@@ -182,4 +258,91 @@ struct WatcherHandle(#[allow(dead_code)] RecommendedWatcher);
 
 fn tracing_or_eprintln(msg: &str) {
     eprintln!("{msg}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn monitor(name: &str, x: i32, y: i32, width: u32, height: u32, scale: f64) -> LiveMonitor {
+        LiveMonitor {
+            name: name.to_string(),
+            mode: format!("{width}x{height}"),
+            x,
+            y,
+            width,
+            height,
+            refresh: 60.0,
+            scale,
+            transform: 0,
+            available_modes: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn connector_for_geometry_empty_live_list_is_none() {
+        assert_eq!(connector_for_geometry((0, 0), (1920, 1080), &[]), None);
+    }
+
+    #[test]
+    fn connector_for_geometry_matches_unique_resolution() {
+        let live = [
+            monitor("eDP-1", 0, 0, 1920, 1200, 1.0),
+            monitor("HDMI-A-1", 1920, 0, 2560, 1440, 1.0),
+        ];
+        // Position is deliberately way off; resolution alone is unambiguous
+        // here, so it should still resolve correctly.
+        assert_eq!(
+            connector_for_geometry((5000, 5000), (2560, 1440), &live),
+            Some("HDMI-A-1".to_string())
+        );
+        assert_eq!(
+            connector_for_geometry((0, 0), (1920, 1200), &live),
+            Some("eDP-1".to_string())
+        );
+    }
+
+    #[test]
+    fn connector_for_geometry_disambiguates_same_resolution_by_position() {
+        // Two identical-model externals side by side, both 2560x1440 at
+        // scale 1: physical position equals logical position here.
+        let live = [
+            monitor("DP-1", 0, 0, 2560, 1440, 1.0),
+            monitor("DP-2", 2560, 0, 2560, 1440, 1.0),
+        ];
+        assert_eq!(
+            connector_for_geometry((100, 100), (2560, 1440), &live),
+            Some("DP-1".to_string())
+        );
+        assert_eq!(
+            connector_for_geometry((2700, 100), (2560, 1440), &live),
+            Some("DP-2".to_string())
+        );
+    }
+
+    #[test]
+    fn connector_for_geometry_scales_position_before_comparing() {
+        // A single fractionally-scaled output: Hyprland's x/y are logical,
+        // Tauri's position is physical (logical * scale).
+        let live = [monitor("eDP-1", 100, 50, 1920, 1200, 1.5)];
+        assert_eq!(
+            connector_for_geometry((150, 75), (1920, 1200), &live),
+            Some("eDP-1".to_string())
+        );
+    }
+
+    #[test]
+    fn connector_for_geometry_falls_back_to_all_outputs_on_resolution_miss() {
+        // No live output reports this exact resolution (e.g. a stale cache);
+        // still resolve to the geometrically closest one rather than giving
+        // up.
+        let live = [
+            monitor("eDP-1", 0, 0, 1920, 1200, 1.0),
+            monitor("HDMI-A-1", 3000, 0, 2560, 1440, 1.0),
+        ];
+        assert_eq!(
+            connector_for_geometry((10, 10), (1921, 1201), &live),
+            Some("eDP-1".to_string())
+        );
+    }
 }
