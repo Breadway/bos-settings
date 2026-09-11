@@ -22,7 +22,11 @@ pub struct BtDevice {
 
 #[tauri::command]
 pub async fn get_adapter_powered() -> Option<bool> {
-    let output = Command::new("bluetoothctl").arg("show").output().await.ok()?;
+    let output = Command::new("bluetoothctl")
+        .arg("show")
+        .output()
+        .await
+        .ok()?;
     if !output.status.success() {
         return None;
     }
@@ -36,7 +40,10 @@ pub async fn get_adapter_powered() -> Option<bool> {
 #[tauri::command]
 pub async fn set_adapter_powered(on: bool) {
     let val = if on { "on" } else { "off" };
-    let _ = Command::new("bluetoothctl").args(["power", val]).status().await;
+    let _ = Command::new("bluetoothctl")
+        .args(["power", val])
+        .status()
+        .await;
 }
 
 fn parse_device_lines(text: &str) -> Vec<BtDevice> {
@@ -44,7 +51,11 @@ fn parse_device_lines(text: &str) -> Vec<BtDevice> {
         .filter_map(|l| {
             let rest = l.strip_prefix("Device ")?;
             let (addr, name) = rest.split_once(' ')?;
-            Some(BtDevice { address: addr.trim().to_string(), name: name.trim().to_string(), connected: false })
+            Some(BtDevice {
+                address: addr.trim().to_string(),
+                name: name.trim().to_string(),
+                connected: false,
+            })
         })
         .collect()
 }
@@ -63,7 +74,11 @@ async fn run_devices(filter: Option<&str>) -> Vec<BtDevice> {
 #[tauri::command]
 pub async fn get_paired_devices() -> Vec<BtDevice> {
     let mut devices = run_devices(Some("Paired")).await;
-    let connected: HashSet<String> = run_devices(Some("Connected")).await.into_iter().map(|d| d.address).collect();
+    let connected: HashSet<String> = run_devices(Some("Connected"))
+        .await
+        .into_iter()
+        .map(|d| d.address)
+        .collect();
     for d in &mut devices {
         d.connected = connected.contains(&d.address);
     }
@@ -74,14 +89,29 @@ pub async fn get_paired_devices() -> Vec<BtDevice> {
 /// isn't already paired.
 #[tauri::command]
 pub async fn scan_bluetooth() -> Vec<BtDevice> {
-    let _ = Command::new("bluetoothctl").args(["--timeout", "5", "scan", "on"]).output().await;
-    let paired: HashSet<String> = run_devices(Some("Paired")).await.into_iter().map(|d| d.address).collect();
-    run_devices(None).await.into_iter().filter(|d| !paired.contains(&d.address)).collect()
+    let _ = Command::new("bluetoothctl")
+        .args(["--timeout", "5", "scan", "on"])
+        .output()
+        .await;
+    let paired: HashSet<String> = run_devices(Some("Paired"))
+        .await
+        .into_iter()
+        .map(|d| d.address)
+        .collect();
+    run_devices(None)
+        .await
+        .into_iter()
+        .filter(|d| !paired.contains(&d.address))
+        .collect()
 }
 
 #[tauri::command]
 pub async fn bt_connect(address: String) -> Result<(), String> {
-    let out = Command::new("bluetoothctl").args(["connect", &address]).output().await.map_err(|e| e.to_string())?;
+    let out = Command::new("bluetoothctl")
+        .args(["connect", &address])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
     if out.status.success() {
         Ok(())
     } else {
@@ -91,7 +121,11 @@ pub async fn bt_connect(address: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn bt_disconnect(address: String) -> Result<(), String> {
-    let out = Command::new("bluetoothctl").args(["disconnect", &address]).output().await.map_err(|e| e.to_string())?;
+    let out = Command::new("bluetoothctl")
+        .args(["disconnect", &address])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
     if out.status.success() {
         Ok(())
     } else {
@@ -101,7 +135,11 @@ pub async fn bt_disconnect(address: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn bt_forget(address: String) -> Result<(), String> {
-    let out = Command::new("bluetoothctl").args(["remove", &address]).output().await.map_err(|e| e.to_string())?;
+    let out = Command::new("bluetoothctl")
+        .args(["remove", &address])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
     if out.status.success() {
         Ok(())
     } else {
@@ -113,8 +151,15 @@ pub async fn bt_forget(address: String) -> Result<(), String> {
 /// bluetoothctl's exit code alone isn't a reliable signal for pairing.
 #[tauri::command]
 pub async fn bt_pair(address: String) -> Result<(), String> {
-    let out = Command::new("bluetoothctl").args(["pair", &address]).output().await.map_err(|e| e.to_string())?;
-    let now_paired = run_devices(Some("Paired")).await.iter().any(|d| d.address == address);
+    let out = Command::new("bluetoothctl")
+        .args(["pair", &address])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+    let now_paired = run_devices(Some("Paired"))
+        .await
+        .iter()
+        .any(|d| d.address == address);
     if now_paired {
         Ok(())
     } else {

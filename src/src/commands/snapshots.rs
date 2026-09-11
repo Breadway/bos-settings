@@ -39,7 +39,11 @@ pub async fn get_snapshots() -> Result<Vec<SnapshotRow>, String> {
             if number == "0" {
                 return None;
             }
-            Some(SnapshotRow { number, date: cols.next()?.trim().to_string(), description: cols.next()?.trim().to_string() })
+            Some(SnapshotRow {
+                number,
+                date: cols.next()?.trim().to_string(),
+                description: cols.next()?.trim().to_string(),
+            })
         })
         .collect())
 }
@@ -49,7 +53,11 @@ pub async fn delete_snapshot(number: String) -> Result<(), String> {
     if !util::valid_number_id(&number) {
         return Err("invalid snapshot number".into());
     }
-    let output = Command::new("snapper").args(["delete", &number]).status().await.map_err(|e| e.to_string())?;
+    let output = Command::new("snapper")
+        .args(["delete", &number])
+        .status()
+        .await
+        .map_err(|e| e.to_string())?;
     if output.success() {
         Ok(())
     } else {
@@ -63,5 +71,7 @@ pub async fn delete_snapshot(number: String) -> Result<(), String> {
 /// submenu entry per snapshot; this just reboots so the user can pick it.
 #[tauri::command]
 pub fn reboot_system() {
-    let _ = std::process::Command::new("systemctl").arg("reboot").spawn();
+    let _ = std::process::Command::new("systemctl")
+        .arg("reboot")
+        .spawn();
 }

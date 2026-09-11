@@ -25,11 +25,19 @@ fn read_contexts(doc: &DocumentMut) -> Vec<Context> {
     };
     aot.iter()
         .map(|t| Context {
-            name: t.get("name").and_then(Item::as_str).unwrap_or("").to_string(),
+            name: t
+                .get("name")
+                .and_then(Item::as_str)
+                .unwrap_or("")
+                .to_string(),
             priority: t
                 .get("priority")
                 .and_then(Item::as_array)
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default(),
         })
         .collect()
@@ -47,7 +55,8 @@ fn write_contexts(doc: &mut DocumentMut, ctxs: &[Context]) {
         t.insert("priority", value(arr));
         aot.push(t);
     }
-    doc.as_table_mut().insert("context", Item::ArrayOfTables(aot));
+    doc.as_table_mut()
+        .insert("context", Item::ArrayOfTables(aot));
 }
 
 #[tauri::command]

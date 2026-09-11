@@ -27,10 +27,26 @@ struct AutostartFile {
 
 fn default_extra() -> Vec<AutostartEntry> {
     vec![
-        AutostartEntry { command: "breadbar".into(), label: "Bar (breadbar)".into(), enabled: true },
-        AutostartEntry { command: "hypridle".into(), label: "Idle / lock daemon (hypridle)".into(), enabled: true },
-        AutostartEntry { command: "bos-netcheck".into(), label: "Network connectivity check".into(), enabled: true },
-        AutostartEntry { command: "breadhelp --autostart".into(), label: "BOS Help (first-run onboarding)".into(), enabled: true },
+        AutostartEntry {
+            command: "breadbar".into(),
+            label: "Bar (breadbar)".into(),
+            enabled: true,
+        },
+        AutostartEntry {
+            command: "hypridle".into(),
+            label: "Idle / lock daemon (hypridle)".into(),
+            enabled: true,
+        },
+        AutostartEntry {
+            command: "bos-netcheck".into(),
+            label: "Network connectivity check".into(),
+            enabled: true,
+        },
+        AutostartEntry {
+            command: "breadhelp --autostart".into(),
+            label: "BOS Help (first-run onboarding)".into(),
+            enabled: true,
+        },
     ]
 }
 
@@ -52,7 +68,10 @@ pub fn get_autostart_entries() -> Vec<AutostartEntry> {
 /// would otherwise have to reject.
 #[tauri::command]
 pub fn save_autostart_entries(entries: Vec<AutostartEntry>) -> Result<(), String> {
-    let entries: Vec<AutostartEntry> = entries.into_iter().filter(|e| !e.command.trim().is_empty()).collect();
+    let entries: Vec<AutostartEntry> = entries
+        .into_iter()
+        .filter(|e| !e.command.trim().is_empty())
+        .collect();
     let file = AutostartFile { extra: entries };
     let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
     config::atomic_write(&config_path(), &json).map_err(|e| e.to_string())
