@@ -1,14 +1,46 @@
 mod commands;
+mod page;
 mod screenshot;
+
+use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();
     let screenshot_req = screenshot::parse(&args);
+    let initial_page = page::parse(&args);
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    // Registered first, per the plugin's own docs: it needs to own the
+    // "second launch" hand-off before anything else observes argv. Desktop
+    // only, same gate the plugin's upstream example uses (it has no mobile
+    // implementation, and `mobile_entry_point` above is this crate's own
+    // generic Tauri scaffolding, not evidence this app ships on mobile).
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            let Some(window) = app.get_webview_window("main") else {
+                return;
+            };
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+            if let Some(target_page) = page::parse(&argv) {
+                // The existing window's frontend is already mounted and
+                // listening, so this can emit straight away: no first-paint
+                // race like the initial-launch case (see
+                // `commands::navigation`).
+                let _ = app.emit("navigate-to-page", target_page);
+            }
+        }));
+    }
+
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .manage(commands::navigation::InitialPage(std::sync::Mutex::new(
+            initial_page,
+        )))
         .setup(move |app| {
             commands::theme::watch_and_emit(app.handle());
             if let Some(req) = screenshot_req {
@@ -17,6 +49,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::navigation::get_initial_page,
             commands::theme::get_theme_css,
             commands::about::get_system_info,
             commands::about::set_hostname,
