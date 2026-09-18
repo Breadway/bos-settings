@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, setContext } from "svelte";
+	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
 	import Sidebar from "$lib/components/Sidebar.svelte";
 	import Placeholder from "$lib/components/Placeholder.svelte";
@@ -14,7 +15,20 @@
 
 	onMount(() => {
 		initTheme();
-		const unlisten = listen<string>("screenshot-set-view", (event) => {
+		// `--page <id>` on this launch, if any: read once, before first
+		// paint decides which view to render, so there's no flash of Home.
+		// A command rather than an event, since an event emitted from Rust's
+		// `setup()` would race this listener not being attached yet.
+		invoke<string | null>("get_initial_page").then((initialPage) => {
+			if (initialPage) go(initialPage);
+		});
+		const unlistenScreenshot = listen<string>("screenshot-set-view", (event) => {
+			go(event.payload);
+		});
+		// Fired by the single-instance plugin's second-instance callback: a
+		// later `--page <id>` launch while this window is already up
+		// re-navigates it instead of spawning a duplicate process.
+		const unlistenNavigate = listen<string>("navigate-to-page", (event) => {
 			go(event.payload);
 		});
 		const onKey = (e: KeyboardEvent) => {
@@ -26,7 +40,8 @@
 		};
 		window.addEventListener("keydown", onKey);
 		return () => {
-			unlisten.then((f) => f());
+			unlistenScreenshot.then((f) => f());
+			unlistenNavigate.then((f) => f());
 			window.removeEventListener("keydown", onKey);
 		};
 	});
