@@ -26,6 +26,7 @@ pub mod firmware;
 pub mod hyprland;
 pub mod ime;
 pub mod keybinds;
+pub mod navigation;
 pub mod network;
 pub mod nightlight;
 pub mod nvidia;
