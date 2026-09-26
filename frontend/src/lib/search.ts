@@ -45,7 +45,7 @@ export const SEARCH_INDEX: SearchHit[] = [
 	{
 		page: "appearance",
 		label: "Wallpaper",
-		keywords: "wallpaper theme palette pywal breadpaper accent per monitor multi monitor background",
+		keywords: "wallpaper theme palette wallpaper colours breadpaper accent per monitor multi monitor background",
 	},
 	{
 		page: "appearance",
