@@ -12,6 +12,14 @@ name: check
 #
 # The tree was normalised with a dedicated `cargo fmt --all` commit (see
 # .git-blame-ignore-revs), so fmt is now gated too.
+#
+# Builds in the same dev mode as dev-release.yml (git.breadway.dev
+# dependencies patched to their own repo's main via bread-ecosystem's
+# scripts/dev-deps.sh, no --locked), so a PR that depends on a
+# just-merged, not-yet-tagged change in bread-ecosystem passes here
+# instead of only being testable after a tag bump. See bread-ecosystem's
+# docs/release-channels.md ("Cross-repo dependency resolution") for the
+# full model. Part of ECO-38.
 on:
   push:
     branches: ['feature/**', 'fix/**', 'main']
@@ -30,11 +38,36 @@ jobs:
       - name: stub frontendDist
         run: mkdir -p src/frontend/build
 
+      - name: clone bread-ecosystem (main)
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/bread-ecosystem-ci-* 2>/dev/null || true
+          ECOSYSTEM_CI_DIR="$(mktemp -d /tmp/bread-ecosystem-ci-XXXXXX)"
+          git clone --branch main https://git.breadway.dev/Breadway/bread-ecosystem.git "${ECOSYSTEM_CI_DIR}"
+          echo "ECOSYSTEM_CI_DIR=${ECOSYSTEM_CI_DIR}" >> "$GITHUB_ENV"
+
+      # Fails if any git.breadway.dev dependency in src/src's Cargo.toml
+      # uses rev/branch/path instead of tag. Cargo.toml itself must always
+      # stay tag-pinned; dev-mode resolution to main happens only at build
+      # time, below, never by editing the manifest.
+      - name: lint git.breadway.dev dependency pins
+        run: bash "${ECOSYSTEM_CI_DIR}/scripts/lint-pins.sh" --root src/src
+
+      # No ci/build.sh docker wrapper here (plain cargo, unlike the
+      # layer-shell GTK4 apps), so dev-deps.sh's default sibling
+      # DEV_DEPS_DIR (relative to src/src) works as-is.
+      - name: resolve dev dependencies to main
+        run: |
+          set -euo pipefail
+          cd src/src
+          bash "${ECOSYSTEM_CI_DIR}/scripts/dev-deps.sh" --root .
+          rm -rf "${ECOSYSTEM_CI_DIR}"
+
       - name: fmt
         run: cd src/src && cargo fmt --all -- --check
 
       - name: clippy
-        run: cd src/src && cargo clippy --all-targets --locked -- -D warnings
+        run: cd src/src && cargo clippy --all-targets -- -D warnings
 
       - name: test
-        run: cd src/src && cargo test --locked
+        run: cd src/src && cargo test
