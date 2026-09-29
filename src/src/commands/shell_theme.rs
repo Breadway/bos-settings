@@ -2,7 +2,7 @@
 //! **shell theme**: breadbar/breadbox chrome, layout, and animation style
 //! (`liquid-motion`, `glass-workbench`, `spotlight`, `daylight`). This is a
 //! single global selector; per-monitor differences come from the wallpaper
-//! and its pywal palette, not from the shell theme.
+//! and its extracted palette, not from the shell theme.
 //!
 //! `bread_theme::shell::list()` enumerates every discoverable theme (user
 //! config → system dir → compiled-in builtins). Setting `active` is a

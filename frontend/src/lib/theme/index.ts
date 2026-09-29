@@ -1,4 +1,4 @@
-// Bridges bread-theme's pywal-derived palette into the webview. Mirrors
+// Bridges bread-theme's wallpaper-derived palette into the webview. Mirrors
 // bread_theme::gtk::apply_shared()'s two-phase pattern: fetch once at
 // startup, then keep it live via a backend-pushed event  -  see
 // src-tauri/src/commands/theme.rs for the file-watch side of this.

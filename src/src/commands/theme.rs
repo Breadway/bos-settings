@@ -1,4 +1,4 @@
-//! Bridges `bread-theme`'s pywal-derived palette into the webview as CSS
+//! Bridges `bread-theme`'s wallpaper-derived palette into the webview as CSS
 //! custom properties, and keeps it live.
 //!
 //! `bread-theme` rewrites every file it generates with a temp-then-rename
@@ -120,7 +120,7 @@ fn render_theme_css(palette: &bread_theme::Palette) -> String {
     // `:root { --name: ... }` block. They format the canonical `color_pairs`
     // list every GTK app shares, so the webview accents on the same slot as
     // the rest of the desktop:
-    //   --accent  = color4  (was color1 here, pywal's ANSI red, the slot
+    //   --accent  = color4  (was color1 here, the ANSI red slot,
     //                        reserved for errors; made --accent == --red ==
     //                        --on-accent == --on-red)
     //   --red     = color1  (now distinct from --accent again)

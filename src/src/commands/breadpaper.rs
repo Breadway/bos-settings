@@ -1,7 +1,7 @@
 //! breadpaper: wallpaper manager. No config file to edit here; breadpaper
 //! takes no persistent settings, just an image path via its CLI
 //! (`breadpaper set <path>` / `breadpaper get`). These commands are a thin
-//! backend for that CLI so wallpaper (and the pywal-driven theme it
+//! backend for that CLI so wallpaper (and the wallpaper-derived theme it
 //! generates) has a discoverable home in Settings.
 
 use serde::Serialize;
@@ -124,7 +124,7 @@ pub fn get_wallpapers_by_output() -> Vec<OutputWallpaper> {
         .collect()
 }
 
-/// Set the wallpaper (and regenerate that output's pywal palette) on a
+/// Set the wallpaper (and regenerate that output's palette) on a
 /// single compositor output. `breadpaper --output <NAME> set <path>`
 /// leaves every other output's wallpaper untouched (see breadpaper's
 /// `current.json` `set_one_output_does_not_drop_others` test).
