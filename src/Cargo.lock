@@ -308,8 +308,8 @@ dependencies = [
 
 [[package]]
 name = "bread-theme"
-version = "0.7.12"
-source = "git+https://git.breadway.dev/Breadway/bread-ecosystem?branch=feature%2Fnative-palette#c29a829b807b20d54dea5d9ba3d4fd090b843801"
+version = "0.8.0"
+source = "git+https://git.breadway.dev/Breadway/bread-ecosystem?tag=v0.8.0#4f4432a360275fdd0acfe1a93c7ee39ec59f1472"
 dependencies = [
  "anyhow",
  "dirs 5.0.1",
