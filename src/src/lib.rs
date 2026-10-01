@@ -151,7 +151,6 @@ pub fn run() {
             commands::breadshot::save_breadshot_config,
             commands::breadshot::get_breadshot_binds,
             commands::breadshot::breadshot_region_clipboard,
-            commands::breadmon::open_breadmon,
             commands::breadhelp::open_breadhelp,
             commands::updates::get_updates_status,
             commands::nvidia::get_nvidia_offer,
