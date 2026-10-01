@@ -106,6 +106,7 @@ pub fn run() {
             commands::power::get_power_info,
             commands::power::set_brightness,
             commands::power::set_charge_threshold,
+            commands::power::set_battery_protection,
             commands::network::get_network_info,
             commands::network::set_wifi_radio,
             commands::network::scan_wifi,
