@@ -28,19 +28,13 @@ export const SEARCH_INDEX: SearchHit[] = [
 	{
 		page: "displays",
 		label: "Displays",
-		keywords: "monitor scale resolution arrange rotate vrr hdr hyprland",
+		keywords: "monitor scale resolution arrange rotate vrr hdr hyprland breadmon",
 	},
 	{
 		page: "displays",
 		tab: "nightlight",
 		label: "Night light",
 		keywords: "night light hyprsunset temperature warmth sunset",
-	},
-	{
-		page: "displays",
-		tab: "breadmon",
-		label: "Live arrange",
-		keywords: "breadmon mirror profile arrange",
 	},
 	{
 		page: "appearance",
