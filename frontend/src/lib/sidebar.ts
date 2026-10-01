@@ -65,7 +65,7 @@ export const PAGE_ALIASES: Record<string, { page: string; tab?: string }> = {
 	displays: { page: "displays" },
 	hyprland: { page: "displays", tab: "hyprland" },
 	nightlight: { page: "displays", tab: "nightlight" },
-	breadmon: { page: "displays", tab: "breadmon" },
+	breadmon: { page: "displays", tab: "hyprland" },
 	sound: { page: "sound" },
 	power: { page: "power" },
 	appearance: { page: "appearance" },
