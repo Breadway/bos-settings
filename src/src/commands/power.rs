@@ -365,6 +365,13 @@ pub async fn get_power_info() -> PowerInfo {
     }
 }
 
+/// Current backlight percentage, cheap enough to poll while the Power page
+/// is visible (brightness keys and the bar change it behind the page's back).
+#[tauri::command]
+pub async fn get_brightness() -> Option<u32> {
+    brightness_pct().await
+}
+
 #[tauri::command]
 pub async fn set_brightness(percent: i64) -> Result<(), String> {
     let Some(device) = brightness_device().await else {
