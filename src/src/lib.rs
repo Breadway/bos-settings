@@ -140,6 +140,7 @@ pub fn run() {
             commands::firmware::get_updatable_firmware,
             commands::snapshots::get_snapshots,
             commands::snapshots::delete_snapshot,
+            commands::snapshots::restore_snapshot,
             commands::snapshots::reboot_system,
             commands::breadlock::get_breadlock_config,
             commands::breadlock::save_breadlock_config,
