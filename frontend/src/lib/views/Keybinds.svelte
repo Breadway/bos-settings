@@ -8,6 +8,8 @@
 	import SelectField from "$lib/components/SelectField.svelte";
 	import SaveButton from "$lib/components/SaveButton.svelte";
 	import Switch from "$lib/components/Switch.svelte";
+	import { hyprFromKeyEvent } from "$lib/keycapture";
+	import { findConflict } from "$lib/bindConflicts";
 
 	// Mirrors src-tauri/src/commands/keybinds.rs's `Bind`  -  `action`/`key`/
 	// `mods` are the only fields every bind has; everything else (`command`,
@@ -125,24 +127,6 @@
 		Print: "Print",
 	};
 
-	const CODE_TO_HYPR: Record<string, string> = {
-		Space: "SPACE",
-		Enter: "RETURN",
-		Escape: "ESCAPE",
-		Backspace: "BACKSPACE",
-		Tab: "TAB",
-		AudioVolumeUp: "XF86AudioRaiseVolume",
-		AudioVolumeDown: "XF86AudioLowerVolume",
-		AudioVolumeMute: "XF86AudioMute",
-		AudioMicMute: "XF86AudioMicMute",
-		BrightnessUp: "XF86MonBrightnessUp",
-		BrightnessDown: "XF86MonBrightnessDown",
-		MediaTrackNext: "XF86AudioNext",
-		MediaTrackPrevious: "XF86AudioPrev",
-		MediaPlayPause: "XF86AudioPlay",
-		PrintScreen: "Print",
-	};
-
 	function keyLabel(k: string): string {
 		return KEY_LABELS[k] ?? k;
 	}
@@ -168,23 +152,6 @@
 		const mods = textToMods(row.mods);
 		const key = row.key.trim();
 		return [...mods, key].filter(Boolean).map(keyLabel);
-	}
-
-	function hyprFromEvent(e: KeyboardEvent): { mods: string[]; key: string } | null {
-		if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return null;
-		const mods: string[] = [];
-		if (e.metaKey) mods.push("SUPER");
-		if (e.ctrlKey) mods.push("CTRL");
-		if (e.altKey) mods.push("ALT");
-		if (e.shiftKey) mods.push("SHIFT");
-		let key = CODE_TO_HYPR[e.code] ?? CODE_TO_HYPR[e.key];
-		if (!key) {
-			if (e.code.startsWith("Key") && e.code.length === 4) key = e.code.slice(3);
-			else if (e.code.startsWith("Digit")) key = e.code.slice(5);
-			else if (e.code.startsWith("F") && /^F\d+$/.test(e.code)) key = e.code;
-			else key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
-		}
-		return { mods, key };
 	}
 
 	function allRows(): EditRow[] {
@@ -321,17 +288,64 @@
 	let newLayoutName = $state("");
 	let loadError = $state("");
 
+	// A captured combo that another bind already uses is held here until the
+	// user chooses Replace (the other bind is removed) or Cancel.
+	let conflict = $state<{ row: EditRow; other: EditRow; mods: string[]; key: string } | null>(null);
+
+	function listsOf(): EditRow[][] {
+		return [globalsRows, commonRows, bindingsRows, ...Object.values(layoutRows)];
+	}
+
+	/** The binds that are live together with `row`: shortcuts only clash inside one of these sets. */
+	function scopeFor(row: EditRow): EditRow[] {
+		if (bindingsRows.includes(row)) return bindingsRows;
+		const inLayout = Object.entries(layoutRows).find(([, rows]) => rows.includes(row));
+		const layout = inLayout ? inLayout[1] : (layoutRows[activeLayout] ?? []);
+		return [...globalsRows, ...commonRows, ...layout];
+	}
+
+	function comboOf(r: EditRow) {
+		return { row: r, mods: r.modsTouched ? textToMods(r.mods) : undefined, key: r.key };
+	}
+
+	function setCombo(row: EditRow, mods: string[], key: string) {
+		row.mods = mods.join(", ");
+		row.modsTouched = true;
+		row.key = key;
+	}
+
+	function comboText(mods: string[], key: string): string {
+		return [...mods, key].map(keyLabel).join(" + ");
+	}
+
+	function replaceConflict() {
+		const c = conflict;
+		if (!c) return;
+		for (const list of listsOf()) {
+			const i = list.indexOf(c.other);
+			if (i >= 0) list.splice(i, 1);
+		}
+		setCombo(c.row, c.mods, c.key);
+		conflict = null;
+	}
+
 	onMount(() => {
 		const onKey = (e: KeyboardEvent) => {
 			const row = allRows().find((r) => r.capturing);
 			if (!row) return;
-			const mapped = hyprFromEvent(e);
+			const mapped = hyprFromKeyEvent(e);
 			if (!mapped) return;
 			e.preventDefault();
-			row.mods = mapped.mods.join(", ");
-			row.modsTouched = true;
-			row.key = mapped.key;
 			row.capturing = false;
+			const hit = findConflict(
+				scopeFor(row)
+					.filter((r) => r !== row)
+					.map(comboOf),
+				mapped,
+				textToMods(defaultMods),
+			);
+			if (hit) conflict = { row, other: hit.row, mods: mapped.mods, key: mapped.key };
+			else setCombo(row, mapped.mods, mapped.key);
 		};
 		window.addEventListener("keydown", onKey);
 		void loadKeybinds();
@@ -542,6 +556,16 @@
 {/snippet}
 
 <ViewScaffold title="Keybinds">
+	{#if conflict}
+		<div class="conflict" role="alertdialog" aria-label="Shortcut already in use">
+			<span class="msg">
+				<b>{comboText(conflict.mods, conflict.key)}</b> is already used by
+				<b>{bindTitle(conflict.other)}</b>. Replacing it removes that shortcut.
+			</span>
+			<button type="button" class="replace" onclick={replaceConflict}>Replace</button>
+			<button type="button" class="cancel" onclick={() => (conflict = null)}>Cancel</button>
+		</div>
+	{/if}
 	{#if loadError}
 		<Group title="Failed to load" wide>
 			<Hint text={loadError} />
@@ -622,6 +646,35 @@
 </ViewScaffold>
 
 <style>
+	.conflict {
+		display: flex;
+		align-items: center;
+		gap: var(--space-sm, 8px);
+		flex-wrap: wrap;
+		padding: 10px 14px;
+		border-radius: 12px;
+		background: color-mix(in srgb, var(--yellow) 14%, var(--surface));
+		border: 1px solid color-mix(in srgb, var(--yellow) 45%, transparent);
+		position: sticky;
+		top: 0;
+		z-index: 5;
+	}
+
+	.conflict .msg {
+		flex: 1;
+		min-width: 24ch;
+	}
+
+	.conflict .replace {
+		background-color: var(--accent);
+		color: var(--on-accent);
+	}
+
+	.conflict .cancel {
+		background-color: var(--bg);
+		color: var(--on-surface);
+	}
+
 	.rows {
 		display: flex;
 		flex-direction: column;
