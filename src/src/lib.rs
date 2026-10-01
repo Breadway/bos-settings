@@ -90,6 +90,7 @@ pub fn run() {
             commands::hyprland::get_monitor_rules,
             commands::hyprland::save_monitor_rules,
             commands::hyprland::apply_monitor_layout,
+            commands::hyprland::persist_monitor_layout,
             commands::hyprland::open_hyprland_conf,
             commands::hyprland::open_keybinds_viewer,
             commands::keybinds::get_keybinds,
