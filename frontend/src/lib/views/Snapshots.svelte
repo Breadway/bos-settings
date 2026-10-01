@@ -7,6 +7,7 @@
 	import EmptyState from "$lib/components/EmptyState.svelte";
 	import History from "@lucide/svelte/icons/history";
 	import CircleAlert from "@lucide/svelte/icons/circle-alert";
+	import { confirmAndRestoreSnapshot } from "$lib/snapshotRestore";
 
 	interface SnapshotRow {
 		number: string;
@@ -17,6 +18,7 @@
 	let snapshots = $state<SnapshotRow[] | "loading">("loading");
 	let errorHint = $state<string | null>(null);
 	let selected = $state<string | null>(null);
+	let restoring = $state(false);
 
 	async function refresh() {
 		errorHint = null;
@@ -59,6 +61,21 @@
 			alert(`${e}`);
 		}
 	}
+
+	async function restoreSelected() {
+		if (!selected || restoring) return;
+		restoring = true;
+		try {
+			await confirmAndRestoreSnapshot(
+				selected,
+				(message) => confirm(message),
+				(number) => invoke("restore_snapshot", { number }),
+				(message) => alert(message),
+			);
+		} finally {
+			restoring = false;
+		}
+	}
 </script>
 
 <ViewScaffold title="Snapshots">
@@ -98,6 +115,9 @@
 		<div class="btn-row">
 			<button onclick={refresh}>Refresh</button>
 			<button disabled={!selected} onclick={bootIntoSelected}>Reboot to pick in GRUB</button>
+			<button class="destructive" disabled={!selected || restoring} onclick={restoreSelected}>
+				{restoring ? "Restoring…" : "Restore selected snapshot and reboot"}
+			</button>
 			<button class="destructive" disabled={!selected} onclick={deleteSelected}>Delete selected</button>
 		</div>
 	</Group>
@@ -165,6 +185,7 @@
 
 	.btn-row {
 		display: flex;
+		flex-wrap: wrap;
 		gap: var(--space-sm, 8px);
 		margin-top: var(--space-sm, 8px);
 	}
