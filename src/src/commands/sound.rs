@@ -6,7 +6,87 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+use tauri::{AppHandle, Emitter};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+
+static WATCHING: AtomicBool = AtomicBool::new(false);
+
+/// `pactl subscribe` prints one line per server event, e.g.
+/// `Event 'change' on sink #53`, `Event 'change' on server`,
+/// `Event 'new' on sink-input #12`. Volume, mute and default-device changes
+/// arrive as `change` on sink / source / server; per-app streams are
+/// `sink-input`. Card, client and module chatter is ignored.
+fn is_relevant_event(line: &str) -> bool {
+    let Some(rest) = line.trim().strip_prefix("Event '") else {
+        return false;
+    };
+    let Some((kind, target)) = rest.split_once("' on ") else {
+        return false;
+    };
+    if !matches!(kind, "change" | "new" | "remove") {
+        return false;
+    }
+    let object = target.split_whitespace().next().unwrap_or("");
+    matches!(object, "sink" | "source" | "server" | "sink-input")
+}
+
+/// Start (once per process) a `pactl subscribe` watcher that emits
+/// `sound-changed` whenever the output/input state may have changed, so the
+/// Sound page follows volume keys, the bar and other mixers (BSET-31).
+/// Bursts (a volume drag fires dozens of events) are coalesced into one emit.
+#[tauri::command]
+pub fn watch_sound(app: AppHandle) {
+    if WATCHING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    tauri::async_runtime::spawn(async move {
+        loop {
+            subscribe_once(&app).await;
+            // PipeWire restarted or pactl missing: back off and retry.
+            tokio::time::sleep(Duration::from_secs(3)).await;
+        }
+    });
+}
+
+async fn subscribe_once(app: &AppHandle) {
+    let Ok(mut child) = Command::new("pactl")
+        .arg("subscribe")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+    else {
+        return;
+    };
+    let Some(stdout) = child.stdout.take() else {
+        return;
+    };
+    let mut lines = BufReader::new(stdout).lines();
+    let mut dirty = false;
+    loop {
+        let next = if dirty {
+            tokio::time::timeout(Duration::from_millis(150), lines.next_line()).await
+        } else {
+            Ok(lines.next_line().await)
+        };
+        match next {
+            Ok(Ok(Some(line))) => {
+                if is_relevant_event(&line) {
+                    dirty = true;
+                }
+            }
+            Ok(_) => break,
+            Err(_) => {
+                let _ = app.emit("sound-changed", ());
+                dirty = false;
+            }
+        }
+    }
+}
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct SoundDevice {
@@ -145,4 +225,34 @@ pub async fn set_sound_mute(kind: String, name: String, mute: bool) -> Result<()
 #[tauri::command]
 pub fn open_mixer() {
     let _ = std::process::Command::new("pavucontrol").spawn();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_relevant_event;
+
+    #[test]
+    fn volume_mute_and_default_changes_are_relevant() {
+        assert!(is_relevant_event("Event 'change' on sink #53"));
+        assert!(is_relevant_event("Event 'change' on source #54"));
+        assert!(is_relevant_event("Event 'change' on server"));
+        assert!(is_relevant_event("Event 'new' on sink-input #12"));
+        assert!(is_relevant_event("Event 'remove' on sink-input #12\n"));
+    }
+
+    #[test]
+    fn card_client_and_module_chatter_is_not() {
+        assert!(!is_relevant_event("Event 'change' on card #1"));
+        assert!(!is_relevant_event("Event 'new' on client #99"));
+        assert!(!is_relevant_event("Event 'new' on module #3"));
+        assert!(!is_relevant_event("Event 'change' on source-output #7"));
+    }
+
+    #[test]
+    fn non_event_lines_are_ignored() {
+        assert!(!is_relevant_event(""));
+        assert!(!is_relevant_event("Connection failure: Connection refused"));
+        assert!(!is_relevant_event("Event 'bogus' on sink #1"));
+        assert!(!is_relevant_event("Event on sink #1"));
+    }
 }
