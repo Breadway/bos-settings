@@ -12,7 +12,6 @@ pub mod breadclip;
 pub mod breadcrumbs;
 pub mod breadhelp;
 pub mod breadlock;
-pub mod breadmon;
 pub mod breadpad;
 pub mod breadpaper;
 pub mod breadsearch;
