@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { useDraft } from "$lib/drafts.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
@@ -90,6 +91,7 @@
 		// glance at the field doesn't look like a stored PSK came back.
 		cfg!.networks = cfg!.networks.map((n) => ({ ...n, password: "" }));
 	}
+	useDraft(() => (cfg), save, () => cfg !== null);
 </script>
 
 <ViewScaffold title="Wi-Fi Profiles">

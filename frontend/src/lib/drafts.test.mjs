@@ -1,0 +1,53 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { compileModule } from "svelte/compiler";
+import { transformWithEsbuild } from "vite";
+import { flushSync } from "svelte";
+import { effect_root, push, pop, proxy } from "svelte/internal/client";
+
+// Exercise real Svelte client reactivity without a DOM, browser, or app window.
+const source = await readFile(new URL("./drafts.svelte.ts", import.meta.url),"utf8");
+const stripped = await transformWithEsbuild(source,"drafts.svelte.ts",{loader:"ts"});
+const compiled = compileModule(stripped.code,{filename:"drafts.svelte.js",generate:"client"});
+const code = compiled.js.code.replace(/from ['"]([^'"]+)['"]/g,(_,specifier) => `from ${JSON.stringify(import.meta.resolve(specifier))}`);
+const { drafts, useDraft, guardNavigation, saveDrafts } = await import(`data:text/javascript;base64,${Buffer.from(code).toString("base64")}`);
+const state = proxy({ready:false, value:null});
+let draft;
+let rejectSave = false;
+const destroy = effect_root(() => {
+ push({},true);
+ draft = useDraft(() => state.value,async () => {if(rejectSave) throw new Error("write rejected");},()=>state.ready);
+ pop();
+});
+flushSync();
+assert.equal(draft.dirty,false);
+state.value = {dns:"1.1.1.1"}; state.ready = true; flushSync();
+assert.equal(draft.dirty,false,"Initial async data must be the baseline");
+state.value.dns = "9.9.9.9"; flushSync();
+assert.equal(draft.dirty,true,"A nested config edit must register as dirty");
+state.value.dns = "1.1.1.1"; flushSync();
+assert.equal(draft.dirty,false,"Changing back to the saved value clears dirty state");
+state.value.dns = "8.8.8.8"; flushSync();
+let navigated = false;
+guardNavigation(() => navigated = true);
+rejectSave = true; await saveDrafts(); flushSync();
+assert.equal(navigated,false); assert.equal(draft.dirty,true);
+rejectSave = false; await saveDrafts(); flushSync();
+assert.equal(navigated,true); assert.equal(draft.dirty,false);
+destroy(); flushSync();
+assert.equal(drafts.items.length,0,"Unmounting must unregister the draft");
+console.log("drafts: real client reactivity, async baseline, nested edits, failed save protection, save-and-navigate, and teardown passed");
+
+const changeSource = await readFile(new URL("./changes.svelte.ts", import.meta.url),"utf8");
+const changeTs = await transformWithEsbuild(changeSource,"changes.svelte.ts",{loader:"ts"});
+const changeJs = compileModule(changeTs.code,{filename:"changes.svelte.js",generate:"client"}).js.code.replace(/from ['"]([^'"]+)['"]/g,(_,specifier) => `from ${JSON.stringify(import.meta.resolve(specifier))}`);
+const {changes,recordChange} = await import(`data:text/javascript;base64,${Buffer.from(changeJs).toString("base64")}`);
+let applied = 0;
+await recordChange("Wi-Fi off",async()=>{applied++;},async()=>{applied--;});
+assert.equal(changes.recent[0].undo instanceof Function,true);
+await changes.undo();
+assert.equal(applied,0);
+assert.equal(changes.recent[0].undo,null,"Undo must update the reactive history entry");
+await assert.rejects(recordChange("Failed change",async()=>{throw new Error("refused");},async()=>{}));
+assert.equal(changes.recent.length,1,"Failed changes must not enter history");
+console.log("changes: successful apply, reactive Undo, and failed-change history passed");

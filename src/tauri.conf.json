@@ -15,7 +15,7 @@
         "title": "BOS Settings",
         "width": 1280,
         "height": 840,
-        "minWidth": 960,
+        "minWidth": 360,
         "minHeight": 640,
         "decorations": false,
         "backgroundColor": "#12161c"

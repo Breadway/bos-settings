@@ -35,7 +35,7 @@
 			next.push({ command: BREADHELP_CMD, label: BREADHELP_LABEL, enabled: true });
 		}
 		try {
-			await invoke("save_autostart_entries", { entries: next });
+			await invoke("save_autostart_entries", { entries: next, allowSystemChanges: true });
 			entries = next;
 			status = enabled ? "First-run help will launch at login." : "First-run help won't launch at login.";
 		} catch (e) {

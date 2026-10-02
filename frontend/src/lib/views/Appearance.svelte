@@ -89,6 +89,7 @@
 		natural_scroll: boolean;
 	}
 
+	let { scope = "all" }: { scope?: "all" | "windows" | "keyboard" | "mouse" } = $props();
 	let cfg = $state<Appearance | null>(null);
 	let loaded = $state(false);
 	let followMouse = $state("1");
@@ -121,8 +122,9 @@
 	});
 </script>
 
-<ViewScaffold title="Appearance">
+<ViewScaffold title={scope === "mouse" ? "Mouse & touchpad" : scope === "keyboard" ? "Keyboard layout" : "Appearance"}>
 	{#if cfg}
+		{#if scope === "all" || scope === "windows"}
 		<Group title="Windows">
 			<SliderField label="Gaps between windows" bind:value={cfg.gaps_in} min={0} max={50} />
 			<SliderField label="Gaps around the edge" bind:value={cfg.gaps_out} min={0} max={50} />
@@ -146,8 +148,13 @@
 			{/if}
 		</Group>
 
-		<Group title="Keyboard and mouse">
+		{/if}
+		{#if scope !== "windows"}
+		<Group title={scope === "keyboard" ? "Keyboard layout" : "Mouse & touchpad"}>
+			{#if scope === "all" || scope === "keyboard"}
 			<SelectField label="Keyboard layout" bind:value={cfg.kb_layout} options={kbLayoutOptions} labels={KB_LABELS} />
+			{/if}
+			{#if scope === "all" || scope === "mouse"}
 			<SelectField
 				label="Focus"
 				bind:value={followMouse}
@@ -155,8 +162,10 @@
 				labels={Object.fromEntries(FOLLOW_MOUSE_MODES.map((m) => [m.value, m.label]))}
 			/>
 			<SwitchField label="Natural scrolling" hint="Touchpad" bind:value={cfg.natural_scroll} />
+			{/if}
 		</Group>
 
+		{/if}
 		<Hint text="Applies as you change it." />
 	{/if}
 </ViewScaffold>

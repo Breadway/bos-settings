@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { useDraft } from "$lib/drafts.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
@@ -40,6 +41,7 @@
 	async function save() {
 		await invoke("save_breadsearch_config", { cfg });
 	}
+	useDraft(() => (cfg), save, () => cfg !== null);
 </script>
 
 <ViewScaffold title="File Search">

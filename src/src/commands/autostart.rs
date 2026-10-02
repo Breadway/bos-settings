@@ -143,12 +143,41 @@ pub fn get_autostart_entries() -> Vec<AutostartEntry> {
 /// save rather than written as a broken autostart.json entry the Lua loader
 /// would otherwise have to reject.
 #[tauri::command]
-pub fn save_autostart_entries(entries: Vec<AutostartEntry>) -> Result<(), String> {
+pub fn save_autostart_entries(
+    entries: Vec<AutostartEntry>,
+    allow_system_changes: Option<bool>,
+) -> Result<(), String> {
+    if !allow_system_changes.unwrap_or(false) {
+        check_system_entries(&load_entries(), &entries)?;
+    }
     let entries: Vec<AutostartEntry> = entries
         .into_iter()
         .filter(|e| !e.command.trim().is_empty())
         .collect();
     store_entries(entries)
+}
+
+fn is_system_entry(entry: &AutostartEntry) -> bool {
+    let command = entry.command();
+    default_extra().iter().any(|e| e.command() == command)
+        || command == "hyprsunset"
+        || command
+            .strip_prefix("hyprsunset -t ")
+            .is_some_and(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
+        || ["breadclip", "breadsearch", "bread"].iter().any(|cmd| {
+            command == format!("bash -c 'command -v {cmd} >/dev/null && exec {cmd} listen'")
+        })
+}
+
+fn check_system_entries(before: &[AutostartEntry], after: &[AutostartEntry]) -> Result<(), String> {
+    let mut remaining = after.to_vec();
+    for entry in before.iter().filter(|e| is_system_entry(e)) {
+        let Some(index) = remaining.iter().position(|e| e == entry) else {
+            return Err("Changing core startup services requires advanced confirmation.".into());
+        };
+        remaining.remove(index);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -157,6 +186,35 @@ mod tests {
 
     fn is_sunset(e: &AutostartEntry) -> bool {
         e.command().split_whitespace().next() == Some("hyprsunset")
+    }
+
+    #[test]
+    fn core_entries_need_confirmation_to_change() {
+        let before = default_extra();
+        assert!(check_system_entries(&before, &before).is_ok());
+        let mut removed = before.clone();
+        removed.remove(0);
+        assert!(check_system_entries(&before, &removed).is_err());
+        let mut disabled = before.clone();
+        disabled[0].enabled = false;
+        assert!(check_system_entries(&before, &disabled).is_err());
+        let mut added = before.clone();
+        added.push(AutostartEntry::new("kitty", "Terminal", true));
+        assert!(check_system_entries(&before, &added).is_ok());
+    }
+
+    #[test]
+    fn user_commands_are_not_core_by_prefix() {
+        assert!(!is_system_entry(&AutostartEntry::new(
+            "breadbar --custom",
+            "My bar",
+            true
+        )));
+        assert!(is_system_entry(&AutostartEntry::new(
+            "hyprsunset -t 3500",
+            "Night light",
+            true
+        )));
     }
 
     #[test]

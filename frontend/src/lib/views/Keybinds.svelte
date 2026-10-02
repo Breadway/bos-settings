@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { useDraft } from "$lib/drafts.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
@@ -419,6 +420,7 @@
 		};
 		await invoke("save_keybinds", { file, kind });
 	}
+	useDraft(() => ({kind, activeLayout, defaultMods, globalsRows, commonRows, bindingsRows, layoutRows, layoutOrder}), save, () => loaded);
 </script>
 
 {#snippet extraFields(row: EditRow)}

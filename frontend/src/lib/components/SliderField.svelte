@@ -25,13 +25,13 @@
 </script>
 
 <Row {label} {hint}>
-	<input type="range" {min} {max} {step} bind:value oninput={() => onChange?.()} />
+	<input aria-label={label} type="range" {min} {max} {step} bind:value oninput={() => onChange?.()} />
 	<span class="val">{shown}{suffix}</span>
 </Row>
 
 <style>
 	input[type="range"] {
-		width: 160px;
+		width: clamp(80px, 22vw, 180px);
 		accent-color: var(--accent);
 	}
 

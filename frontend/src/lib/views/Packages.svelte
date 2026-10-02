@@ -17,9 +17,12 @@
 	let packages = $state<InstalledPackage[] | null>(null);
 	let log = $state<string[]>([]);
 	let busy = $state(false);
+	let outdated = $state<string[]>([]);
+	let updateError = $state("");
 
 	async function refresh() {
 		packages = await invoke<InstalledPackage[]>("get_installed_packages");
+		try { const st = await invoke<{bakery: {name:string}[]; bakery_error: string | null}>("get_updates_status"); outdated = st.bakery.map(p => p.name); updateError = st.bakery_error ?? ""; } catch (e) { updateError = String(e); }
 	}
 
 	onMount(refresh);
@@ -71,12 +74,13 @@
 					<div class="row">
 						<span class="name" title={pkg.name}>{pkg.name}</span>
 						<span class="version" title={pkg.version}>{pkg.version}</span>
-						<button disabled={busy} onclick={() => updatePackage(pkg.name)}>Update</button>
+						{#if outdated.includes(pkg.name)}<button disabled={busy} onclick={() => updatePackage(pkg.name)}>Update</button>{/if}
 					</div>
 				{/each}
 			{/if}
 		</div>
 
+		{#if updateError}<Hint text={`Could not check for package updates: ${updateError}`} />{/if}
 		<div class="btn-row">
 			<button disabled={busy} onclick={listInstalled}>List installed</button>
 			<button disabled={busy} onclick={updateAll}>Update all</button>

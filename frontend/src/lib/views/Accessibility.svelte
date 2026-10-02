@@ -5,6 +5,8 @@
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
 	import Hint from "$lib/components/Hint.svelte";
+	import SliderField from "$lib/components/SliderField.svelte";
+	import { debounce } from "$lib/debounce";
 	import NumberField from "$lib/components/NumberField.svelte";
 	import LogView from "$lib/components/LogView.svelte";
 
@@ -51,14 +53,24 @@
 		}
 	}
 
-	async function applyZoom() {
-		message = "";
-		try {
-			zoom = await invoke<number>("set_cursor_zoom", { factor: zoom });
-		} catch (e) {
-			message = `${e}`;
-		}
-	}
+
+ let zoomTask = Promise.resolve();
+ const liveZoom = debounce(() => { void applyZoom(); }, 180);
+ function applyZoom() {
+  const requested = zoom;
+  zoomTask = zoomTask.then(async () => {
+   message = "";
+   try {
+    const applied = await invoke<number>("set_cursor_zoom", {factor:requested});
+    if(st) st.zoom_factor = applied;
+    if(zoom === requested) zoom = applied;
+   } catch(e) {
+    message = String(e);
+    if(zoom === requested && st) zoom = st.zoom_factor;
+   }
+  });
+  return zoomTask;
+ }
 
 	async function openKmag() {
 		message = "";
@@ -96,6 +108,7 @@
 
 	<Group title="Magnifier" hint="Zooms around the cursor. This session only.">
 		{#if st}
+			<SliderField label="Zoom level" bind:value={zoom} min={1} max={8} step={0.25} suffix="×" onChange={liveZoom} />
 			<NumberField label="Zoom factor" bind:value={zoom} min={1} max={8} step={0.25} />
 			<button class="primary" onclick={applyZoom}>Apply zoom</button>
 			<Hint text="1.0 is off. Values above 1 enlarge around the cursor." />

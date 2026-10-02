@@ -12,6 +12,7 @@
 	interface FwDevice {
 		name: string;
 		version: string;
+		security_database: boolean;
 	}
 
 	let devices = $state<FwDevice[] | null>(null);
@@ -54,10 +55,10 @@
 		<div class="list">
 			{#if devices === null}
 				<Hint text="Loading…" />
-			{:else if devices.length === 0}
+			{:else if devices.filter(d => !d.security_database).length === 0}
 				<EmptyState icon={RefreshCw} title="No updatable firmware devices found" hint="Not every device supports firmware updates through fwupd." />
 			{:else}
-				{#each devices as dev (dev.name)}
+				{#each devices.filter(d => !d.security_database) as dev, i (`${dev.name}:${i}`)}
 					<div class="row">
 						<span class="name" title={dev.name}>{dev.name}</span>
 						<span class="version" title={dev.version}>{dev.version}</span>
@@ -66,7 +67,13 @@
 			{/if}
 		</div>
 
-		<div class="btn-row">
+		{#if devices?.some(d => d.security_database)}
+   <details><summary>Secure Boot certificate databases</summary>
+    <Hint text="Trust and revocation databases used by UEFI Secure Boot. These are not hardware devices; firmware updates include them." />
+    {#each devices.filter(d => d.security_database) as dev, i (`${dev.name}:${i}`)}<div class="row"><span class="name">{dev.name}</span><span class="version">{dev.version}</span></div>{/each}
+   </details>
+  {/if}
+  <div class="btn-row">
 			<button disabled={busy} onclick={checkForUpdates}>Check for updates</button>
 			<button disabled={busy} class="primary" onclick={updateAll}>Update all</button>
 			<button disabled={busy} onclick={refresh}>Refresh list</button>

@@ -32,8 +32,7 @@
 	});
 
 	async function togglePower(on: boolean) {
-		powered = on;
-		await invoke("set_adapter_powered", { on });
+		try { await invoke("set_adapter_powered", { on }); powered = on; } catch (e) { log = [String(e)]; }
 	}
 
 	async function toggleConnect(dev: BtDevice) {
@@ -59,8 +58,7 @@
 
 	async function scan() {
 		scanning = true;
-		scanResults = await invoke<BtDevice[]>("scan_bluetooth");
-		scanning = false;
+		try { scanResults = await invoke<BtDevice[]>("scan_bluetooth"); } catch (e) { log = [String(e)]; } finally { scanning = false; }
 	}
 
 	async function pair(dev: BtDevice) {
@@ -99,7 +97,7 @@
 				{:else}
 					{#each paired as dev (dev.address)}
 						<div class="row">
-							<span class="name" class:active={dev.connected}>{dev.name}{dev.connected ? " (connected)" : ""}</span>
+							<div class="name" class:active={dev.connected}>{dev.name}<small>{dev.address} · {dev.connected ? "Connected" : "Not connected"}</small></div>
 							<button class="btn" onclick={() => toggleConnect(dev)}>{dev.connected ? "Disconnect" : "Connect"}</button>
 							<button class="remove" onclick={() => forget(dev)}>Forget</button>
 						</div>
@@ -120,7 +118,7 @@
 				{:else}
 					{#each scanResults as dev (dev.address)}
 						<div class="row">
-							<span class="name">{dev.name}</span>
+							<div class="name">{dev.name}<small>{dev.address}</small></div>
 							<button class="action" onclick={() => pair(dev)}>Pair</button>
 						</div>
 					{/each}
@@ -136,8 +134,7 @@
 <style>
 	.list {
 		min-height: 60px;
-		max-height: 220px;
-		overflow-y: auto;
+
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
@@ -157,6 +154,8 @@
 	}
 
 	.name {
+		min-width: 0;
+		overflow-wrap: anywhere;
 		flex: 1;
 	}
 
@@ -177,8 +176,9 @@
 	}
 
 	.remove {
-		background-color: var(--red);
-		color: var(--on-red);
+		background-color: transparent;
+		color: var(--red);
+		border: 1px solid color-mix(in srgb, var(--red) 40%, transparent);
 	}
 
 	.scan {
@@ -192,4 +192,5 @@
 		opacity: 0.5;
 		cursor: default;
 	}
+	.name small { display:block; color:var(--muted); font-size:11px; font-weight:400; margin-top:3px; }
 </style>

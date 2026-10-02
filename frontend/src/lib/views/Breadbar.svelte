@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { useDraft, drafts } from "$lib/drafts.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
@@ -53,17 +54,22 @@
 
 	async function saveCss() {
 		cssSaving = true;
+		drafts.saving = true;
 		try {
 			const reloaded = await invoke<boolean>("save_breadbar_css", { css });
 			cssStatus = reloaded ? "Saved & reloaded" : "Saved";
+			cssDraft.markSaved();
 			style = await invoke<BreadbarStyle>("get_breadbar_style");
 			setTimeout(() => (cssStatus = ""), 3000);
 		} catch (e) {
 			cssStatus = `Error: ${e}`;
+			throw e;
 		} finally {
 			cssSaving = false;
+			drafts.saving = false;
 		}
 	}
+	const cssDraft = useDraft(() => css, saveCss, () => loaded);
 </script>
 
 <ViewScaffold title="Bar">
@@ -107,7 +113,7 @@
 		{#if advancedOpen}
 			<textarea bind:value={css} spellcheck="false"></textarea>
 			<div class="row">
-				<button class="save-css" disabled={cssSaving} onclick={saveCss}>Save CSS</button>
+				<button class="save-css" disabled={cssSaving} onclick={() => saveCss().catch(() => {})}>Save CSS</button>
 				<span class="status">{cssStatus}</span>
 			</div>
 		{/if}

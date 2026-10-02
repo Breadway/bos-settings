@@ -73,7 +73,7 @@
 							<span class="name">{p.name}{p.is_default ? " (default)" : ""}</span>
 							<span class="status">{p.enabled ? p.status : "disabled"}</span>
 						</div>
-						<button disabled={p.is_default} onclick={() => setDefault(p.name)}>Set default</button>
+						{#if !p.is_default}<button onclick={() => setDefault(p.name)}>Set default</button>{:else}<span class="status">Default printer</span>{/if}
 					</div>
 				{/each}
 			</div>
