@@ -17,7 +17,7 @@
 </script>
 
 <Row {label} {hint}>
-	<select bind:value>
+	<select bind:value aria-label={label}>
 		{#each options as opt (opt)}
 			<option value={opt}>{labels[opt] ?? opt}</option>
 		{/each}
@@ -27,6 +27,8 @@
 <style>
 	select {
 		color-scheme: dark;
+		max-width: 100%;
+		min-width: 0;
 		background-color: var(--bg);
 		color: var(--on-surface);
 		border: 1px solid transparent;

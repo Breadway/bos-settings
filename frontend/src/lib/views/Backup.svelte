@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { useDraft } from "$lib/drafts.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { runStreamed } from "$lib/streaming";
@@ -117,6 +118,7 @@
 			target,
 		});
 	}
+	useDraft(() => ({ repo, password }), save, () => st !== null);
 </script>
 
 <ViewScaffold title="Backup">

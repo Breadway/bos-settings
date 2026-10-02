@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { guardNavigation } from "$lib/drafts.svelte";
 	let {
 		items,
 		value = $bindable(),
@@ -7,7 +8,7 @@
 
 <div class="subnav">
 	{#each items as item (item.id)}
-		<button type="button" class:on={value === item.id} onclick={() => (value = item.id)}>
+		<button type="button" class:on={value === item.id} onclick={() => guardNavigation(() => { value = item.id; })}>
 			{item.label}
 		</button>
 	{/each}
@@ -23,7 +24,7 @@
 
 	button {
 		padding: 6px 11px;
-		border-radius: 999px;
+		border-radius: 8px;
 		font-size: 12px;
 		background: color-mix(in srgb, var(--fg) 6%, transparent);
 		border: 1px solid var(--line, color-mix(in srgb, var(--fg) 8%, transparent));
@@ -32,8 +33,8 @@
 	}
 
 	button.on {
-		background: var(--accent);
-		color: var(--on-accent);
+		background: var(--surface-2);
+		color: var(--fg);
 		border-color: transparent;
 		font-weight: 600;
 	}

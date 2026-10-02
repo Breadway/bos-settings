@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { drafts } from "$lib/drafts.svelte";
 	let { onSave }: { onSave: () => Promise<void> } = $props();
 
 	let status = $state("");
@@ -6,14 +7,17 @@
 
 	async function save() {
 		saving = true;
+		drafts.saving = true;
 		try {
 			await onSave();
+			for (const draft of drafts.items) draft.markSaved();
 			status = "Saved";
 			setTimeout(() => (status = ""), 3000);
 		} catch (e) {
 			status = `Error: ${e}`;
 		} finally {
 			saving = false;
+			drafts.saving = false;
 		}
 	}
 </script>

@@ -16,6 +16,7 @@
 		hostname: string;
 	}
 
+	let track = $state("");
 	let info = $state<SystemInfo | null>(null);
 	let hostnameInput = $state("");
 	let status = $state("");
@@ -46,6 +47,7 @@
 	onMount(async () => {
 		info = await invoke<SystemInfo>("get_system_info");
 		hostnameInput = info.hostname;
+		track = await invoke<{current:string}>("get_bakery_track").then(result => result.current).catch(() => "Unavailable");
 	});
 
 	async function applyHostname() {
@@ -68,7 +70,8 @@
 
 <ViewScaffold title="About">
 	{#if info}
-		<Group title="This machine">
+		<div class="hero"><div class="logo">B</div><div><h2>{info.os}</h2><p>{track} channel · {info.uptime} uptime</p></div></div>
+  <Group title="This machine">
 			<InfoRow label="Operating system" value={info.os} />
 			<InfoRow label="Kernel" value={info.kernel} />
 			<InfoRow label="CPU" value={info.cpu} />
@@ -78,7 +81,10 @@
 			<InfoRow label="Uptime" value={info.uptime} />
 		</Group>
 
-		<Group title="Hostname" hint="Changes the machine's network name. Takes effect immediately; needs your password (polkit).">
+  <Group title="Help">
+   <button class="btn" onclick={async () => { try { await navigator.clipboard.writeText(`${info!.os}\nKernel: ${info!.kernel}\nCPU: ${info!.cpu}\nGPU: ${info!.gpu}\nMemory: ${info!.memory}\nChannel: ${track}`); status = "System info copied"; } catch(e) {status = String(e);} }}>Copy system info</button>
+  </Group>
+  <Group title="Hostname" hint="Changes the machine's network name. Takes effect immediately; needs your password (polkit).">
 			<div class="hostname-row">
 				<input type="text" bind:value={hostnameInput} disabled={applying} />
 				<button disabled={applying} onclick={applyHostname}>Apply</button>
@@ -129,4 +135,5 @@
 		opacity: 0.6;
 		font-size: var(--font-size-secondary, 12px);
 	}
+	.hero { display:flex; align-items:center; gap:16px; padding:18px; background:var(--surface); border:1px solid var(--line); border-radius:14px; } .logo { width:54px; height:54px; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent); border-radius:16px; font-size:26px; } .hero h2 { margin:0; font-size:22px; font-weight:500; } .hero p { margin:4px 0 0; color:var(--muted); font-size:12px; }
 </style>

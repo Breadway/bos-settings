@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { updateRun } from "$lib/updateRun.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { runStreamed } from "$lib/streaming";
@@ -36,8 +37,7 @@
 	}
 
 	let status = $state<UpdatesStatus | null>(null);
-	let log = $state<string[]>([]);
-	let busy = $state(false);
+
 
 	async function refresh() {
 		status = await invoke<UpdatesStatus>("get_updates_status");
@@ -46,19 +46,47 @@
 	onMount(refresh);
 
 	function appendLine(line: string) {
-		log = [...log, line];
+		updateRun.log = [...updateRun.log, line];
 	}
 
 	async function run(command: string, args: Record<string, unknown> = {}) {
-		log = [];
-		busy = true;
-		await runStreamed(command, args, appendLine);
-		busy = false;
-		await refresh();
+		if (updateRun.busy) return;
+		updateRun.log = [];
+		updateRun.steps = [];
+		updateRun.message = "";
+		updateRun.busy = true;
+		try { if (!await runStreamed(command, args, appendLine)) updateRun.message = "The operation did not finish. See the log for details."; await refresh(); } catch(e) { updateRun.message = String(e); } finally { updateRun.busy = false; }
 	}
+
+ async function updateEverything() {
+  if (updateRun.busy || !status) return;
+  const jobs = [{label:"System packages", command:"pacman_system_update"},{label:"Bread apps",command:"bakery_update_all"},{label:"Firmware",command:"fwupd_update"}];
+  updateRun.log = []; updateRun.message = ""; updateRun.busy = true;
+  updateRun.steps = [{label:"Safety snapshot",state:"running"}, ...jobs.map(j => ({label:j.label,state:"waiting" as const}))];
+  let index = 0;
+  try {
+   const snapshot = await invoke<string|null>("create_update_snapshot");
+   if(!snapshot && !confirm("No root snapshot configuration was found. Continue updating without a system snapshot?")) { updateRun.message = "Update cancelled."; updateRun.steps[0].state = "failed"; return; }
+   updateRun.log.push(snapshot ? `Created system snapshot ${snapshot}` : "Continuing without a system snapshot");
+   updateRun.steps[0].state = "done";
+   for (const [i,job] of jobs.entries()) {
+    index = i + 1; updateRun.steps[index].state = "running";
+    if (!await runStreamed(job.command, {}, appendLine)) throw new Error(`${job.label} did not finish. Review the log before retrying.`);
+    updateRun.steps[index].state = "done";
+   }
+   updateRun.message = "Updates complete. Firmware may require a restart.";
+   await refresh();
+  } catch(e) { updateRun.steps[index].state = "failed"; updateRun.message = String(e); }
+  finally { updateRun.busy = false; }
+ }
 </script>
 
 <ViewScaffold title="Updates">
+ <Group title="Update everything" hint="Create a system snapshot, then update system packages, bread apps and firmware. Authentication may be requested.">
+  <button class="btn primary" disabled={updateRun.busy || !status} onclick={updateEverything}>{updateRun.busy ? "Updating…" : "Update everything"}</button>
+  {#if updateRun.steps.length}<ol class="steps" aria-live="polite">{#each updateRun.steps as step}<li class:failed={step.state === "failed"}>{step.label}: {step.state}</li>{/each}</ol>{/if}
+  {#if updateRun.message}<p role="status">{updateRun.message}</p>{/if}
+ </Group>
 	{#if status?.nvidia}
 		<Group title="NVIDIA driver" wide>
 			<div class="offer">
@@ -74,7 +102,7 @@
 				</div>
 				<button
 					class="primary"
-					disabled={busy}
+					disabled={updateRun.busy}
 					onclick={() => run("nvidia_setup")}
 				>
 					{status.nvidia.installed ? "Re-run setup" : "Install driver"}
@@ -85,7 +113,7 @@
 
 	<Group
 		title="System packages (pacman)"
-		hint="The same set Packages covers with pacman -Syu. Needs your password (polkit)."
+		hint="Official repositories. Authentication is required."
 		wide
 	>
 		{#if !status}
@@ -105,8 +133,8 @@
 			</div>
 		{/if}
 		<div class="btn-row">
-			<button disabled={busy} class="primary" onclick={() => run("pacman_system_update")}>Update system</button>
-			<button disabled={busy} onclick={refresh}>Refresh</button>
+			<button disabled={updateRun.busy} class="primary" onclick={() => run("pacman_system_update")}>Update system</button>
+			<button disabled={updateRun.busy} onclick={refresh}>Refresh</button>
 		</div>
 	</Group>
 
@@ -127,13 +155,13 @@
 					<div class="row">
 						<span class="name">{pkg.name}</span>
 						<span class="version">{pkg.current ? `${pkg.current} → ` : ""}{pkg.latest}</span>
-						<button disabled={busy} onclick={() => run("bakery_update", { name: pkg.name })}>Update</button>
+						<button disabled={updateRun.busy} onclick={() => run("bakery_update", { name: pkg.name })}>Update</button>
 					</div>
 				{/each}
 			</div>
 		{/if}
 		<div class="btn-row">
-			<button disabled={busy} class="primary" onclick={() => run("bakery_update_all")}>Update all bakery</button>
+			<button disabled={updateRun.busy} class="primary" onclick={() => run("bakery_update_all")}>Update all bakery</button>
 		</div>
 	</Group>
 
@@ -153,8 +181,8 @@
 			</div>
 		{/if}
 		<div class="btn-row">
-			<button disabled={busy} onclick={() => run("fwupd_refresh")}>Check for updates</button>
-			<button disabled={busy} class="primary" onclick={() => run("fwupd_update")}>Update firmware</button>
+			<button disabled={updateRun.busy} onclick={() => run("fwupd_refresh")}>Check for updates</button>
+			<button disabled={updateRun.busy} class="primary" onclick={() => run("fwupd_update")}>Update firmware</button>
 		</div>
 	</Group>
 
@@ -168,7 +196,7 @@
 		</div>
 	</Group>
 
-	<LogView lines={log} />
+	<LogView lines={updateRun.log} />
 </ViewScaffold>
 
 <style>
@@ -247,4 +275,5 @@
 		opacity: 0.5;
 		cursor: default;
 	}
+	.steps { color:var(--muted); font-size:12px; padding-left:20px; } .failed { color:var(--red); }
 </style>

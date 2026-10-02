@@ -180,3 +180,36 @@ mod tests {
         assert!(parse_snapper_json(r#"{"root": 3}"#).is_err());
     }
 }
+
+/// Make the safety snapshot before the combined update flow. No caller-supplied arguments.
+#[tauri::command]
+pub async fn create_update_snapshot() -> Result<Option<String>, String> {
+    if !std::path::Path::new("/etc/snapper/configs/root").is_file() {
+        return Ok(None);
+    }
+    let out = tokio::process::Command::new("pkexec")
+        .args([
+            "snapper",
+            "-c",
+            "root",
+            "create",
+            "--type",
+            "single",
+            "--description",
+            "Before BOS Settings update",
+            "--cleanup-algorithm",
+            "number",
+            "--print-number",
+        ])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(super::util::fail_output(&out, "Creating a safety snapshot"));
+    }
+    let number = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if !super::util::valid_number_id(&number) {
+        return Err("Snapper did not return a snapshot number".into());
+    }
+    Ok(Some(number))
+}

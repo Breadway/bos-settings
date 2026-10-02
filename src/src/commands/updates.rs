@@ -56,7 +56,10 @@ async fn list_pacman_upgrades() -> Result<Vec<PendingUpdate>, String> {
         .output()
         .await
         .map_err(|e| format!("couldn't run pacman: {e}"))?;
-    // pacman -Qu exits 1 when there is nothing to upgrade.
+    // pacman -Qu exits 1 with empty stderr when there is nothing to upgrade.
+    if !output.status.success() && !(output.status.code() == Some(1) && output.stderr.is_empty()) {
+        return Err(super::util::fail_output(&output, "Checking system updates"));
+    }
     let text = String::from_utf8_lossy(&output.stdout);
     Ok(parse_pacman_qu(&text))
 }
@@ -92,6 +95,9 @@ async fn list_bakery_outdated() -> Result<Vec<PendingUpdate>, String> {
         .output()
         .await
         .map_err(|e| format!("couldn't run bakery: {e}"))?;
+    if !output.status.success() {
+        return Err(super::util::fail_output(&output, "Checking bakery updates"));
+    }
     let text = strip_ansi(&String::from_utf8_lossy(&output.stdout));
     let err = strip_ansi(&String::from_utf8_lossy(&output.stderr));
     let combined = format!("{text}\n{err}");

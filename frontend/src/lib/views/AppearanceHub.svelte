@@ -2,7 +2,7 @@
 	import Hub from "$lib/components/Hub.svelte";
 	import Breadpaper from "./Breadpaper.svelte";
 	import ShellTheme from "./ShellTheme.svelte";
-	import Appearance from "./Appearance.svelte";
+	import Appearance from "./Windows.svelte";
 </script>
 
 <Hub

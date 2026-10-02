@@ -4,6 +4,7 @@ use serde::Serialize;
 pub struct FwDevice {
     name: String,
     version: String,
+    security_database: bool,
 }
 
 #[tauri::command]
@@ -31,6 +32,7 @@ pub async fn get_updatable_firmware() -> Vec<FwDevice> {
         .filter_map(|d| {
             Some(FwDevice {
                 name: d.get("Name")?.as_str()?.to_string(),
+                security_database: is_security_database(d),
                 version: d
                     .get("Version")
                     .and_then(|v| v.as_str())
@@ -39,4 +41,38 @@ pub async fn get_updatable_firmware() -> Vec<FwDevice> {
             })
         })
         .collect()
+}
+
+fn is_security_database(device: &serde_json::Value) -> bool {
+    let name = device
+        .get("Name")
+        .and_then(|n| n.as_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    name.contains("uefi dbx")
+        || name.contains("uefi ca")
+        || name.contains("kek ca")
+        || device
+            .get("Plugin")
+            .and_then(|n| n.as_str())
+            .is_some_and(|p| ["uefi-dbx", "uefi-kek", "uefi-db", "uefi-pk"].contains(&p))
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn separate_secure_boot_databases_from_hardware() {
+        assert!(is_security_database(
+            &serde_json::json!({"Name":"UEFI dbx"})
+        ));
+        assert!(is_security_database(
+            &serde_json::json!({"Name":"Microsoft UEFI CA"})
+        ));
+        assert!(is_security_database(
+            &serde_json::json!({"Name":"Certificates", "Plugin":"uefi-kek"})
+        ));
+        assert!(!is_security_database(
+            &serde_json::json!({"Name":"System Firmware", "Plugin":"uefi_capsule"})
+        ));
+    }
 }

@@ -1,4 +1,12 @@
 :root {
+	--bg: #0e0f11;
+	--surface: #17191c;
+	--overlay: #272b30;
+	--fg: #e9ecef;
+	--on-surface: #e9ecef;
+	--accent: #2fa3a8;
+	--on-accent: #04191a;
+	--red: #e0736a;
 	--bg-2: color-mix(in oklab, var(--bg) 82%, var(--surface));
 	--surface-2: color-mix(in oklab, var(--surface) 72%, var(--overlay));
 	--muted: color-mix(in oklab, var(--fg) 58%, transparent);
@@ -119,3 +127,13 @@ input[type="range"] {
 	border-color: transparent;
 	font-weight: 600;
 }
+
+/* Narrow tiles must keep controls reachable, including older config editors. */
+kbd { border:1px solid var(--line); background:var(--surface); border-radius:5px; padding:3px 5px; color:var(--muted); }
+.content { scrollbar-width:thin; scrollbar-color:var(--surface-2) transparent; }
+.content input:not([type=range]):not([type=checkbox]), .content textarea, .content select { max-width:100%; min-width:0; }
+.content pre { max-width:100%; overflow-x:auto; }
+.content .btn-row { flex-wrap:wrap; }
+.search-highlight { border-radius:8px; background:var(--accent-soft); outline:2px solid var(--accent); outline-offset:2px; }
+@media(max-width:560px) { .content .row { flex-wrap:wrap; } .content .version { overflow-wrap:anywhere; } }
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }

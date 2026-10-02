@@ -13,6 +13,30 @@ import Shield from "@lucide/svelte/icons/shield";
 import Download from "@lucide/svelte/icons/download";
 import Info from "@lucide/svelte/icons/info";
 
+import Share2 from "@lucide/svelte/icons/share-2";
+
+import Mouse from "@lucide/svelte/icons/mouse";
+
+import Printer from "@lucide/svelte/icons/printer";
+
+import Bell from "@lucide/svelte/icons/bell";
+
+import Power from "@lucide/svelte/icons/power";
+
+import History from "@lucide/svelte/icons/history";
+
+import HardDrive from "@lucide/svelte/icons/hard-drive";
+
+import Users from "@lucide/svelte/icons/users";
+
+import Globe from "@lucide/svelte/icons/globe";
+
+import Accessibility from "@lucide/svelte/icons/accessibility";
+
+import Lock from "@lucide/svelte/icons/lock";
+
+import Package from "@lucide/svelte/icons/package";
+
 export interface SidebarItem {
 	id: string;
 	label: string;
@@ -25,34 +49,43 @@ export interface SidebarSection {
 }
 
 export const SIDEBAR_SECTIONS: SidebarSection[] = [
-	{ title: "Overview", items: [{ id: "home", label: "Home", icon: House }] },
-	{
-		title: "Devices",
-		items: [
-			{ id: "network", label: "Wi-Fi & internet", icon: Wifi },
-			{ id: "bluetooth", label: "Bluetooth", icon: Bluetooth },
-			{ id: "displays", label: "Displays", icon: Monitor },
-			{ id: "sound", label: "Sound", icon: Volume2 },
-			{ id: "power", label: "Power & battery", icon: BatteryFull },
-		],
-	},
-	{
-		title: "Desktop",
-		items: [
-			{ id: "appearance", label: "Appearance", icon: Palette },
-			{ id: "desktop", label: "Bar & apps", icon: AppWindow },
-			{ id: "input", label: "Keyboard & mouse", icon: Keyboard },
-			{ id: "apps", label: "Default apps", icon: LayoutGrid },
-		],
-	},
-	{
-		title: "System",
-		items: [
-			{ id: "privacy", label: "Privacy & users", icon: Shield },
-			{ id: "system", label: "Updates & backup", icon: Download },
-			{ id: "about", label: "About", icon: Info },
-		],
-	},
+	{ title: null, items: [
+		{ id: "home", label: "Home", icon: House },
+	] },
+	{ title: "Connect", items: [
+		{ id: "network", label: "Wi-Fi & network", icon: Wifi },
+		{ id: "bluetooth", label: "Bluetooth", icon: Bluetooth },
+		{ id: "sharing", label: "Sharing", icon: Share2 },
+	] },
+	{ title: "Devices", items: [
+		{ id: "displays", label: "Displays", icon: Monitor },
+		{ id: "sound", label: "Sound", icon: Volume2 },
+		{ id: "power", label: "Power & battery", icon: BatteryFull },
+		{ id: "mouse", label: "Mouse & touchpad", icon: Mouse },
+		{ id: "keyboard", label: "Keyboard", icon: Keyboard },
+		{ id: "printers", label: "Printers", icon: Printer },
+	] },
+	{ title: "Personalise", items: [
+		{ id: "appearance", label: "Appearance", icon: Palette },
+		{ id: "desktop", label: "Desktop & bar", icon: AppWindow },
+		{ id: "lock", label: "Lock screen", icon: Lock },
+		{ id: "notifications", label: "Notifications", icon: Bell },
+	] },
+	{ title: "Apps", items: [
+		{ id: "defaults", label: "Default apps", icon: LayoutGrid },
+		{ id: "getapps", label: "Get apps", icon: Package },
+		{ id: "startup", label: "Startup", icon: Power },
+	] },
+	{ title: "System", items: [
+		{ id: "updates", label: "Updates", icon: Download },
+		{ id: "restore", label: "Backup & restore", icon: History },
+		{ id: "storage", label: "Storage", icon: HardDrive },
+		{ id: "privacy", label: "Privacy & security", icon: Shield },
+		{ id: "users", label: "Users", icon: Users },
+		{ id: "datetime", label: "Date & language", icon: Globe },
+		{ id: "a11y", label: "Accessibility", icon: Accessibility },
+		{ id: "about", label: "About", icon: Info },
+	] },
 ];
 
 /** Old sidebar ids (screenshot CLI, in-app jumps) → hub page + optional tab. */
@@ -73,40 +106,56 @@ export const PAGE_ALIASES: Record<string, { page: string; tab?: string }> = {
 	desktop: { page: "desktop" },
 	breadbar: { page: "desktop", tab: "breadbar" },
 	breadbox: { page: "desktop", tab: "breadbox" },
-	breadlock: { page: "desktop", tab: "breadlock" },
+	breadlock: { page: "lock" },
 	breadshot: { page: "desktop", tab: "breadshot" },
-	autostart: { page: "desktop", tab: "autostart" },
-	breadclip: { page: "desktop", tab: "more" },
-	breadpad: { page: "desktop", tab: "more" },
-	breadsearch: { page: "desktop", tab: "more" },
-	bread: { page: "desktop", tab: "more" },
-	breadhelp: { page: "desktop", tab: "more" },
-	more: { page: "desktop", tab: "more" },
-	input: { page: "input" },
-	keybinds: { page: "input", tab: "keybinds" },
-	ime: { page: "input", tab: "ime" },
-	accessibility: { page: "input", tab: "accessibility" },
-	apps: { page: "apps" },
-	defaults: { page: "apps" },
-	optional: { page: "apps", tab: "optional" },
-	printing: { page: "apps", tab: "printing" },
+	autostart: { page: "startup" },
+	breadclip: { page: "desktop", tab: "breadclip" },
+	breadpad: { page: "desktop", tab: "breadpad" },
+	breadsearch: { page: "desktop", tab: "breadsearch" },
+	bread: { page: "desktop", tab: "bread" },
+	breadhelp: { page: "desktop", tab: "breadhelp" },
+	more: { page: "desktop", tab: "breadclip" },
+	input: { page: "keyboard", tab: "keybinds" },
+	keybinds: { page: "keyboard", tab: "keybinds" },
+	ime: { page: "keyboard", tab: "ime" },
+	accessibility: { page: "a11y" },
+	apps: { page: "defaults" },
+	defaults: { page: "defaults" },
+	optional: { page: "getapps", tab: "optional" },
+	printing: { page: "printers" },
 	privacy: { page: "privacy" },
 	firewall: { page: "privacy" },
-	users: { page: "privacy", tab: "users" },
-	system: { page: "system" },
-	updates: { page: "system" },
-	packages: { page: "system", tab: "packages" },
-	aur: { page: "system", tab: "aur" },
-	firmware: { page: "system", tab: "firmware" },
-	snapshots: { page: "system", tab: "snapshots" },
-	backup: { page: "system", tab: "backup" },
-	channel: { page: "system", tab: "channel" },
+	users: { page: "users" },
+	system: { page: "updates" },
+	updates: { page: "updates" },
+	packages: { page: "getapps", tab: "packages" },
+	aur: { page: "getapps", tab: "aur" },
+	firmware: { page: "updates", tab: "firmware" },
+	snapshots: { page: "restore", tab: "snapshots" },
+	backup: { page: "restore", tab: "backup" },
+	channel: { page: "updates", tab: "channel" },
 	about: { page: "about" },
-	datetime: { page: "about", tab: "datetime" },
+	datetime: { page: "datetime" },
 };
 
 export const DEFAULT_PAGE = "home";
 
 export function resolvePage(id: string): { page: string; tab?: string } {
 	return PAGE_ALIASES[id] ?? { page: id };
+}
+
+/** Preserve old hub + tab requests while routing to the new sidebar pages. */
+export function resolveDestination(page: string, tab?: string): {page:string; tab?:string} {
+ const splitTabs: Record<string,string[]> = {
+  desktop: ["breadlock", "autostart"],
+  input: ["keybinds", "ime", "accessibility"],
+  apps: ["printing", "optional"],
+  privacy: ["users"],
+  system: ["updates", "packages", "aur", "firmware", "snapshots", "backup", "channel"],
+  about: ["datetime"],
+ };
+ if (page === "desktop" && tab === "more") return {page:"desktop",tab:"breadclip"};
+ if (tab && splitTabs[page]?.includes(tab)) return resolvePage(tab);
+ const resolved = resolvePage(page);
+ return {page:resolved.page, tab:tab ?? resolved.tab};
 }

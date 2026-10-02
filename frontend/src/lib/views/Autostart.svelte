@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { isSystemStartup } from "$lib/systemStartup";
+	import Hint from "$lib/components/Hint.svelte";
+	import { useDraft } from "$lib/drafts.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { open } from "@tauri-apps/plugin-dialog";
@@ -13,10 +16,13 @@
 		enabled: boolean;
 	}
 
+	let editSystem = $state(false);
+	let originalSystem = "";
 	let entries = $state<AutostartEntry[] | null>(null);
 
 	onMount(async () => {
 		entries = await invoke<AutostartEntry[]>("get_autostart_entries");
+		originalSystem = JSON.stringify(entries.filter(e => isSystemStartup(e.command)));
 	});
 
 	function addEntry() {
@@ -33,18 +39,24 @@
 	}
 
 	async function save() {
-		await invoke("save_autostart_entries", { entries });
+		const system = JSON.stringify(entries?.filter(e => isSystemStartup(e.command)));
+		const changed = system !== originalSystem;
+		if (changed && !confirm("Change core desktop services? Disabling or removing them can stop locking, screenshots, wallpaper or other desktop features.")) throw new Error("System service changes were not saved.");
+		await invoke("save_autostart_entries", { entries, allowSystemChanges: changed });
+		originalSystem = system;
 	}
+	useDraft(() => (entries), save, () => entries !== null);
 </script>
 
 <ViewScaffold title="Startup Apps">
 	{#if entries}
 		<Group
 			title="Extra autostart apps"
-			hint="Extra apps after login. Bar and clipboard always start."
+			hint="Your apps start after login. Core desktop services are listed separately below."
 			wide
 		>
 			{#each entries as entry, i (i)}
+				{#if !isSystemStartup(entry.command)}
 				<div class="row">
 					<button
 						class="switch"
@@ -65,10 +77,27 @@
 					</button>
 					<button class="remove" onclick={() => removeEntry(i)}>Remove</button>
 				</div>
+							{/if}
 			{/each}
 			<button class="add" onclick={addEntry}>Add app</button>
 
-			<SaveButton onSave={save} />
+
+   <details class="system">
+    <summary>System services</summary>
+    <Hint text="These services provide the bar, locking and desktop integrations. Leave them enabled unless you are replacing them." />
+    <button class="btn" onclick={() => { if (confirm("Enable advanced editing of core startup services? Changing them can break desktop features.")) editSystem = true; }}>Enable advanced editing</button>
+    {#each entries as entry, i (i)}
+     {#if isSystemStartup(entry.command)}
+      <div class="row">
+       <div class="fields"><b>{entry.label || entry.command}</b><small>{entry.enabled ? "Enabled" : "Disabled"}</small>
+        {#if editSystem}<input aria-label="System service command" bind:value={entry.command} />{/if}
+       </div>
+       {#if editSystem}<button class="btn" onclick={() => entry.enabled = !entry.enabled}>{entry.enabled ? "Disable" : "Enable"}</button><button class="btn danger" onclick={() => removeEntry(i)}>Remove</button>{/if}
+      </div>
+     {/if}
+    {/each}
+   </details>
+   <SaveButton onSave={save} />
 		</Group>
 	{/if}
 </ViewScaffold>
@@ -165,4 +194,5 @@
 		background-color: var(--on-surface);
 		display: block;
 	}
+	.system { border-top:1px solid var(--line); margin-top:12px; padding-top:12px; } summary { cursor:pointer; color:var(--muted); } small { color:var(--muted); }
 </style>

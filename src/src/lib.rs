@@ -49,6 +49,14 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::sharing::get_sharing_status,
+            commands::sharing::set_remote_login,
+            commands::sharing::open_sharing_app,
+            commands::sharing::open_notification_history,
+            commands::storage::get_storage_info,
+            commands::storage::get_cache_entries,
+            commands::storage::clean_storage,
+            commands::storage::open_storage_folder,
             commands::navigation::get_initial_page,
             commands::theme::get_theme_css,
             commands::about::get_system_info,
@@ -143,6 +151,7 @@ pub fn run() {
             commands::aur::install_aur_package,
             commands::firmware::get_updatable_firmware,
             commands::snapshots::get_snapshots,
+            commands::snapshots::create_update_snapshot,
             commands::snapshots::delete_snapshot,
             commands::snapshots::reboot_system,
             commands::breadlock::get_breadlock_config,

@@ -25,16 +25,16 @@
 
 <style>
 	.view {
-		padding: 28px 36px 56px;
+		padding: 26px 32px 70px;
 		min-height: 100%;
 	}
 
 	.title {
-		font-size: 28px;
-		font-weight: 600;
-		letter-spacing: -0.04em;
+		font-size: 26px;
+		font-weight: 500;
+		letter-spacing: -0.01em;
 		margin: 0 auto;
-		max-width: 920px;
+		max-width: 716px;
 		width: 100%;
 	}
 
@@ -43,7 +43,7 @@
 		color: var(--muted, color-mix(in oklab, var(--fg) 58%, transparent));
 		font-size: 14px;
 		line-height: 1.45;
-		max-width: 920px;
+		max-width: 716px;
 		width: 100%;
 	}
 
@@ -51,14 +51,15 @@
 	.embed {
 		display: flex;
 		flex-direction: column;
-		gap: 18px;
-		max-width: 920px;
+		gap: 14px;
+		max-width: 716px;
 		width: 100%;
-		margin-top: 22px;
+		margin-top: 18px;
 		margin-inline: auto;
 	}
 
 	.embed {
 		margin-top: 0;
 	}
+	@media (max-width: 560px) { .view { padding: 20px 16px 70px; } }
 </style>
