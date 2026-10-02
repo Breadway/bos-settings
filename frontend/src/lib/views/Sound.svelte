@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
+	import { listen } from "@tauri-apps/api/event";
+	import { createLiveGate } from "$lib/liveGate";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
 	import Row from "$lib/components/Row.svelte";
@@ -36,15 +38,38 @@
 		return { kind, title, devices: section.devices, selected: pick(section.devices, section.default_name) };
 	}
 
-	onMount(async () => {
+	// Volume, mute and the default device change behind this page's back (volume
+	// keys, the bar, another mixer), so the backend streams `pactl subscribe`
+	// events as `sound-changed` and the page re-reads on each one. A read never
+	// replaces a slider the user is dragging or has just moved (BSET-31).
+	const gate = createLiveGate();
+	let retry: ReturnType<typeof setTimeout> | undefined;
+
+	async function reload() {
 		try {
-			output = await loadSection("sinks", "Output");
-			input = await loadSection("sources", "Input");
+			const [o, i] = [await loadSection("sinks", "Output"), await loadSection("sources", "Input")];
+			if (!gate.canAdopt()) {
+				clearTimeout(retry);
+				retry = setTimeout(reload, 800);
+				return;
+			}
+			output = o;
+			input = i;
 		} catch (e) {
 			console.error(e);
-			output = { kind: "sinks", title: "Output", devices: [], selected: 0 };
-			input = { kind: "sources", title: "Input", devices: [], selected: 0 };
+			output ??= { kind: "sinks", title: "Output", devices: [], selected: 0 };
+			input ??= { kind: "sources", title: "Input", devices: [], selected: 0 };
 		}
+	}
+
+	onMount(() => {
+		reload();
+		invoke("watch_sound");
+		const unlisten = listen("sound-changed", reload);
+		return () => {
+			clearTimeout(retry);
+			unlisten.then((f) => f());
+		};
 	});
 
 	function current(section: DeviceSection): SoundDevice | null {
@@ -61,6 +86,7 @@
 	async function setVolume(section: DeviceSection, percent: number) {
 		const device = current(section);
 		if (!device) return;
+		gate.touch();
 		device.percent = percent;
 		await invoke("set_sound_volume", { kind: section.kind, name: device.name, percent: Math.round(percent) });
 	}
@@ -68,6 +94,7 @@
 	async function setMute(section: DeviceSection, mute: boolean) {
 		const device = current(section);
 		if (!device) return;
+		gate.touch();
 		device.mute = mute;
 		await invoke("set_sound_mute", { kind: section.kind, name: device.name, mute });
 	}
@@ -91,7 +118,10 @@
 						min="0"
 						max="150"
 						value={Math.round(current(section)!.percent)}
-						oninput={(e) => setVolume(section, Number(e.currentTarget.value))}
+						onpointerdown={() => gate.begin()}
+					onpointerup={() => gate.end()}
+					onpointercancel={() => gate.end()}
+					oninput={(e) => setVolume(section, Number(e.currentTarget.value))}
 					/>
 					<span class="pct">{Math.round(current(section)!.percent)}%</span>
 				</Row>
