@@ -57,7 +57,7 @@ async fn list_pacman_upgrades() -> Result<Vec<PendingUpdate>, String> {
         .await
         .map_err(|e| format!("couldn't run pacman: {e}"))?;
     // pacman -Qu exits 1 with empty stderr when there is nothing to upgrade.
-    if !output.status.success() && !(output.status.code() == Some(1) && output.stderr.is_empty()) {
+    if !(output.status.success() || output.status.code() == Some(1) && output.stderr.is_empty()) {
         return Err(super::util::fail_output(&output, "Checking system updates"));
     }
     let text = String::from_utf8_lossy(&output.stdout);

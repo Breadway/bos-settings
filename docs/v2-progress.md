@@ -25,7 +25,7 @@ Tracked by BSET-43. Remaining proposal controls are on BSET-44, with notificatio
 | BSET-34 | Fuzzy settings search, context, control destinations, keyboard navigation and empty state |
 | BSET-35 | Bluetooth addresses and full lists; conditional package update buttons; cached Home status; default-printer marker; Secure Boot databases separated from hardware |
 
-Earlier display, night-light, sound, brightness, keyboard and battery fixes are carried forward from `feature/settings-v2` and `main`. Keyboard and battery fixes already have PRs awaiting review. System snapshot restore remains tracked by BSET-22 and its existing PR.
+Earlier display, night-light, sound, brightness, keyboard and battery fixes are carried forward from `feature/settings-v2` and `main`. Keyboard and battery fixes already have PRs awaiting review. System snapshot restore from BSET-22 landed on main and is included in this branch.
 
 ## Capability changes for user review
 
@@ -50,7 +50,7 @@ This is an implementation checkpoint, not completion of the entire approved mock
 - Accessibility: cursor/text sizing and reduce motion. Live zoom now has a slider; the original number field and Apply button remain.
 - Appearance/Desktop: preview graphics, presets and remaining friendly labels. Most config panels still use explicit Save with protection; Undo is currently available on Home quick controls.
 - Displays: mirroring controls and confirmation that the BOS loader reapplies transform and VRR at login. The recovered PR explicitly records the loader dependency.
-- Backup & restore: destination picker, scheduling, timeline and the separately reviewed system snapshot restore action.
+- Backup & restore: destination picker, scheduling and timeline. The system snapshot restore action is included.
 - Storage: unused-dependency review and a trustworthy system/files/snapshot breakdown. Measured cache totals are shown as totals, not an invented reclaimable amount.
 - About: bread/bakery health checks and a BOS version only when the operating system publishes one.
 
