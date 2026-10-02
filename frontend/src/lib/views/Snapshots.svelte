@@ -80,6 +80,7 @@
 
 <ViewScaffold title="Snapshots">
 	<Hint text="Reboot and pick a snapshot in GRUB to undo an update." />
+	<Hint text="Automatic cleanup keeps 2 to 20 regular snapshots and 4 to 10 important snapshots. With Btrfs quotas enabled, it also keeps at least 20% of the filesystem free and limits snapshots to 50% of its space. Low disk space can reduce these counts." />
 	<Group
 		title="What to pick in GRUB"
 		hint="Reboot and choose that entry in GRUB."

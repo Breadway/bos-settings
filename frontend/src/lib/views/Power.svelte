@@ -6,6 +6,7 @@
 	import Row from "$lib/components/Row.svelte";
 	import Group from "$lib/components/Group.svelte";
 	import Hint from "$lib/components/Hint.svelte";
+	import { createLiveGate, pollWhileVisible } from "$lib/liveGate";
 
 	interface PowerInfo {
 		battery: [string, string][];
@@ -21,14 +22,38 @@
 	let chargeStart = $state(0);
 	let chargeEnd = $state(100);
 
-	onMount(async () => {
-		info = await invoke<PowerInfo>("get_power_info");
-		brightness = info.brightness_pct ?? 0;
-		chargeStart = info.charge_start ?? 0;
-		chargeEnd = info.charge_end ?? 100;
+	// Brightness keys, the bar and other tools change the backlight (and the
+	// battery drains) while this page is open, so poll while it is visible
+	// (BSET-31). A read never replaces a slider that is being dragged or was
+	// just moved.
+	const gate = createLiveGate();
+	let ticks = 0;
+
+	onMount(() => {
+		(async () => {
+			info = await invoke<PowerInfo>("get_power_info");
+			brightness = info.brightness_pct ?? 0;
+			chargeStart = info.charge_start ?? 0;
+			chargeEnd = info.charge_end ?? 100;
+		})();
+		return pollWhileVisible(async () => {
+			ticks += 1;
+			if (!info) return;
+			const b = await invoke<number | null>("get_brightness");
+			if (b !== null && gate.canAdopt()) brightness = b;
+			// Battery level and power source change slowly: every ~10 s.
+			if (ticks % 5 === 0) {
+				const fresh = await invoke<PowerInfo>("get_power_info");
+				if (info) {
+					info.battery = fresh.battery;
+					info.power_source = fresh.power_source;
+				}
+			}
+		}, 2000);
 	});
 
 	async function setBrightness(percent: number) {
+		gate.touch();
 		brightness = percent;
 		await invoke("set_brightness", { percent });
 	}
@@ -55,7 +80,16 @@
 		<Group title="Brightness">
 			{#if info.brightness_pct !== null}
 				<Row label="Screen brightness">
-					<input type="range" min="1" max="100" bind:value={brightness} onchange={() => setBrightness(brightness)} />
+					<input
+						type="range"
+						min="1"
+						max="100"
+						bind:value={brightness}
+						onpointerdown={() => gate.begin()}
+						onpointerup={() => gate.end()}
+						onpointercancel={() => gate.end()}
+						onchange={() => setBrightness(brightness)}
+					/>
 					<span class="pct">{brightness}%</span>
 				</Row>
 			{:else}

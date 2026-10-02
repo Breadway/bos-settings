@@ -5,6 +5,8 @@
 	import Group from "$lib/components/Group.svelte";
 	import Hint from "$lib/components/Hint.svelte";
 	import Row from "$lib/components/Row.svelte";
+	import SwitchField from "$lib/components/SwitchField.svelte";
+	import KeepSettings from "$lib/components/KeepSettings.svelte";
 
 	interface LiveMonitor {
 		name: string;
@@ -17,6 +19,8 @@
 		scale: number;
 		transform: number;
 		available_modes: string[];
+		vrr: number;
+		mirror_of: string;
 	}
 
 	const SCALES = [
@@ -182,49 +186,99 @@
 		await apply();
 	}
 
+	// Layout moves (dragging a panel) are safe to apply and save at once; a
+	// failure puts the real state back instead of leaving the dragged position.
 	async function apply() {
-		if (monitors.length === 0) return;
+		if (monitors.length === 0 || pending) return;
 		applying = true;
 		message = "";
 		try {
 			await invoke("apply_monitor_layout", { monitors });
-			await refresh();
 		} catch (err) {
+			message = `${err}`;
+		} finally {
+			applying = false;
+			await refresh();
+		}
+	}
+
+	function cloneMonitors(list: LiveMonitor[]): LiveMonitor[] {
+		return list.map((m) => ({ ...m, available_modes: [...m.available_modes] }));
+	}
+
+	// Changes that can leave a screen unreadable (scale, rotation, mode, adaptive
+	// sync) are applied live only, then kept or reverted from a countdown. The
+	// optimistic UI state is rolled back if Hyprland rejects the change.
+	let pending = $state<{ before: LiveMonitor[]; after: LiveMonitor[] } | null>(null);
+
+	async function applyRisky(mutate: (m: LiveMonitor) => void) {
+		if (!live || pending) return;
+		const before = cloneMonitors(monitors);
+		mutate(live);
+		monitors = [...monitors];
+		message = "";
+		applying = true;
+		try {
+			await invoke("apply_monitor_layout", { monitors, persist: false });
+			pending = { before, after: cloneMonitors(monitors) };
+		} catch (err) {
+			monitors = before;
 			message = `${err}`;
 		} finally {
 			applying = false;
 		}
 	}
 
+	async function keepChanges() {
+		const p = pending;
+		pending = null;
+		if (!p) return;
+		try {
+			await invoke("persist_monitor_layout", { monitors: p.after });
+		} catch (err) {
+			message = `${err}`;
+		}
+		await refresh();
+	}
+
+	async function revertChanges() {
+		const p = pending;
+		pending = null;
+		if (!p) return;
+		try {
+			await invoke("apply_monitor_layout", { monitors: p.before, persist: false });
+		} catch (err) {
+			message = `${err}`;
+		}
+		await refresh();
+	}
+
 	async function setScale(value: number) {
-		if (!live) return;
-		live.scale = value;
-		monitors = [...monitors];
-		await apply();
+		await applyRisky((m) => (m.scale = value));
 	}
 
 	async function setTransform(value: number) {
-		if (!live) return;
-		live.transform = value;
-		monitors = [...monitors];
-		await apply();
+		await applyRisky((m) => (m.transform = value));
+	}
+
+	async function setVrr(on: boolean) {
+		await applyRisky((m) => (m.vrr = on ? 1 : 0));
 	}
 
 	async function setMode(modeStr: string) {
-		if (!live) return;
 		const cleaned = modeStr.replace(/Hz$/i, "");
 		const [res, hz] = cleaned.split("@");
 		const [w, h] = (res ?? "").split("x");
 		const width = Number(w);
 		const height = Number(h);
-		const refresh = Number(hz);
+		const rate = Number(hz);
 		if (!width || !height) return;
-		live.width = width;
-		live.height = height;
-		if (refresh) live.refresh = refresh;
-		live.mode = `${width}x${height} @ ${Math.round(live.refresh)}Hz`;
-		monitors = [...monitors];
-		await apply();
+		await applyRisky((m) => {
+			m.width = width;
+			m.height = height;
+			if (rate) m.refresh = rate;
+			m.mode = `${width}x${height} @ ${Math.round(m.refresh)}Hz`;
+		});
 	}
 </script>
 
@@ -291,6 +345,11 @@
 					{/each}
 				</div>
 			</Row>
+			<SwitchField
+				label="Adaptive sync"
+				hint="Smoother games and video on screens that support it."
+				bind:value={() => (live?.vrr ?? 0) > 0, (v) => setVrr(v)}
+			/>
 			<Row label="Position">
 				<span class="mode">{live.x}, {live.y}</span>
 			</Row>
@@ -300,6 +359,10 @@
 		</Group>
 	{/if}
 </ViewScaffold>
+
+{#if pending}
+	<KeepSettings onKeep={keepChanges} onRevert={revertChanges} />
+{/if}
 
 <style>
 	.mon-stage {
