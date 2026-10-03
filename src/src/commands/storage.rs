@@ -257,7 +257,7 @@ pub async fn get_unused_dependencies() -> Result<Vec<String>, String> {
         .output()
         .await
         .map_err(|e| e.to_string())?;
-    if !out.status.success() && !(out.status.code() == Some(1) && out.stderr.is_empty()) {
+    if !(out.status.success() || out.status.code() == Some(1) && out.stderr.is_empty()) {
         return Err(util::fail_output(&out, "Reviewing unused dependencies"));
     }
     Ok(String::from_utf8_lossy(&out.stdout)
