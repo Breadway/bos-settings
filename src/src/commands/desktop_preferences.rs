@@ -115,7 +115,6 @@ mod tests {
     use super::*;
     #[test]
     fn generated_lua_executes_against_typed_compositor_api() {
-        use std::io::Write;
         for (motion, method) in [(false, "clickfinger"), (true, "buttonareas")] {
             let p = DesktopPreferences {
                 reduce_motion: motion,
@@ -124,19 +123,7 @@ mod tests {
                 ..Default::default()
             };
             let script = format!("hl={{config=function(c) assert(c.input.touchpad.clickfinger_behavior == {click}); assert(c.animations.enabled == {enabled}); assert(c.general.border_size == 4) end, env=function(k,v) assert(v == '24') end, dsp={{exec_cmd=function(s) assert(s:match('^hyprctl setcursor [%w%._%-]+ 24$')); return s end}}, dispatch=function(s) assert(type(s) == 'string') end}}\n{lua}",click=method == "clickfinger",enabled=!motion,lua=lua(&p));
-            let mut child = std::process::Command::new("lua")
-                .arg("-")
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::null())
-                .spawn()
-                .expect("Lua is required to check generated compositor fragments");
-            child
-                .stdin
-                .take()
-                .unwrap()
-                .write_all(script.as_bytes())
-                .unwrap();
-            assert!(child.wait().unwrap().success());
+            mlua::Lua::new().load(&script).exec().unwrap();
         }
     }
 

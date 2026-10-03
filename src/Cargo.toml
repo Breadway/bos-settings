@@ -41,3 +41,6 @@ bread-theme = { git = "https://git.breadway.dev/Breadway/bread-ecosystem", tag =
 bread-utils = { git = "https://git.breadway.dev/Breadway/bread-ecosystem", tag = "v0.7.2", features = ["toml"] }
 anyhow = "1"
 
+[dev-dependencies]
+# Execute generated compositor config against a stub without a system Lua or GUI.
+mlua = { version = "0.9.9", features = ["lua54", "vendored"] }
