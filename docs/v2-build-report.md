@@ -1,11 +1,13 @@
 # BOS Settings v2 test builds
 
-Implementation commit: `19cbca07101fa7612f17f8e2600d5254ddf8a65d` on `feature/bos-settings-v2`.
+Main gap implementation commit: `19cbca07101fa7612f17f8e2600d5254ddf8a65d` on `feature/bos-settings-v2`.
+
+The final build also includes the equivalent package-query success expressions required by the CI runner's Rust 1.96 Clippy.
 
 ## Settings
 
 - Executable: `/home/breadway/Projects/bos-settings/src/target/release/bos-settings`
-- SHA256: `36db88e380a8833ae59f68c3a1b95da1c2937564266e46ef52007f0d561edb13`
+- SHA256: `755ec42689cc8e070a0f93f950733abdfd779f338a87f1b14f1f40031e1e7ef8`
 - Production frontend built before the Rust release binary.
 - All 23 generated JavaScript, CSS, JSON, font and license assets matched bytes embedded in the executable after Brotli decompression.
 - Repeat from the repository root: `node scripts/verify-embedded-frontend.mjs`.

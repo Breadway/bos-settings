@@ -31,8 +31,8 @@ async fn output(program: &str, args: &[&str]) -> Result<String, String> {
         .output()
         .await
         .map_err(|e| e.to_string())?;
-    if !out.status.success()
-        && !(args.contains(&"-Ss") && out.status.code() == Some(1) && out.stderr.is_empty())
+    if !(out.status.success()
+        || args.contains(&"-Ss") && out.status.code() == Some(1) && out.stderr.is_empty())
     {
         return Err(util::fail_output(&out, "Searching apps"));
     }
