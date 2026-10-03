@@ -1,7 +1,7 @@
 import { onDestroy } from "svelte";
 import { untrack } from "svelte";
 
-type Draft = { dirty: boolean; save: () => Promise<void>; markSaved: (snapshot?: string) => void; snapshot: () => string };
+type Draft = { sourceSave: () => Promise<void>; dirty: boolean; save: () => Promise<void>; markSaved: (snapshot?: string) => void; snapshot: () => string };
 export const drafts = $state({ items: [] as Draft[], pending: null as (() => void) | null, saving: false, error: "" });
 
 /** Register explicit-save forms so both page and tab navigation can protect them. */
@@ -9,6 +9,7 @@ export function useDraft(read: () => unknown, save: () => Promise<void>, ready: 
 	let baseline = $state<string | undefined>();
 	const draft: Draft = $state({
 		dirty: false,
+		sourceSave: save,
 		snapshot: () => JSON.stringify(read()),
 		markSaved: (snapshot?: string) => { baseline = snapshot ?? draft.snapshot(); draft.dirty = false; },
 		save: async () => { await save(); draft.markSaved(); },
@@ -44,4 +45,9 @@ export function discardAndContinue() {
 	const action = drafts.pending;
 	drafts.pending = null;
 	action?.();
+}
+
+/** A page save only clears the forms attached to that action. */
+export function markActionSaved(save: () => Promise<void>) {
+    for (const draft of drafts.items.filter(d => d.sourceSave === save)) draft.markSaved();
 }

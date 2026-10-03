@@ -1,8 +1,5 @@
 //! Battery/power status (upower), brightness (brightnessctl), and TLP's
-//! current profile. Deliberately no AC/Battery/Performance *switcher*: TLP
-//! automatically picks a profile by power source, so this only exposes
-//! controls for things that are actually user choices: brightness, and
-//! charge thresholds where the hardware supports them.
+//! current profile. Power profiles and idle policy live in power_settings.
 
 use serde::Serialize;
 use tokio::process::Command;
@@ -37,6 +34,9 @@ async fn battery_summary() -> Vec<(String, String)> {
     let mut rows = Vec::new();
     if let Some(state) = upower_field(&bat, "state").await {
         rows.push(("Status".to_string(), state));
+    }
+    if let Some(rate) = upower_field(&bat, "energy-rate").await {
+        rows.push(("Power draw".into(), rate));
     }
     if let Some(pct) = upower_field(&bat, "percentage").await {
         rows.push(("Charge".to_string(), pct));
@@ -556,5 +556,75 @@ mod tests {
             "/sys/class/power_supply/BAT1/charge_types x"
         )));
         assert!(!valid_protect_path(Path::new("charge_types")));
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct BatterySample {
+    pub time: u32,
+    pub percentage: f64,
+}
+fn parse_history(value: &serde_json::Value) -> Result<Vec<BatterySample>, String> {
+    let rows = value
+        .get("data")
+        .and_then(|v| v.get(0))
+        .and_then(|v| v.as_array())
+        .ok_or("Invalid battery history response")?;
+    let mut result = Vec::new();
+    for row in rows {
+        let Some(time) = row
+            .get(0)
+            .and_then(|v| v.as_u64())
+            .and_then(|v| u32::try_from(v).ok())
+        else {
+            continue;
+        };
+        let Some(percentage) = row.get(1).and_then(|v| v.as_f64()) else {
+            continue;
+        };
+        if percentage.is_finite() && (0.0..=100.0).contains(&percentage) {
+            result.push(BatterySample { time, percentage });
+        }
+    }
+    result.sort_by_key(|s| s.time);
+    Ok(result)
+}
+#[tauri::command]
+pub async fn get_battery_history() -> Result<Vec<BatterySample>, String> {
+    let device = upower_device("battery")
+        .await
+        .ok_or("No battery detected")?;
+    let out = Command::new("busctl")
+        .args([
+            "--system",
+            "--json=short",
+            "call",
+            "org.freedesktop.UPower",
+            &device,
+            "org.freedesktop.UPower.Device",
+            "GetHistory",
+            "suu",
+            "charge",
+            "86400",
+            "100",
+        ])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(util::fail_output(&out, "Reading battery history"));
+    }
+    parse_history(&serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?)
+}
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+    #[test]
+    fn excludes_invalid_readings_and_sorts_history() {
+        let v = serde_json::json!({"data":[[[200,50.0,2],[100,60.0,2],[150,999.0,0]]]});
+        let rows = parse_history(&v).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].time, 100);
+        assert!(parse_history(&serde_json::json!({})).is_err());
     }
 }

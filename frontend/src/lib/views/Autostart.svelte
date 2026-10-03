@@ -16,6 +16,12 @@
 		enabled: boolean;
 	}
 
+	let apps=$state<{id:string;name:string}[]>([]);
+	let picking=$state(false);let picker=$state<HTMLDialogElement>();
+ $effect(()=>{if(picking&&picker&&!picker.open)picker.showModal()});
+	let appQuery=$state("");
+	onMount(async()=>{apps=await invoke("list_startup_apps")});
+	function addApp(app:{id:string;name:string}) { if(!/^[a-zA-Z0-9_.-]+\.desktop$/.test(app.id)) return; entries=[...(entries ?? []),{command:`gtk-launch ${app.id}`,label:app.name,enabled:true}];picking=false; }
 	let editSystem = $state(false);
 	let originalSystem = "";
 	let entries = $state<AutostartEntry[] | null>(null);
@@ -48,10 +54,10 @@
 	useDraft(() => (entries), save, () => entries !== null);
 </script>
 
-<ViewScaffold title="Startup Apps">
+<ViewScaffold title="Startup" lede="Apps that open when you log in.">
 	{#if entries}
 		<Group
-			title="Extra autostart apps"
+			title="Your apps"
 			hint="Your apps start after login. Core desktop services are listed separately below."
 			wide
 		>
@@ -70,7 +76,7 @@
 					</button>
 					<div class="fields">
 						<input type="text" bind:value={entry.label} placeholder="Label" class="label" title={entry.label} />
-						<input type="text" bind:value={entry.command} placeholder="command" class="command" title={entry.command} />
+						<details><summary>Advanced command</summary><input type="text" bind:value={entry.command} placeholder="command" class="command" title={entry.command} /></details>
 					</div>
 					<button class="browse" onclick={() => browseFor(entry)} aria-label="Browse for program">
 						<FolderOpen size={14} />
@@ -79,13 +85,16 @@
 				</div>
 							{/if}
 			{/each}
-			<button class="add" onclick={addEntry}>Add app</button>
+			<button class="btn" onclick={() => picking=true}>Add an app</button>
+ {#if picking}<dialog bind:this={picker} aria-label="Add a startup app" oncancel={()=>picking=false}><h3>Add a startup app</h3><input class="inp" aria-label="Search installed apps" bind:value={appQuery} placeholder="Search installed apps"/>
+ <div class="picker">{#each apps.filter(a=>a.name.toLowerCase().includes(appQuery.toLowerCase())) as app (app.id)}<button class="btn" onclick={()=>addApp(app)}>{app.name}<span>Add</span></button>{/each}</div><button class="btn" onclick={()=>picking=false}>Cancel</button></dialog>{/if}
+ <details><summary>Add a custom command</summary><button class="btn" onclick={addEntry}>Add custom command</button></details>
 
 
-   <details class="system">
-    <summary>System services</summary>
+   <details class="system" open>
+    <summary>Managed by BOS</summary>
     <Hint text="These services provide the bar, locking and desktop integrations. Leave them enabled unless you are replacing them." />
-    <button class="btn" onclick={() => { if (confirm("Enable advanced editing of core startup services? Changing them can break desktop features.")) editSystem = true; }}>Enable advanced editing</button>
+    <details><summary>Advanced service editing</summary><button class="btn" onclick={() => { if (confirm("Enable advanced editing of core startup services? Changing them can break desktop features.")) editSystem = true; }}>Enable advanced editing</button></details>
     {#each entries as entry, i (i)}
      {#if isSystemStartup(entry.command)}
       <div class="row">
@@ -103,6 +112,9 @@
 </ViewScaffold>
 
 <style>
+ dialog{background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:14px;width:min(480px,calc(100vw - 32px));}dialog::backdrop{background:#0009;}
+	.picker {max-height:320px;overflow:auto;display:flex;flex-direction:column;gap:4px;margin:8px 0;}
+	.picker span {margin-left:auto;}
 	.row {
 		display: flex;
 		align-items: center;
@@ -164,12 +176,6 @@
 		padding: var(--space-xs, 4px) var(--space-md, 12px);
 	}
 
-	.add {
-		background-color: var(--surface);
-		color: var(--on-surface);
-		margin-top: var(--space-sm, 8px);
-		padding: var(--space-xs, 4px) var(--space-md, 12px);
-	}
 
 	.switch {
 		width: 36px;

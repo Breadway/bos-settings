@@ -132,6 +132,10 @@
 		return KEY_LABELS[k] ?? k;
 	}
 
+	let filter=$state("");
+	let filterGroup=$state("all");
+	function groupOf(row:EditRow) { const cmd=String(row.extraValue.command ?? "");return /wpctl|playerctl|brightnessctl/.test(cmd) ? "Media" : row.action === "exec" ? "Applications" : "Windows"; }
+	function matches(row:EditRow) { return (filterGroup === "all" || groupOf(row) === filterGroup) && `${bindTitle(row)} ${row.mods} ${row.key} ${JSON.stringify(row.extraValue)}`.toLowerCase().includes(filter.toLowerCase()); }
 	function bindTitle(row: EditRow): string {
 		if (row.action === "exec") {
 			const cmd = String(row.extraValue.command ?? "");
@@ -144,7 +148,11 @@
 			if (cmd.includes("playerctl next")) return "Next track";
 			if (cmd.includes("playerctl previous")) return "Previous track";
 			if (cmd.includes("playerctl play-pause")) return "Play/pause";
-			if (cmd) return cmd.split(/\s+/)[0].split("/").pop() ?? "Command";
+			const names:Record<string,string>={"zen-browser-single":"Open browser","zen-browser":"Open browser","kitty":"Open terminal","dolphin":"Open files","breadlock":"Lock screen","breadshot":"Take a screenshot","hyprshot":"Take a screenshot","breadbox":"Open launcher","breadsearch":"Search","breadclip":"Clipboard history","breadpad":"Open notes"};
+            if(cmd.includes("loginctl lock")) return "Lock screen";
+            const app=cmd.split(/\s+/)[0].split("/").pop() ?? "";
+            if(names[app]) return names[app];
+            if (cmd) return cmd.split(/\s+/)[0].split("/").pop() ?? "Command";
 		}
 		return ACTION_LABELS[row.action] ?? row.action;
 	}
@@ -521,6 +529,7 @@
 {#snippet section(rows: EditRow[], onAdd: () => void, onRemove: (i: number) => void)}
 	<div class="rows">
 		{#each rows as row, i (i)}
+		 {#if matches(row)}
 			<div class="bind-card">
 				<div class="bind-top">
 					<span class="what">{bindTitle(row)}</span>
@@ -538,9 +547,9 @@
 					</button>
 					<button type="button" class="remove" onclick={() => onRemove(i)}>Remove</button>
 				</div>
-				<div class="bind-bottom">
+				<details class="bind-bottom"><summary>Advanced action settings</summary>
 					{@render extraFields(row)}
-				</div>
+				</details>
 				{#if row.advancedOpen && KNOWN_ACTIONS.includes(row.action as (typeof KNOWN_ACTIONS)[number]) && row.action !== "drag"}
 					<input
 						class="extra-wide"
@@ -552,12 +561,15 @@
 					/>
 				{/if}
 			</div>
+		 {/if}
 		{/each}
+		{#if !rows.some(matches)}<p class="empty">No matching shortcuts.</p>{/if}
 	</div>
 	<button type="button" class="add" onclick={onAdd}>Add bind</button>
 {/snippet}
 
-<ViewScaffold title="Keybinds">
+<ViewScaffold title="Shortcuts" lede="Choose an action, then press the keys you want to use.">
+ <Group title="Find a shortcut"><TextField label="Search shortcuts" bind:value={filter} placeholder="Action or key combination"/><SelectField label="Group" bind:value={filterGroup} options={['all','Applications','Windows','Media']} labels={{all:'All shortcuts'}}/></Group>
 	{#if conflict}
 		<div class="conflict" role="alertdialog" aria-label="Shortcut already in use">
 			<span class="msg">

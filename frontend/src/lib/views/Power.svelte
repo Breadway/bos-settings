@@ -1,4 +1,7 @@
 <script lang="ts">
+	import {useDraft} from "$lib/drafts.svelte";
+	import SaveButton from "$lib/components/SaveButton.svelte";
+	import SelectField from "$lib/components/SelectField.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
@@ -25,7 +28,22 @@
 		tlp_profile: string | null;
 	}
 
-	let info = $state<PowerInfo | null>(null);
+	let policy=$state<{dim:number;screen_off:number;lock:number;sleep:number;sleep_on_battery:boolean;lid:string;power_button:string}|null>(null);
+ let modes=$state<{backend:string;current:string;profiles:string[]}|null>(null);
+ let automatic=$state(false);
+ onMount(async()=>{automatic=await invoke("get_automatic_power_mode")});
+ async function setAutomatic(enabled:boolean){if(modeBusy)return;modeBusy=true;modeError="";try{await invoke("set_automatic_power_mode",{enabled});automatic=enabled;}catch(e){modeError=String(e)}finally{modeBusy=false}}
+ let modeBusy=$state(false);let modeError=$state('');
+ onMount(async()=>{policy=await invoke('get_power_settings');modes=await invoke('get_power_modes')});
+ async function savePolicy(){await invoke('save_power_settings',{settings:policy})}
+ useDraft(()=>policy,savePolicy,()=>policy!==null);
+ async function setMode(profile:string){if(modeBusy)return;modeBusy=true;modeError='';try{await invoke('set_power_mode',{profile});modes=await invoke('get_power_modes')}catch(e){modeError=String(e)}finally{modeBusy=false}}
+ const timerOptions=['0','60','120','300','480','510','600','900','1200','1800','3600'];
+ const timerLabels:Record<string,string>={'0':'Never','60':'1 minute','120':'2 minutes','300':'5 minutes','480':'8 minutes','510':'8 minutes 30 seconds','600':'10 minutes','900':'15 minutes','1200':'20 minutes','1800':'30 minutes','3600':'1 hour'};
+ let history=$state<{time:number;percentage:number}[]>([]);let historyError=$state('');
+ onMount(async()=>{try{history=await invoke("get_battery_history")}catch(e){historyError=String(e)}});
+ let chart=$derived(history.length>1 ? history.map((s,i)=>`${i===0?"M":"L"}${(s.time-history[0].time)/(history[history.length-1].time-history[0].time || 1)*200} ${48-s.percentage*.48}`).join(" ") : "");
+ let info = $state<PowerInfo | null>(null);
 	let brightness = $state(0);
 	let chargeStart = $state(0);
 	let chargeEnd = $state(100);
@@ -99,7 +117,25 @@
 	title="Power & battery"
 	lede="Brightness, battery, and charge limits."
 >
-	{#if info}
+ {#if info}
+ <div class="battery-hero"><div class="ring">{info.battery.find(([k])=>k==='Charge')?.[1] ?? 'AC'}</div><div><h2>{info.battery.find(([k])=>k==='Time remaining')?.[1] ?? info.power_source}</h2><p>{info.power_source} · {info.battery.find(([k])=>k==='Battery health')?.[1] ?? ''} · {info.battery.find(([k])=>k==='Power draw')?.[1] ?? ''}</p></div>{#if chart}<svg viewBox="0 0 200 48" aria-label="Battery level, last 24 hours"><path d={chart} fill="none" stroke="var(--accent)" stroke-width="1.6"/></svg>{:else}<small>{historyError || "Battery history is not available yet."}</small>{/if}</div>
+ <Group title="Performance">
+ {#if modes?.profiles.length}<Row label="Power mode"><div class="seg">{#each modes.profiles as profile}<button class="btn" class:primary={modes.current===profile} disabled={modeBusy||automatic} onclick={()=>setMode(profile)}>{{'power-saver':'Battery saver','balanced':'Balanced','performance':'Performance'}[profile] ?? profile}</button>{/each}</div></Row>{:else}<Hint text="No profile service is available. Install power-profiles-daemon or TLP with tlp-pd to enable mode switching."/>{/if}
+ <SwitchField disabled={modeBusy||!modes?.profiles.includes("power-saver")||!modes?.profiles.includes("balanced")||!modes?.profiles.includes("performance")} label="Switch automatically" hint="Performance on AC, Balanced on battery, Battery saver below 20%." bind:value={()=>automatic,v=>{void setAutomatic(v)}}/>
+ {#if modeError}<p role="alert">{modeError}</p>{/if}
+ </Group>
+ {#if policy}
+ <Group title="When you step away">
+ {#each [['dim','Dim the screen after'],['screen_off','Turn off the screen after'],['lock','Lock after'],['sleep','Sleep after']] as [key,label]}
+ <SelectField {label} bind:value={()=>String(policy![key as 'dim']),v=>policy![key as 'dim']=Number(v)} options={Array.from(new Set([...timerOptions,String(policy[key as 'dim'])]))} labels={timerLabels}/>
+ {/each}
+ <SwitchField label="Sleep only on battery" bind:value={policy.sleep_on_battery}/>
+ </Group>
+ <Group title="Buttons and lid" hint="Changes to these two settings take effect after restarting the computer.">
+ <SelectField label="When I close the lid" bind:value={policy.lid} options={['suspend','lock','ignore']} labels={{suspend:'Sleep',lock:'Lock',ignore:'Do nothing'}}/>
+ <SelectField label="Power button" bind:value={policy.power_button} options={['menu','suspend','poweroff','ignore']} labels={{menu:'Show menu',suspend:'Sleep',poweroff:'Power off',ignore:'Do nothing'}}/>
+ </Group><SaveButton onSave={savePolicy}/>
+ {/if}
 		<Group title="Battery">
 			{#each info.battery as [label, value] (label)}
 				<InfoRow {label} {value} />
@@ -169,6 +205,7 @@
 </ViewScaffold>
 
 <style>
+ .battery-hero{display:flex;align-items:center;gap:16px;padding:18px;border-radius:14px;background:var(--surface);border:1px solid var(--line)}.ring{border:4px solid var(--accent);border-radius:50%;width:66px;height:66px;display:grid;place-items:center;flex:none}.battery-hero svg{width:220px;height:52px;margin-left:auto;flex-shrink:0}.battery-hero{flex-wrap:wrap}.battery-hero small{font-size:11px;color:var(--muted)}.battery-hero h2{font-size:18px;font-weight:500;margin:0}.battery-hero p{color:var(--muted);font-size:12px;margin:4px 0 0}.seg{display:flex;flex-wrap:wrap;gap:3px}
 	input[type="range"] {
 		width: 180px;
 	}

@@ -14,6 +14,7 @@
 		address: string;
 		name: string;
 		connected: boolean;
+        battery:number|null;
 	}
 
 	let powered = $state<boolean | null>(null);
@@ -97,7 +98,7 @@
 				{:else}
 					{#each paired as dev (dev.address)}
 						<div class="row">
-							<div class="name" class:active={dev.connected}>{dev.name}<small>{dev.address} · {dev.connected ? "Connected" : "Not connected"}</small></div>
+							<div class="name" class:active={dev.connected}>{dev.name}<small>{dev.address} · {dev.connected ? "Connected" : "Not connected"}{dev.battery==null ? "" : ` · ${dev.battery}% battery`}</small></div>
 							<button class="btn" onclick={() => toggleConnect(dev)}>{dev.connected ? "Disconnect" : "Connect"}</button>
 							<button class="remove" onclick={() => forget(dev)}>Forget</button>
 						</div>

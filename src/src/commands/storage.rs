@@ -249,3 +249,76 @@ mod tests {
         assert!(valid_cache_name(".thumbnails"));
     }
 }
+
+#[tauri::command]
+pub async fn get_unused_dependencies() -> Result<Vec<String>, String> {
+    let out = Command::new("pacman")
+        .arg("-Qdtq")
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() && !(out.status.code() == Some(1) && out.stderr.is_empty()) {
+        return Err(util::fail_output(&out, "Reviewing unused dependencies"));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|s| util::valid_pkg_name(s))
+        .map(String::from)
+        .collect())
+}
+#[tauri::command]
+pub async fn remove_unused_dependencies(
+    app: tauri::AppHandle,
+    session_id: String,
+    packages: Vec<String>,
+) -> Result<bool, String> {
+    let current = get_unused_dependencies().await?;
+    if packages.is_empty()
+        || packages.len() > 500
+        || packages
+            .iter()
+            .any(|p| !util::valid_pkg_name(p) || !current.contains(p))
+    {
+        return Err("Review the current unused dependency list before removing packages".into());
+    }
+    let mut args = vec!["pacman", "-R", "--noconfirm", "--"];
+    args.extend(packages.iter().map(String::as_str));
+    Ok(super::streaming::run_hardcoded(app, session_id, "pkexec", &args).await)
+}
+
+#[derive(Serialize)]
+pub struct DirectoryUsage {
+    label: String,
+    bytes: Option<u64>,
+    error: Option<String>,
+}
+#[tauri::command]
+pub async fn get_storage_breakdown() -> Result<Vec<DirectoryUsage>, String> {
+    let home = home()?;
+    let read = |label: &str, result: Result<u64, String>| match result {
+        Ok(bytes) => DirectoryUsage {
+            label: label.into(),
+            bytes: Some(bytes),
+            error: None,
+        },
+        Err(error) => DirectoryUsage {
+            label: label.into(),
+            bytes: None,
+            error: Some(error),
+        },
+    };
+    let system = async {
+        let mut total = 0;
+        for directory in ["/usr", "/etc", "/var", "/opt", "/boot"] {
+            total += size(Path::new(directory)).await?;
+        }
+        Ok(total)
+    };
+    let (system, files, snapshots) =
+        tokio::join!(system, size(&home), size(Path::new("/.snapshots")));
+    Ok(vec![
+        read("System directories", system),
+        read("Your files", files),
+        read("System snapshots", snapshots),
+    ])
+}

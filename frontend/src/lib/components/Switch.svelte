@@ -1,9 +1,10 @@
 <script lang="ts">
-	let { value = $bindable(), ariaLabel }: { value: boolean; ariaLabel?: string } = $props();
+	let { value = $bindable(), ariaLabel, disabled = false }: { value: boolean; ariaLabel?: string; disabled?: boolean } = $props();
 </script>
 
 <button
 	type="button"
+    {disabled}
 	class="switch"
 	class:on={value}
 	role="switch"
@@ -29,6 +30,7 @@
 		transition: background 0.18s ease;
 	}
 
+    .switch:disabled {opacity:.5;cursor:default;}
 	.switch.on {
 		background: var(--accent);
 	}

@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import {useDraft} from "$lib/drafts.svelte";
+    import {recordChange} from "$lib/changes.svelte";
+    import { onMount, onDestroy } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
@@ -98,14 +100,33 @@
 		cfg && !COMMON_KB_LAYOUTS.includes(cfg.kb_layout) ? [...COMMON_KB_LAYOUTS, cfg.kb_layout] : COMMON_KB_LAYOUTS,
 	);
 
-	const persist = debounce(() => {
-		if (!cfg) return;
-		invoke("save_appearance", { appearance: { ...cfg, follow_mouse: Number(followMouse) } });
-	}, 450);
+    let mounted=true;onDestroy(()=>mounted=false);
+    let status=$state("");let previous:Appearance|null=null;let queue=Promise.resolve();
+    async function saveNow(){
+        if(!mounted||!cfg)return;
+        const next={...$state.snapshot(cfg),follow_mouse:Number(followMouse)};
+        queue=queue.catch(()=>{}).then(async()=>{
+            if(!mounted)return;
+            const before=previous ?? await invoke<Appearance>("get_appearance");
+            const keys=(Object.keys(next) as (keyof Appearance)[]).filter(k=>next[k]!==before[k]);
+            if(!keys.length)return;
+            const labels:Partial<Record<keyof Appearance,string>>={gaps_in:"Space between windows",gaps_out:"Space around the edge",rounding:"Corner rounding",border_size:"Border width",kb_layout:"Keyboard layout",follow_mouse:"Focus",natural_scroll:"Natural scrolling"};
+            await recordChange(keys.length===1 ? `${labels[keys[0]] ?? keys[0].replaceAll('_',' ')} set to ${next[keys[0]]}` : "Window settings changed",()=>invoke<void>("save_appearance",{appearance:next}),async()=>{
+                const latest=await invoke<Appearance>("get_appearance");
+                const restored={...latest};for(const key of keys)Object.assign(restored,{[key]:before[key]});
+                await invoke("save_appearance",{appearance:restored});previous=restored;cfg=restored;followMouse=String(restored.follow_mouse);
+            });
+            previous=next;draft.markSaved(JSON.stringify(next));status="";
+        });
+        return queue;
+    }
+    const draft=useDraft(()=>cfg ? {...cfg,follow_mouse:Number(followMouse)} : null,saveNow,()=>loaded);
+    const persist=debounce(()=>{void saveNow().catch(e=>status=String(e));},450);
 
 	onMount(async () => {
 		cfg = await invoke<Appearance>("get_appearance");
 		followMouse = String(cfg.follow_mouse);
+        previous={...$state.snapshot(cfg)};
 		loaded = true;
 	});
 
@@ -126,6 +147,7 @@
 	{#if cfg}
 		{#if scope === "all" || scope === "windows"}
 		<Group title="Windows">
+            <div class="window-preview" style={`--gi:${cfg.gaps_in*0.6}px;--go:${cfg.gaps_out*0.6}px;--r:${cfg.rounding}px;--bw:${cfg.border_size}px`} aria-label="Window spacing preview"><i></i><i></i><i></i></div>
 			<SliderField label="Gaps between windows" bind:value={cfg.gaps_in} min={0} max={50} />
 			<SliderField label="Gaps around the edge" bind:value={cfg.gaps_out} min={0} max={50} />
 			<SliderField label="Border width" bind:value={cfg.border_size} min={0} max={10} />
@@ -161,11 +183,17 @@
 				options={FOLLOW_MOUSE_MODES.map((m) => m.value)}
 				labels={Object.fromEntries(FOLLOW_MOUSE_MODES.map((m) => [m.value, m.label]))}
 			/>
-			<SwitchField label="Natural scrolling" hint="Touchpad" bind:value={cfg.natural_scroll} />
+			{#if scope === "all"}<SwitchField label="Natural scrolling" hint="Touchpad" bind:value={cfg.natural_scroll} />{/if}
 			{/if}
 		</Group>
 
 		{/if}
 		<Hint text="Applies as you change it." />
+        {#if status}<p role="alert">{status}</p><button class="btn" onclick={()=>saveNow().catch(e=>status=String(e))}>Retry saving</button>{/if}
 	{/if}
 </ViewScaffold>
+
+<style>
+.window-preview{height:118px;display:grid;grid-template-columns:1.3fr 1fr;grid-template-rows:1fr 1fr;gap:var(--gi);padding:var(--go);background:var(--bg);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.window-preview i{background:var(--surface-2);border:var(--bw) solid var(--accent);border-radius:var(--r);min-height:0}.window-preview i:first-child{grid-row:span 2}
+</style>

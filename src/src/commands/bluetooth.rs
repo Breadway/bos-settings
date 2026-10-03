@@ -18,6 +18,7 @@ pub struct BtDevice {
     address: String,
     name: String,
     connected: bool,
+    battery: Option<u32>,
 }
 
 #[tauri::command]
@@ -38,12 +39,17 @@ pub async fn get_adapter_powered() -> Option<bool> {
 }
 
 #[tauri::command]
-pub async fn set_adapter_powered(on: bool) {
+pub async fn set_adapter_powered(on: bool) -> Result<(), String> {
     let val = if on { "on" } else { "off" };
-    let _ = Command::new("bluetoothctl")
+    let out = Command::new("bluetoothctl")
         .args(["power", val])
-        .status()
-        .await;
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() || get_adapter_powered().await != Some(on) {
+        return Err(super::util::fail_output(&out, "Changing Bluetooth power"));
+    }
+    Ok(())
 }
 
 fn parse_device_lines(text: &str) -> Vec<BtDevice> {
@@ -55,6 +61,7 @@ fn parse_device_lines(text: &str) -> Vec<BtDevice> {
                 address: addr.trim().to_string(),
                 name: name.trim().to_string(),
                 connected: false,
+                battery: None,
             })
         })
         .collect()
@@ -81,6 +88,23 @@ pub async fn get_paired_devices() -> Vec<BtDevice> {
         .collect();
     for d in &mut devices {
         d.connected = connected.contains(&d.address);
+        if d.connected {
+            if let Ok(out) = Command::new("bluetoothctl")
+                .args(["info", &d.address])
+                .output()
+                .await
+            {
+                d.battery = String::from_utf8_lossy(&out.stdout)
+                    .lines()
+                    .find_map(|line| {
+                        line.trim()
+                            .strip_prefix("Battery Percentage:")
+                            .and_then(|v| v.split_once('('))
+                            .and_then(|(_, v)| v.trim_end_matches(')').parse::<u32>().ok())
+                            .filter(|v| *v <= 100)
+                    });
+            }
+        }
     }
     devices
 }

@@ -71,7 +71,18 @@ pub fn get_appearance() -> Appearance {
 
 #[tauri::command]
 pub fn save_appearance(appearance: Appearance) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(&appearance).map_err(|e| e.to_string())?;
+    let mut stored = std::fs::read_to_string(config_path())
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    let values = serde_json::to_value(&appearance).map_err(|e| e.to_string())?;
+    let object = stored
+        .as_object_mut()
+        .ok_or("Appearance settings must be a JSON object")?;
+    for (key, value) in values.as_object().unwrap() {
+        object.insert(key.clone(), value.clone());
+    }
+    let json = serde_json::to_string_pretty(&stored).map_err(|e| e.to_string())?;
     config::atomic_write(&config_path(), &json).map_err(|e| e.to_string())?;
     super::util::hypr_reload();
     Ok(())

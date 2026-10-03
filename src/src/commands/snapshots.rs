@@ -292,6 +292,15 @@ mod tests {
 /// Make the safety snapshot before the combined update flow. No caller-supplied arguments.
 #[tauri::command]
 pub async fn create_update_snapshot() -> Result<Option<String>, String> {
+    create_snapshot("Before BOS Settings update").await
+}
+#[tauri::command]
+pub async fn create_manual_snapshot() -> Result<String, String> {
+    create_snapshot("Manual BOS Settings snapshot")
+        .await?
+        .ok_or("No root snapshot configuration exists".into())
+}
+async fn create_snapshot(description: &str) -> Result<Option<String>, String> {
     if !std::path::Path::new("/etc/snapper/configs/root").is_file() {
         return Ok(None);
     }
@@ -304,7 +313,7 @@ pub async fn create_update_snapshot() -> Result<Option<String>, String> {
             "--type",
             "single",
             "--description",
-            "Before BOS Settings update",
+            description,
             "--cleanup-algorithm",
             "number",
             "--print-number",

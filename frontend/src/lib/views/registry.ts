@@ -1,3 +1,4 @@
+import PowerMenu from "./PowerMenu.svelte";
 import type { Component } from "svelte";
 import About from "./About.svelte";
 import AppearanceHub from "./AppearanceHub.svelte";
@@ -30,6 +31,7 @@ export const VIEWS: Record<string, Component> = {
 	notifications: Notifications,
 	storage: Storage,
 	home: Home,
+    "power-menu": PowerMenu,
 	keyboard: KeyboardHub,
 	mouse: Mouse,
 	printers: Printing,

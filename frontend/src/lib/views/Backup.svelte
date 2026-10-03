@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { useDraft } from "$lib/drafts.svelte";
+	import SelectField from "$lib/components/SelectField.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { runStreamed } from "$lib/streaming";
@@ -28,6 +29,10 @@
 		home: string;
 	}
 
+	let schedule=$state("off");
+	let originalSchedule="off";
+	let scheduleReady=$state(false);
+	onMount(async()=>{try{schedule=await invoke("get_backup_schedule");originalSchedule=schedule;}catch(e){message=String(e);}finally{scheduleReady=true;}});
 	let st = $state<BackupStatus | null>(null);
 	let repo = $state("");
 	let password = $state("");
@@ -118,10 +123,12 @@
 			target,
 		});
 	}
-	useDraft(() => ({ repo, password }), save, () => st !== null);
+	async function saveWithSchedule(){await save();if(schedule!==originalSchedule){await invoke("set_backup_schedule",{schedule});originalSchedule=schedule;}}
+	useDraft(() => ({ repo, password,schedule }), saveWithSchedule, () => st !== null && scheduleReady);
 </script>
 
 <ViewScaffold title="Backup">
+ <Group title="Schedule" hint="Runs with your user session. Missed backups run when you next log in."><SelectField label="Back up my files" bind:value={schedule} options={["off","daily","weekly"]} labels={{off:"Manually",daily:"Every day",weekly:"Every week"}}/></Group>
 	<Group
 		title="Repository"
 		hint="Local folder or sftp. Password is write-only."
@@ -136,7 +143,7 @@
 			<FileField label="Local path" bind:value={repo} mode="folder" placeholder="/mnt/backup/bos" />
 			<TextField label="Or SFTP" bind:value={repo} placeholder="sftp:user@host:/backups/bos" />
 			<PasswordField label={st.has_password ? "Password (leave empty to keep)" : "Password"} bind:value={password} />
-			<SaveButton onSave={save} />
+			<SaveButton onSave={saveWithSchedule} />
 		{/if}
 	</Group>
 

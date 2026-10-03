@@ -1,4 +1,10 @@
 <script lang="ts">
+	import type {DesktopPreferences} from "$lib/desktopPreferences";
+	import {useDraft} from "$lib/drafts.svelte";
+	import SaveButton from "$lib/components/SaveButton.svelte";
+	import SelectField from "$lib/components/SelectField.svelte";
+	import SwitchField from "$lib/components/SwitchField.svelte";
+	import {refreshTheme} from "$lib/theme";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { runStreamed } from "$lib/streaming";
@@ -31,7 +37,10 @@
 		zoom = st.zoom_factor;
 	}
 
-	onMount(refresh);
+	let prefs=$state<DesktopPreferences|null>(null);
+	onMount(async()=>{await refresh();prefs=await invoke("get_desktop_preferences")});
+	async function savePreferences(){await invoke("save_desktop_preferences",{preferences:prefs});await refreshTheme();}
+	useDraft(()=>prefs,savePreferences,()=>prefs!==null);
 
 	async function install(packages: string[]) {
 		log = [];
@@ -82,7 +91,16 @@
 	}
 </script>
 
-<ViewScaffold title="Accessibility">
+<ViewScaffold title="Accessibility" lede="Make BOS easier to see, hear and use.">
+ {#if prefs}
+ <Group title="Seeing">
+  <SelectField label="Text size" bind:value={() => String(prefs!.text_size), v => prefs!.text_size=Number(v)} options={['12','14','16','18']} labels={{'12':'Small','14':'Default','16':'Large','18':'Larger'}}/>
+  <SelectField label="Cursor size" bind:value={() => String(prefs!.cursor_size), v => prefs!.cursor_size=Number(v)} options={['24','32','48']} labels={{'24':'Default','32':'Large','48':'Larger'}}/>
+  <SwitchField label="Stronger window borders" bind:value={prefs.stronger_borders}/>
+ </Group>
+ <Group title="Motion"><SwitchField label="Reduce motion" hint="Turns off window and workspace animations." bind:value={prefs.reduce_motion}/></Group>
+ <SaveButton onSave={savePreferences}/>
+ {/if}
 	<Group title="Screen reader" hint="Orca. Works on Wayland; start/stop is process-level, not a compositor setting.">
 		{#if !st}
 			<Hint text="Loading…" />

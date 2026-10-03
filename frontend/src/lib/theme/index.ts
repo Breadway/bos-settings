@@ -19,10 +19,14 @@ function applyThemeCss(css: string) {
 }
 
 /** Call once at startup (e.g. from a root `$effect`/`onMount`). */
-export async function initTheme(): Promise<void> {
+export async function refreshTheme(): Promise<void> {
 	const css = await invoke<string>("get_theme_css");
 	applyThemeCss(css);
 
+}
+
+export async function initTheme(): Promise<void> {
+	await refreshTheme();
 	await listen<string>("theme-changed", (event) => {
 		applyThemeCss(event.payload);
 	});
