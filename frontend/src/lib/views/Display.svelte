@@ -350,7 +350,8 @@
 				hint="Smoother games and video on screens that support it."
 				bind:value={() => (live?.vrr ?? 0) > 0, (v) => setVrr(v)}
 			/>
-			<Row label="Position">
+			{#if monitors.length>1}<Row label="Mirror another display"><select aria-label="Mirror another display" value={live.mirror_of} disabled={applying||!!pending} onchange={e=>applyRisky(m=>{m.mirror_of=e.currentTarget.value;})}><option value="">Use as a separate display</option>{#each monitors.filter(m=>m.name!==live!.name && !m.mirror_of) as monitor}<option value={monitor.name}>{monitor.name}</option>{/each}</select></Row>{/if}
+            <Row label="Position">
 				<span class="mode">{live.x}, {live.y}</span>
 			</Row>
 			{#if message}

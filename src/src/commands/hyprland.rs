@@ -350,6 +350,14 @@ fn persist_layout(monitors: &[LiveMonitor]) -> Result<(), String> {
         lua_ident(&m.name)?;
     }
     let merged = merge_rules(read_rule_objects(), monitors);
+    let stmts = monitors
+        .iter()
+        .map(lua_statement)
+        .collect::<Result<Vec<_>, _>>()?;
+    super::desktop_preferences::install_lua_include(
+        "bos-settings-display-overrides.lua",
+        &format!("-- Managed by BOS Settings.\n{}\n", stmts.join("\n")),
+    )?;
     write_rule_objects(&merged)
 }
 

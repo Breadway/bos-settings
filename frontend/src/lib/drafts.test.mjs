@@ -10,7 +10,7 @@ const source = await readFile(new URL("./drafts.svelte.ts", import.meta.url),"ut
 const stripped = await transformWithEsbuild(source,"drafts.svelte.ts",{loader:"ts"});
 const compiled = compileModule(stripped.code,{filename:"drafts.svelte.js",generate:"client"});
 const code = compiled.js.code.replace(/from ['"]([^'"]+)['"]/g,(_,specifier) => `from ${JSON.stringify(import.meta.resolve(specifier))}`);
-const { drafts, useDraft, guardNavigation, saveDrafts } = await import(`data:text/javascript;base64,${Buffer.from(code).toString("base64")}`);
+const { drafts, useDraft, guardNavigation, saveDrafts, markActionSaved } = await import(`data:text/javascript;base64,${Buffer.from(code).toString("base64")}`);
 const state = proxy({ready:false, value:null});
 let draft;
 let rejectSave = false;
@@ -36,6 +36,14 @@ rejectSave = false; await saveDrafts(); flushSync();
 assert.equal(navigated,true); assert.equal(draft.dirty,false);
 destroy(); flushSync();
 assert.equal(drafts.items.length,0,"Unmounting must unregister the draft");
+const forms=proxy({first:"saved",second:"saved"});
+const saveFirst=async()=>{};const saveSecond=async()=>{};
+let first,second;
+const destroyForms=effect_root(()=>{push({},true);first=useDraft(()=>forms.first,saveFirst);second=useDraft(()=>forms.second,saveSecond);pop();});
+flushSync();forms.first="changed";forms.second="also changed";flushSync();
+markActionSaved(saveFirst);flushSync();
+assert.equal(first.dirty,false);assert.equal(second.dirty,true,"Saving one section must retain another section's unsaved edits");
+destroyForms();flushSync();
 console.log("drafts: real client reactivity, async baseline, nested edits, failed save protection, save-and-navigate, and teardown passed");
 
 const changeSource = await readFile(new URL("./changes.svelte.ts", import.meta.url),"utf8");

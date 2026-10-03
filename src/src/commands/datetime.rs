@@ -104,12 +104,16 @@ pub async fn set_timezone(tz: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn set_ntp_enabled(enabled: bool) -> Result<(), String> {
     let val = if enabled { "true" } else { "false" };
-    Command::new("pkexec")
+    let status = Command::new("pkexec")
         .args(["timedatectl", "set-ntp", val])
         .status()
         .await
         .map_err(|e| e.to_string())?;
-    Ok(())
+    if status.success() {
+        Ok(())
+    } else {
+        Err("Network time was not changed".into())
+    }
 }
 
 #[cfg(test)]

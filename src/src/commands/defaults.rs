@@ -429,3 +429,14 @@ text/html=extra.desktop;
         assert!(ok.mimes.contains(&"text/plain".into()));
     }
 }
+
+#[tauri::command]
+pub fn list_startup_apps() -> Vec<DesktopApp> {
+    scan_desktops()
+        .into_iter()
+        .map(|a| DesktopApp {
+            id: a.id,
+            name: a.name,
+        })
+        .collect()
+}

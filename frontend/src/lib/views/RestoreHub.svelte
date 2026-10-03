@@ -1,9 +1,9 @@
 <script lang="ts">
- import Hub from "$lib/components/Hub.svelte";
- import Snapshots from "./Snapshots.svelte";
- import Backup from "./Backup.svelte";
+ import ViewScaffold from '$lib/components/ViewScaffold.svelte';
+ import Embed from '$lib/components/Embed.svelte';
+ import Snapshots from './Snapshots.svelte';
+ import Backup from './Backup.svelte';
 </script>
-<Hub title="Backup & restore" lede="System snapshots and backups of your personal files." tabs={[
- { id: "snapshots", label: "System snapshots", component: Snapshots },
- { id: "backup", label: "Your files", component: Backup },
-]} />
+<ViewScaffold title="Backup & restore" lede="Go back to an earlier system, or bring back your files.">
+ <Embed><Snapshots/><Backup/></Embed>
+</ViewScaffold>

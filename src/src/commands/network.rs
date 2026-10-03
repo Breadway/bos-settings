@@ -63,6 +63,7 @@ async fn known_connection_names() -> HashSet<String> {
 pub struct NetworkInfo {
     radio_enabled: bool,
     ethernet: Option<String>,
+    ssid: Option<String>,
 }
 
 #[tauri::command]
@@ -70,6 +71,28 @@ pub async fn get_network_info() -> NetworkInfo {
     NetworkInfo {
         radio_enabled: radio_enabled().await,
         ethernet: ethernet_status().await,
+        ssid: Command::new("nmcli")
+            .args([
+                "-t",
+                "--escape",
+                "no",
+                "-f",
+                "ACTIVE,SSID",
+                "device",
+                "wifi",
+                "list",
+                "--rescan",
+                "no",
+            ])
+            .output()
+            .await
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .find_map(|line| line.strip_prefix("yes:").map(String::from))
+            }),
     }
 }
 

@@ -1,0 +1,1 @@
+export interface NotificationPreferences {dnd:boolean;schedule:boolean;start:string;end:string;lock_screen:boolean;sound:boolean;apps:Record<string,'all'|'banners'|'history'|'off'>;[key:string]:unknown}

@@ -1,4 +1,7 @@
 <script lang="ts">
+	import {useDraft} from "$lib/drafts.svelte";
+	import SaveButton from "$lib/components/SaveButton.svelte";
+	import SelectField from "$lib/components/SelectField.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
@@ -15,6 +18,13 @@
 		ntp_synced: boolean;
 	}
 
+	let clock=$state("24");let initialClock="24";let clockReady=$state(false);let initialLocale="";
+	onMount(async()=>{clock=await invoke<boolean>("get_clock_format")?"24":"12";initialClock=clock;clockReady=true;});
+	let locale=$state<{locales:string[];language:string;region:string}|null>(null);
+	let localeError=$state("");
+	onMount(async()=>{try{locale=await invoke("get_locale_info");initialLocale=JSON.stringify({language:locale!.language,region:locale!.region})}catch(e){localeError=String(e)}});
+	async function saveLocale(){if(clock!==initialClock){await invoke("set_clock_format",{clock24h:clock==="24"});initialClock=clock;}const choice={language:locale!.language,region:locale!.region};if(JSON.stringify(choice)!==initialLocale){await invoke("save_locale_choice",{choice});initialLocale=JSON.stringify(choice);}}
+	useDraft(()=>({locale,clock}),saveLocale,()=>locale!==null && clockReady);
 	let info = $state<DateTimeInfo | null>(null);
 	let tzStatus = $state("");
 	let ntpEnabled = $state(false);
@@ -35,12 +45,16 @@
 	}
 
 	async function toggleNtp(enabled: boolean) {
-		ntpEnabled = enabled;
-		await invoke("set_ntp_enabled", { enabled });
+		try {await invoke("set_ntp_enabled", { enabled });ntpEnabled=enabled;}catch(e){tzStatus=String(e);}
 	}
 </script>
 
-<ViewScaffold title="Date & Time">
+<ViewScaffold title="Date & language" lede="Time, region and language.">
+ {#if locale}<Group title="Language and region" hint="Applies at your next login. The list contains the locales already installed on this computer.">
+ <SelectField label="Clock format" bind:value={clock} options={["12","24"]} labels={{"12":"12-hour","24":"24-hour"}}/>
+ <SelectField label="Language" bind:value={locale.language} options={Array.from(new Set([...locale.locales,locale.language]))}/>
+ <SelectField label="Region" hint="Dates, numbers, currency and measurements." bind:value={locale.region} options={Array.from(new Set([...locale.locales,locale.region]))}/>
+ </Group><SaveButton onSave={saveLocale}/>{/if}{#if localeError}<p role="alert">{localeError}</p>{/if}
 	{#if info}
 		<Group title="Current time">
 			<InfoRow label="Right now" value={info.current_time} />

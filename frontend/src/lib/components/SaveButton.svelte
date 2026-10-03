@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { drafts } from "$lib/drafts.svelte";
+	import { drafts, markActionSaved } from "$lib/drafts.svelte";
 	let { onSave }: { onSave: () => Promise<void> } = $props();
 
 	let status = $state("");
@@ -10,7 +10,7 @@
 		drafts.saving = true;
 		try {
 			await onSave();
-			for (const draft of drafts.items) draft.markSaved();
+			markActionSaved(onSave);
 			status = "Saved";
 			setTimeout(() => (status = ""), 3000);
 		} catch (e) {
@@ -23,7 +23,7 @@
 </script>
 
 <div class="row">
-	<button class="btn primary" disabled={saving} onclick={save}>Save</button>
+	<button class="btn primary" disabled={saving || drafts.saving} onclick={save}>Save</button>
 	<span class="status">{status}</span>
 </div>
 

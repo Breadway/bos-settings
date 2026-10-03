@@ -45,3 +45,15 @@ pub mod updates;
 pub mod users;
 pub mod util;
 pub mod vpn;
+
+pub mod desktop_preferences;
+
+pub mod app_store;
+
+pub mod power_settings;
+
+pub mod notification_settings;
+
+pub mod dashboard;
+
+pub mod locale_settings;

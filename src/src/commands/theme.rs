@@ -127,11 +127,14 @@ fn render_theme_css(palette: &bread_theme::Palette) -> String {
     // `css_tokens` additionally fixes the font-family list, which the local
     // copy emitted as one quoted family (`'Varela Round, sans-serif'`),
     // silently dropping the generic fallback.
-    format!(
-        "{}\n{}",
-        bread_theme::css_custom_properties(palette),
-        bread_theme::css_tokens()
-    )
+    let preferences = super::desktop_preferences::get_desktop_preferences();
+    let font = if ["Varela Round", "Inter", "Noto Sans"].contains(&preferences.font_family.as_str())
+    {
+        preferences.font_family.as_str()
+    } else {
+        "Varela Round"
+    };
+    format!("{}\n{}\n:root {{ --font-family: '{font}', sans-serif; --font-display: 'Outfit', sans-serif; --font-size-base: {}px; }}", bread_theme::css_custom_properties(palette), bread_theme::css_tokens(), preferences.text_size as f64 - 0.5)
 }
 
 /// Render the current monitor's palette and push it to the webview.

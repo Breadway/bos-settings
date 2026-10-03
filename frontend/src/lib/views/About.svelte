@@ -7,6 +7,7 @@
 
 	interface SystemInfo {
 		os: string;
+        version:string|null;
 		kernel: string;
 		cpu: string;
 		gpu: string;
@@ -16,6 +17,9 @@
 		hostname: string;
 	}
 
+	let checks=$state<{name:string;ok:boolean;output:string}[]>([]);
+	let checking=$state(false);
+	async function health(){checking=true;status="";try{checks=await invoke("run_health_checks")}catch(e){status=String(e)}finally{checking=false}}
 	let track = $state("");
 	let info = $state<SystemInfo | null>(null);
 	let hostnameInput = $state("");
@@ -73,6 +77,7 @@
 		<div class="hero"><div class="logo">B</div><div><h2>{info.os}</h2><p>{track} channel · {info.uptime} uptime</p></div></div>
   <Group title="This machine">
 			<InfoRow label="Operating system" value={info.os} />
+            {#if info.version}<InfoRow label="OS version" value={info.version}/>{/if}
 			<InfoRow label="Kernel" value={info.kernel} />
 			<InfoRow label="CPU" value={info.cpu} />
 			<InfoRow label="GPU" value={friendlyGpu(info.gpu)} />
@@ -82,6 +87,8 @@
 		</Group>
 
   <Group title="Help">
+   <button class="btn" disabled={checking} onclick={health}>{checking ? "Checking…" : "Run a health check"}</button>
+   {#each checks as check}<details><summary>{check.name}: {check.ok ? "OK" : "Attention"}</summary><pre>{check.output}</pre></details>{/each}
    <button class="btn" onclick={async () => { try { await navigator.clipboard.writeText(`${info!.os}\nKernel: ${info!.kernel}\nCPU: ${info!.cpu}\nGPU: ${info!.gpu}\nMemory: ${info!.memory}\nChannel: ${track}`); status = "System info copied"; } catch(e) {status = String(e);} }}>Copy system info</button>
   </Group>
   <Group title="Hostname" hint="Changes the machine's network name. Takes effect immediately; needs your password (polkit).">

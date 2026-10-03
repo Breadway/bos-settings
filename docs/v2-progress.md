@@ -38,21 +38,34 @@ The baseline is [capability-inventory.md](capability-inventory.md).
 - Package rows only show Update when an update is detected. Update all bakery remains available even when a pending-update check fails.
 - The raw zoom number field, Orca/kmag controls and existing accessibility information are retained. A live zoom slider is added. No screen reader or magnifier capability was removed.
 
-## Remaining proposal work
+## Second implementation pass
 
-This is an implementation checkpoint, not completion of the entire approved mockup. BSET-43 remains in progress.
+The proposal differences identified by the binary audit are implemented in source and prepared for user testing:
 
-- Notifications: Do not disturb settings, scheduling, per-app permissions, sound and lock-screen preview require the BAR-56 interface and notification-server implementation.
-- Mouse & touchpad: pointer speed, tap-to-click, click method and additional scrolling options need persisted input support beyond the current BOS settings loader.
-- Power: power profiles, idle dim/lock/sleep timers and lid/power-button choices.
-- Get apps: unified Flathub/repository/AUR search, votes, installed status and ranking. Existing AUR installation keeps its interactive PKGBUILD review.
-- Date & language: language/region choices and clock-format presets. Current time-zone and NTP controls remain.
-- Accessibility: cursor/text sizing and reduce motion. Live zoom now has a slider; the original number field and Apply button remain.
-- Appearance/Desktop: preview graphics, presets and remaining friendly labels. Most config panels still use explicit Save with protection; Undo is currently available on Home quick controls.
-- Displays: mirroring controls and confirmation that the BOS loader reapplies transform and VRR at login. The recovered PR explicitly records the loader dependency.
-- Backup & restore: destination picker, scheduling and timeline. The system snapshot restore action is included.
-- Storage: unused-dependency review and a trustworthy system/files/snapshot breakdown. Measured cache totals are shown as totals, not an invented reclaimable amount.
-- About: bread/bakery health checks and a BOS version only when the operating system publishes one.
+- Home has the six quick controls, account greeting, connected network/devices, battery and storage summaries, measured cache/Trash attention, real update counts and Undo.
+- Power has supported power profiles, an optional fixed systemd timer for automatic switching, real UPower history, idle timers, battery-only sleep, lid choices and a power-button menu. Button/lid changes require a restart. Hardware-dependent battery protection remains.
+- Notifications now has typed preferences backed by the companion breadbar API: DND, overnight scheduling, sound, lock-time policy and per-app delivery policy. The running bar must contain BAR-56. Sound is disabled when the sound player is missing. Secure lock surfaces control whether notification windows can actually appear while locked.
+- Mouse and accessibility settings persist through managed Lua includes without replacing the BOS loader. Text/font sizes also apply to Settings, GTK settings and the companion bar. Existing Orca/kmag controls and focus settings remain.
+- Get apps searches repositories, Flathub and AUR together, ranks results, shows real AUR votes and installed status, and offers source filters and discovery shortcuts. Provider failures are reported separately. AUR keeps terminal PKGBUILD review. No fabricated verified badge or download count is displayed.
+- Startup has an installed-app dialog and a visible Managed by BOS section. Editing core services and custom commands remains available through advanced controls.
+- Appearance has shell previews, an interactive window preview, font/text choices and Undo for shell/window changes. Pages now stack their sections. Saved networks, keybindings and other forms retain their individual save guards.
+- Displays has mirroring and a managed login include for transform/VRR, which the stock monitor JSON loader did not consume.
+- Backup & restore has a timeline, manual snapshot action, destination picker and daily/weekly file-backup timers. Scheduled backups use a headless executable mode and keep secrets out of unit files.
+- Date & language has installed language/region choices and clock-format presets. Locale spelling aliases are handled, and clock-only edits do not request a system locale change.
+- Storage has unused-dependency review and selected-only removal, plus measured directory totals. Btrfs figures are explicitly identified as overlapping directory usage; they are not presented as disjoint or reclaimable bytes.
+- About runs typed bread/bakery health checks and shows an OS version only if `/etc/os-release` publishes `VERSION_ID`.
+- Sidebar has the account footer, update count and the proposal's new-page markers. Display/UI fonts are bundled with their OFL licenses.
+
+BSET-44, BSET-32 and BAR-56 are ready for review after the headless checks. BSET-43 remains open for the user's full UI verification. Rendered pixel accuracy has not been tested.
+
+## Additional capability changes for review
+
+- Tabbed hub pages now display all sections together. Legacy tab destinations scroll to their section.
+- Raw startup and shortcut commands remain available under advanced disclosures. Core service editing is still guarded.
+- The duplicate natural-scroll control in the old Mouse subpanel was consolidated into the persisted Mouse setting. Focus options remain.
+- Recommended apps, installed packages, manual bar restarts, raw bar CSS, zoom number/Apply controls, snapshot deletion and GRUB boot actions remain available.
+- A later edit of bar-specific CSS takes precedence over the global text preference, keeping the existing advanced bar text controls usable.
+- Snapshot and directory figures represent real readings. Mockup-only app ratings, trust claims and sample device statistics are not emitted as real data.
 
 ## Verification and manual checks
 

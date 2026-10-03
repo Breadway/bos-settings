@@ -19,6 +19,7 @@
 	let errorHint = $state<string | null>(null);
 	let selected = $state<string | null>(null);
 	let restoring = $state(false);
+ async function takeSnapshot(){if(restoring)return;restoring=true;try{await invoke("create_manual_snapshot");await refresh()}catch(e){errorHint=String(e)}finally{restoring=false}}
 
 	async function refresh() {
 		errorHint = null;
@@ -79,6 +80,7 @@
 </script>
 
 <ViewScaffold title="Snapshots">
+ <button class="btn" disabled={restoring} onclick={takeSnapshot}>Take a snapshot now</button>
 	<Hint text="Reboot and pick a snapshot in GRUB to undo an update." />
 	<Hint text="Automatic cleanup keeps 2 to 20 regular snapshots and 4 to 10 important snapshots. With Btrfs quotas enabled, it also keeps at least 20% of the filesystem free and limits snapshots to 50% of its space. Low disk space can reduce these counts." />
 	<Group
@@ -94,22 +96,16 @@
 			{:else if snapshots.length === 0}
 				<EmptyState icon={History} title="No snapshots yet" hint="Snapshots are created automatically on every pacman transaction." />
 			{:else}
-				<div class="row header" aria-hidden="true">
-					<span class="number">#</span>
-					<span class="date">Date</span>
-					<span class="desc">Description</span>
-				</div>
-				{#each snapshots as snap (snap.number)}
-					<button
-						class="row"
-						class:selected={selected === snap.number}
-						onclick={() => (selected = snap.number)}
-					>
-						<span class="number">{snap.number}</span>
-						<span class="date">{snap.date}</span>
-						<span class="desc" title={snap.description}>{snap.description}</span>
-					</button>
-				{/each}
+                <div class="timeline">
+                <div class="event current"><div class="dot"></div><div><b>Now</b><small>Current system</small></div></div>
+                {#each snapshots as snap (snap.number)}
+                 <div class="event" class:selected={selected===snap.number}>
+                  <button class="dot" aria-label={`Select snapshot ${snap.number}`} onclick={()=>selected=snap.number}></button>
+                  <button class="snapshot-label" onclick={()=>selected=snap.number}><b>{snap.description || `Snapshot ${snap.number}`}</b><small>{snap.date} · #{snap.number}</small></button>
+                  <button class="btn" disabled={restoring} onclick={async()=>{selected=snap.number;await restoreSelected()}}>Restore…</button>
+                 </div>
+                {/each}
+                </div>
 			{/if}
 		</div>
 
@@ -125,64 +121,21 @@
 </ViewScaffold>
 
 <style>
+ .timeline{display:flex;flex-direction:column;padding:8px 0}.event{display:flex;align-items:center;gap:12px;padding:12px 0;position:relative}.dot{width:12px;height:12px;border-radius:50%;background:var(--surface-2);border:2px solid var(--muted);padding:0;flex:none}.current .dot,.selected .dot{background:var(--accent);border-color:var(--accent)}.snapshot-label{flex:1;min-width:0;display:flex;flex-direction:column;text-align:left;background:transparent;border:0;padding:0;color:var(--fg)}.event b{font-weight:400}.event small{display:block;color:var(--muted);font-size:12px;margin-top:2px}.event:before{content:"";position:absolute;left:5px;top:-3px;height:14px;width:2px;background:var(--line)}.event:first-child:before{display:none}
 	.list {
-		max-height: 320px;
+
 		overflow-y: auto;
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
 	}
 
-	.row {
-		display: flex;
-		align-items: center;
-		gap: var(--space-md, 12px);
-		background-color: var(--surface);
-		border: none;
-		color: inherit;
-		font: inherit;
-		text-align: left;
-		cursor: pointer;
-		padding: var(--space-sm, 8px) var(--space-md, 12px);
-		border-radius: var(--radius-primary, 8px);
-		min-width: 0;
-	}
 
-	.row.header {
-		background: transparent;
-		cursor: default;
-		opacity: 0.55;
-		font-size: var(--font-size-secondary, 12px);
-		padding-top: 0;
-	}
 
-	.row:hover:not(.header) {
-		background-color: color-mix(in srgb, var(--surface), var(--on-surface) 8%);
-	}
 
-	.row.selected {
-		background-color: var(--accent);
-		color: var(--on-accent);
-	}
 
-	.number {
-		width: 4ch;
-		flex-shrink: 0;
-	}
 
-	.date {
-		width: 22ch;
-		flex-shrink: 0;
-		opacity: 0.85;
-	}
 
-	.desc {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
 
 	.btn-row {
 		display: flex;
