@@ -97,8 +97,8 @@
     <details><summary>Advanced service editing</summary><button class="btn" onclick={() => { if (confirm("Enable advanced editing of core startup services? Changing them can break desktop features.")) editSystem = true; }}>Enable advanced editing</button></details>
     {#each entries as entry, i (i)}
      {#if isSystemStartup(entry.command)}
-      <div class="row">
-       <div class="fields"><b>{entry.label || entry.command}</b><small>{entry.enabled ? "Enabled" : "Disabled"}</small>
+      <div class="row managed">
+       <div class="fields"><b>{entry.label || entry.command}</b><small class="state" class:off={!entry.enabled}>{entry.enabled ? "Runs at login" : "Turned off"}</small>
         {#if editSystem}<input aria-label="System service command" bind:value={entry.command} />{/if}
        </div>
        {#if editSystem}<button class="btn" onclick={() => entry.enabled = !entry.enabled}>{entry.enabled ? "Disable" : "Enable"}</button><button class="btn danger" onclick={() => removeEntry(i)}>Remove</button>{/if}
@@ -112,6 +112,12 @@
 </ViewScaffold>
 
 <style>
+ .managed{display:flex;align-items:center;gap:12px;padding:10px 4px;border-top:1px solid var(--line)}
+ .managed .fields{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+ .managed b{font-weight:400}
+ .managed .state{color:var(--muted);font-size:12px}
+ .managed .state.off{color:var(--red,#e0736a)}
+
  dialog{background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:14px;width:min(480px,calc(100vw - 32px));}dialog::backdrop{background:#0009;}
 	.picker {max-height:320px;overflow:auto;display:flex;flex-direction:column;gap:4px;margin:8px 0;}
 	.picker span {margin-left:auto;}

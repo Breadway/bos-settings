@@ -115,8 +115,6 @@
 
 <style>
 	.list {
-		max-height: 320px;
-		overflow-y: auto;
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-xs, 4px);

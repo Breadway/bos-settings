@@ -159,8 +159,6 @@
 
 	.list {
 		min-height: 60px;
-		max-height: 260px;
-		overflow-y: auto;
 		display: flex;
 		flex-direction: column;
 		gap: 4px;

@@ -199,8 +199,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
-		max-height: 240px;
-		overflow-y: auto;
 	}
 
 	.row {

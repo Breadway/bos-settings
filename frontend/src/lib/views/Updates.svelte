@@ -20,6 +20,7 @@
 	interface FwDevice {
 		name: string;
 		version: string;
+		security_database?: boolean;
 	}
 	interface NvidiaOffer {
 		gpu: string;
@@ -168,11 +169,11 @@
 	<Group title="Firmware (fwupd)" hint="Same list as the Firmware page. fwupd-refresh.timer already refreshes metadata in the background." wide>
 		{#if !status}
 			<Hint text="Loading…" />
-		{:else if status.firmware.length === 0}
+		{:else if status.firmware.filter((d) => !d.security_database).length === 0}
 			<EmptyState icon={Download} title="No updatable firmware" hint="Not every device speaks fwupd." />
 		{:else}
 			<div class="list">
-				{#each status.firmware as dev, i (`${i}:${dev.name}`)}
+				{#each status.firmware.filter((d) => !d.security_database) as dev, i (`${i}:${dev.name}`)}
 					<div class="row">
 						<span class="name">{dev.name}</span>
 						<span class="version">{dev.version}</span>
@@ -220,7 +221,7 @@
 	}
 
 	.list {
-		max-height: 240px;
+		max-height: 60vh;
 		overflow-y: auto;
 		display: flex;
 		flex-direction: column;

@@ -85,8 +85,6 @@
 
 <style>
 	.list {
-		max-height: 320px;
-		overflow-y: auto;
 		display: flex;
 		flex-direction: column;
 		gap: 6px;

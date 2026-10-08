@@ -55,6 +55,14 @@
 		};
 	});
 
+ // A new page starts at the top. The content pane is shared across pages, so
+ // without this the next page opened at the previous page's scroll offset.
+ // Search jumps (focusLabel) and hub tab requests scroll on their own after.
+ $effect(() => {
+  void nav.page;
+  if (contentEl) contentEl.scrollTop = 0;
+ });
+
  $effect(() => {
   const target = nav.focusLabel;
   if (!target || !contentEl) return;

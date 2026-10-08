@@ -8,7 +8,6 @@
 	import SelectField from "$lib/components/SelectField.svelte";
 	import FileField from "$lib/components/FileField.svelte";
 	import TextField from "$lib/components/TextField.svelte";
-	import NumberField from "$lib/components/NumberField.svelte";
 	import SwitchField from "$lib/components/SwitchField.svelte";
 	import SaveButton from "$lib/components/SaveButton.svelte";
 
@@ -22,6 +21,15 @@
 	}
 
 	let cfg = $state<BreadlockConfig | null>(null);
+
+	// Plain choices for the raw breadlock.toml values; anything custom stays selectable.
+	const CLOCKS: Record<string, string> = { "%H:%M": "24-hour", "%H:%M:%S": "24-hour with seconds", "%I:%M %p": "12-hour", "%I:%M:%S %p": "12-hour with seconds" };
+	const clockOptions = (cur: string) => Array.from(new Set([...Object.keys(CLOCKS), cur].filter(Boolean)));
+	const clockLabels = (cur: string) => ({ ...(cur && !(cur in CLOCKS) ? { [cur]: `Custom (${cur})` } : {}), ...CLOCKS });
+	const WAITS = [0, 500, 800, 1000, 2000, 3000];
+	const waitLabel = (ms: number) => (ms === 0 ? "Don't wait" : ms < 1000 ? `${ms / 1000} seconds`.replace(/^0\.5 seconds$/, "Half a second") : ms === 1000 ? "1 second" : `${ms / 1000} seconds`);
+	const waitOptions = (cur: number) => Array.from(new Set([...WAITS, cur])).sort((a, b) => a - b).map(String);
+	const waitLabels = (cur: number) => Object.fromEntries([...WAITS, cur].map((ms) => [String(ms), waitLabel(ms)]));
 	let examplePath = $state<string | null>(null);
 
 	onMount(async () => {
@@ -46,15 +54,16 @@
 
 	{#if cfg}
 		<Group title="Lock screen">
-			<SelectField label="Background" bind:value={cfg.background_mode} options={["color", "image"]} />
+			<SelectField label="Background" bind:value={cfg.background_mode} options={["color", "image"]} labels={{ color: "Solid colour", image: "Picture" }} />
 			{#if cfg.background_mode === "image"}
 				<FileField label="Image" bind:value={cfg.background_path} placeholder="PNG, cover-fit" extensions={["png"]} />
 			{/if}
 			<SwitchField label="Blur background" bind:value={cfg.background_blur} />
-			<Hint text="Blur is saved but not drawn yet." />
-			<TextField label="Clock format" bind:value={cfg.clock_format} placeholder="%H:%M" />
+			<Hint text="The lock screen doesn't draw blur yet. This setting is kept for when it does." />
+			<SelectField label="Clock" bind:value={cfg.clock_format} options={clockOptions(cfg.clock_format)} labels={clockLabels(cfg.clock_format)} />
+			<details class="adv"><summary>Custom clock format</summary><TextField label="Format" bind:value={cfg.clock_format} placeholder="%H:%M" /></details>
 			<TextField label="Font" bind:value={cfg.font_family} placeholder="Varela Round" />
-			<NumberField label="Wrong-password timeout (ms)" bind:value={cfg.fail_timeout_ms} min={0} max={10000} />
+			<SelectField label="After a wrong password, wait" bind:value={() => String(cfg!.fail_timeout_ms), (v) => (cfg!.fail_timeout_ms = Number(v))} options={waitOptions(cfg.fail_timeout_ms)} labels={waitLabels(cfg.fail_timeout_ms)} />
 			<SaveButton onSave={save} />
 		</Group>
 	{/if}
@@ -63,8 +72,6 @@
 		<button class="secondary" onclick={() => invoke("open_breadlock_config")}>Open breadlock.toml in editor</button>
 		{#if examplePath}
 			<button class="secondary" onclick={() => invoke("open_breadlock_example")}>Open example ({examplePath})</button>
-		{:else}
-			<Hint text="No packaged breadlock.example.toml found. The schema is [background] mode/path/blur, [clock] format, [font] family, [input] fail_timeout_ms." />
 		{/if}
 	</Group>
 </ViewScaffold>
