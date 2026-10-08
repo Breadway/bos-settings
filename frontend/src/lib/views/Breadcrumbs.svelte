@@ -92,6 +92,29 @@
 		cfg!.networks = cfg!.networks.map((n) => ({ ...n, password: "" }));
 	}
 	useDraft(() => (cfg), save, () => cfg !== null);
+
+	// One sentence per place so the profile list reads like the mockup's "At school: ..." lines.
+	function list(xs: string[] | undefined): string {
+		const v = (xs ?? []).filter(Boolean);
+		return v.length <= 2 ? v.join(" or ") : `${v.slice(0, -1).join(", ")} or ${v[v.length - 1]}`;
+	}
+	function placeSummary(p: { networks?: string[]; detect_ssids?: string[]; exit_node?: string; tailscale?: boolean; include_all_known?: boolean; bootstrap?: string }): string {
+		const parts: string[] = [];
+		if (p.networks?.length) parts.push(`joins ${list(p.networks)}${p.include_all_known ? " (or any saved network)" : ""}`);
+		else if (p.include_all_known) parts.push("joins any saved network");
+		else parts.push("has no networks yet");
+		if (p.bootstrap) parts.push(`signs in through ${p.bootstrap} first`);
+		if (p.detect_ssids?.length) parts.push(`is picked automatically when ${list(p.detect_ssids)} is nearby`);
+		if (p.exit_node) parts.push(`sends traffic through ${p.exit_node}`);
+		else if (p.tailscale) parts.push("turns on Tailscale");
+		return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}.` : `${parts[0]}.`;
+	}
+	// breadcrumbs used to backfill lowercase home/work/away next to a user's Home/Work/Away.
+	function isEmptyTwin(p: { name: string; networks?: string[]; detect_ssids?: string[] }, i: number): string | null {
+		if ((p.networks?.length ?? 0) || (p.detect_ssids?.length ?? 0)) return null;
+		const other = cfg!.profiles.find((q, j) => j !== i && q.name !== p.name && q.name.toLowerCase() === p.name.toLowerCase());
+		return other ? other.name : null;
+	}
 </script>
 
 <ViewScaffold title="Wi-Fi Profiles">
@@ -139,9 +162,14 @@
 			<button class="add" onclick={addNetwork}>Add network</button>
 		</Group>
 
-		<Group title="Location profiles" hint="Each profile switches DNS/exit-node/routing when you're on one of its networks." wide>
+		<Group title="Places" hint="Each place picks which networks to join and how traffic is routed when you are there." wide>
 			{#each cfg.profiles as profile, i (i)}
+				{@const twin = isEmptyTwin(profile, i)}
 				<div class="profile-card">
+					<p class="summary"><b>{profile.name || "Unnamed place"}</b> {placeSummary(profile)}</p>
+					{#if twin}<p class="twin">This place is empty and has the same name as {twin}. It was added by an older version of breadcrumbs; you can remove it.</p>{/if}
+					<details open={!profile.name || profile.name === "new"}>
+						<summary>Edit {profile.name || "place"}</summary>
 					<div class="profile-header">
 						<input type="text" bind:value={profile.name} placeholder="Profile name (e.g. Home)" class="profile-name" />
 						<button class="remove" onclick={() => removeProfile(i)}>Remove</button>
@@ -165,8 +193,12 @@
 						<input type="text" bind:value={profile.exit_node} placeholder="Tailscale exit node (optional)" />
 					</label>
 					<label class="field-label">
-						Run on connect
-						<input type="text" bind:value={profile.bootstrap} placeholder="Optional command (optional)" />
+						Connect through first
+						<select bind:value={profile.bootstrap}>
+							<option value="">Nothing (connect directly)</option>
+							{#each Array.from(new Set([...savedSsids, ...(profile.bootstrap ? [profile.bootstrap] : [])])) as ssid (ssid)}<option value={ssid}>{ssid}</option>{/each}
+						</select>
+						<small>A saved network to join first, for example a sign-in network, before switching to this place's networks.</small>
 					</label>
 					<div class="check-label">
 						<Switch bind:value={profile.tailscale} ariaLabel="Enable Tailscale" />
@@ -182,6 +214,7 @@
 							Also allow any other saved network, not just the ones listed above
 						</button>
 					</div>
+					</details>
 				</div>
 			{/each}
 			<button class="add" onclick={addProfile}>Add profile</button>
@@ -192,6 +225,11 @@
 </ViewScaffold>
 
 <style>
+	.summary { margin: 0 0 6px; font-size: 13px; color: var(--muted); }
+	.summary b { color: var(--fg); font-weight: 500; }
+	.twin { margin: 0 0 6px; font-size: 12px; color: var(--warn, #d6b25e); }
+	.profile-card details > summary { cursor: pointer; color: var(--muted); font-size: 12.5px; padding: 4px 0 8px; }
+	.field-label small { color: var(--muted); font-size: 11.5px; }
 	.list {
 		display: flex;
 		flex-direction: column;
