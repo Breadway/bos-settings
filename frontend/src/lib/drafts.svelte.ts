@@ -2,7 +2,22 @@ import { onDestroy } from "svelte";
 import { untrack } from "svelte";
 
 type Draft = { sourceSave: () => Promise<void>; dirty: boolean; save: () => Promise<void>; markSaved: (snapshot?: string) => void; snapshot: () => string };
-export const drafts = $state({ items: [] as Draft[], pending: null as (() => void) | null, saving: false, error: "" });
+
+/**
+ * `items` is a raw, immutably replaced array. A deep `$state` array that forms
+ * `push` into while mounting and `filter` out of while unmounting picked up an
+ * `undefined` hole during page swaps; the `.some(d => d.dirty)` in DraftNotice
+ * then threw inside Svelte's flush and froze every later update (the next page
+ * sat on "Loading..." forever). Each Draft is still its own `$state`, so
+ * `dirty` stays reactive.
+ */
+class DraftStore {
+	items = $state.raw<Draft[]>([]);
+	pending = $state<(() => void) | null>(null);
+	saving = $state(false);
+	error = $state("");
+}
+export const drafts = new DraftStore();
 
 /** Register explicit-save forms so both page and tab navigation can protect them. */
 export function useDraft(read: () => unknown, save: () => Promise<void>, ready: () => boolean = () => read() != null) {
@@ -20,7 +35,7 @@ export function useDraft(read: () => unknown, save: () => Promise<void>, ready: 
 		if (untrack(() => baseline) === undefined) baseline = snapshot;
 		draft.dirty = snapshot !== baseline;
 	});
-	drafts.items.push(draft);
+	drafts.items = [...drafts.items, draft];
 	onDestroy(() => { drafts.items = drafts.items.filter((d) => d !== draft); });
 	return draft;
 }
