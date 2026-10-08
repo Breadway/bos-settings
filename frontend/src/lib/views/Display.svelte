@@ -265,6 +265,14 @@
 		await applyRisky((m) => (m.vrr = on ? 1 : 0));
 	}
 
+	// "1920x1200@60.00Hz" -> "1920 × 1200 · 60 Hz"; Hyprland lists the native mode first.
+	function modeLabel(mode: string): string {
+		const [res, hz] = mode.replace(/Hz$/i, "").split("@");
+		const [w, h] = (res ?? "").split("x");
+		const rate = Number(hz);
+		return w && h ? `${w} × ${h}${rate ? ` · ${Number.isInteger(rate) ? rate : Math.round(rate * 100) / 100} Hz` : ""}` : mode;
+	}
+
 	async function setMode(modeStr: string) {
 		const cleaned = modeStr.replace(/Hz$/i, "");
 		const [res, hz] = cleaned.split("@");
@@ -319,8 +327,8 @@
 			<Row label="Resolution">
 				{#if live.available_modes.length > 0}
 					<select value={`${live.width}x${live.height}@${live.refresh.toFixed(2)}Hz`} onchange={(e) => setMode(e.currentTarget.value)}>
-						{#each live.available_modes as mode (mode)}
-							<option value={mode}>{mode}</option>
+						{#each live.available_modes as mode, i (mode)}
+							<option value={mode}>{modeLabel(mode)}{i === 0 ? " (recommended)" : ""}</option>
 						{/each}
 					</select>
 				{:else}

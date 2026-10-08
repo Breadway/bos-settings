@@ -185,8 +185,9 @@
 	}
 
 	.remove {
-		background-color: var(--red);
-		color: var(--on-red);
+		background-color: transparent;
+		border: 1px solid color-mix(in oklab, var(--red) 45%, transparent);
+		color: var(--red);
 	}
 
 	.refresh {

@@ -94,6 +94,16 @@ pub struct SoundDevice {
     description: String,
     mute: bool,
     percent: f64,
+    /// Monitor sources and loopback devices: real in PipeWire terms, but not
+    /// something a person picks as a speaker or microphone.
+    virtual_device: bool,
+}
+
+fn is_virtual_device(name: &str, description: &str) -> bool {
+    name.ends_with(".monitor")
+        || description.starts_with("Monitor of ")
+        || name.to_ascii_lowercase().contains("loopback")
+        || description.to_ascii_lowercase().contains("loopback")
 }
 
 #[derive(Deserialize)]
@@ -136,6 +146,7 @@ async fn list_devices(kind: &str) -> Vec<SoundDevice> {
     let raw: Vec<RawDevice> = serde_json::from_slice(&output.stdout).unwrap_or_default();
     raw.into_iter()
         .map(|d| SoundDevice {
+            virtual_device: is_virtual_device(&d.name, &d.description),
             name: d.name.clone(),
             description: d.description.clone(),
             mute: d.mute,
@@ -222,6 +233,104 @@ pub async fn set_sound_mute(kind: String, name: String, mute: bool) -> Result<()
     Ok(())
 }
 
+#[derive(Serialize)]
+pub struct AppStream {
+    index: u32,
+    app: String,
+    title: String,
+    mute: bool,
+    percent: f64,
+}
+
+#[derive(Deserialize)]
+struct RawStream {
+    index: u32,
+    mute: bool,
+    volume: HashMap<String, RawVolumeChannel>,
+    #[serde(default)]
+    properties: HashMap<String, serde_json::Value>,
+}
+
+fn prop(props: &HashMap<String, serde_json::Value>, key: &str) -> String {
+    props
+        .get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn parse_streams(json: &[u8]) -> Vec<AppStream> {
+    let raw: Vec<RawStream> = serde_json::from_slice(json).unwrap_or_default();
+    raw.into_iter()
+        .map(|s| {
+            let percent = s
+                .volume
+                .values()
+                .next()
+                .and_then(|v| v.value_percent.trim_end_matches('%').trim().parse().ok())
+                .unwrap_or(0.0);
+            let app = prop(&s.properties, "application.name");
+            AppStream {
+                index: s.index,
+                app: if app.is_empty() {
+                    "Unknown app".into()
+                } else {
+                    app
+                },
+                title: prop(&s.properties, "media.name"),
+                mute: s.mute,
+                percent,
+            }
+        })
+        .collect()
+}
+
+/// Streams currently playing, for per-app volume on the Sound page.
+#[tauri::command]
+pub async fn get_app_streams() -> Vec<AppStream> {
+    match Command::new("pactl")
+        .args(["-f", "json", "list", "sink-inputs"])
+        .output()
+        .await
+    {
+        Ok(out) => parse_streams(&out.stdout),
+        Err(_) => Vec::new(),
+    }
+}
+
+#[tauri::command]
+pub async fn set_app_stream_volume(index: u32, percent: u32) -> Result<(), String> {
+    let pct = format!("{}%", percent.min(150));
+    let status = Command::new("pactl")
+        .args(["set-sink-input-volume", &index.to_string(), &pct])
+        .status()
+        .await
+        .map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("That app stopped playing".into())
+    }
+}
+
+#[tauri::command]
+pub async fn set_app_stream_mute(index: u32, mute: bool) -> Result<(), String> {
+    let status = Command::new("pactl")
+        .args([
+            "set-sink-input-mute",
+            &index.to_string(),
+            if mute { "1" } else { "0" },
+        ])
+        .status()
+        .await
+        .map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("That app stopped playing".into())
+    }
+}
+
 #[tauri::command]
 pub fn open_mixer() {
     let _ = std::process::Command::new("pavucontrol").spawn();
@@ -229,7 +338,41 @@ pub fn open_mixer() {
 
 #[cfg(test)]
 mod tests {
-    use super::is_relevant_event;
+    use super::{is_relevant_event, is_virtual_device, parse_streams};
+
+    #[test]
+    fn monitor_and_loopback_devices_are_virtual() {
+        assert!(is_virtual_device(
+            "alsa_output.pci.analog-stereo.monitor",
+            "Monitor of Speaker"
+        ));
+        assert!(is_virtual_device(
+            "input.loopback",
+            "Loopback Analog Stereo"
+        ));
+        assert!(!is_virtual_device(
+            "alsa_input.pci.digital-mic",
+            "Digital Microphone"
+        ));
+    }
+
+    #[test]
+    fn streams_parse_from_pactl_json() {
+        let json = br#"[{"index":7,"mute":false,"volume":{"front-left":{"value_percent":"95%"}},"properties":{"application.name":"Zen","media.name":"Lucent"}},{"index":8,"mute":true,"volume":{},"properties":{}}]"#;
+        let s = parse_streams(json);
+        assert_eq!(s.len(), 2);
+        assert_eq!(
+            (
+                s[0].index,
+                s[0].app.as_str(),
+                s[0].title.as_str(),
+                s[0].percent
+            ),
+            (7, "Zen", "Lucent", 95.0)
+        );
+        assert_eq!(s[1].app, "Unknown app");
+        assert!(s[1].mute);
+    }
 
     #[test]
     fn volume_mute_and_default_changes_are_relevant() {

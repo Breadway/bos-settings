@@ -150,10 +150,23 @@
 			if (cmd.includes("playerctl play-pause")) return "Play/pause";
 			const names:Record<string,string>={"zen-browser-single":"Open browser","zen-browser":"Open browser","kitty":"Open terminal","dolphin":"Open files","breadlock":"Lock screen","breadshot":"Take a screenshot","hyprshot":"Take a screenshot","breadbox":"Open launcher","breadsearch":"Search","breadclip":"Clipboard history","breadpad":"Open notes"};
             if(cmd.includes("loginctl lock")) return "Lock screen";
-            const app=cmd.split(/\s+/)[0].split("/").pop() ?? "";
+            // "bash -c breadbox" and "sh -c 'x ...'" launch x; name the program, not the shell.
+            const inner=cmd.replace(/^(?:\S*\/)?(?:ba)?sh\s+-c\s+/, "").replace(/^['"]|['"]$/g, "");
+            const app=inner.split(/\s+/)[0].split("/").pop() ?? "";
+            if(app==="hyprshot"||app==="breadshot"||app==="grimblast"){
+             const clip=/clipboard/.test(inner)?" to the clipboard":"";
+             if(/\bregion\b/.test(inner)) return `Screenshot a region${clip}`;
+             if(/\b(output|screen)\b/.test(inner)) return `Screenshot the screen${clip}`;
+             if(/\bwindow\b/.test(inner)) return `Screenshot a window${clip}`;
+            }
             if(names[app]) return names[app];
-            if (cmd) return cmd.split(/\s+/)[0].split("/").pop() ?? "Command";
+            const known:Record<string,string>={code:"VS Code",nautilus:"Files",steam:"Steam",firefox:"Firefox",obsidian:"Obsidian",spotify:"Spotify",discord:"Discord"};
+            if(app) return `Open ${known[app] ?? app.charAt(0).toUpperCase()+app.slice(1)}`;
+            if (cmd) return "Run a command";
 		}
+		const dir = String(row.extraValue.direction ?? "").toLowerCase();
+		const DIRS: Record<string, string> = { l: "left", left: "left", r: "right", right: "right", u: "up", up: "up", t: "up", d: "down", down: "down", b: "down" };
+		if (DIRS[dir] && /_dir$/.test(row.action)) return `${ACTION_LABELS[row.action] ?? row.action} ${DIRS[dir]}`;
 		return ACTION_LABELS[row.action] ?? row.action;
 	}
 
@@ -815,8 +828,9 @@
 	}
 
 	.remove {
-		background-color: var(--red);
-		color: var(--on-red);
+		background-color: transparent;
+		border: 1px solid color-mix(in oklab, var(--red) 45%, transparent);
+		color: var(--red);
 		flex-shrink: 0;
 	}
 
@@ -827,8 +841,9 @@
 	}
 
 	.remove-layout {
-		background-color: var(--red);
-		color: var(--on-red);
+		background-color: transparent;
+		border: 1px solid color-mix(in oklab, var(--red) 45%, transparent);
+		color: var(--red);
 		margin-bottom: var(--space-sm, 8px);
 		align-self: flex-start;
 	}
