@@ -172,7 +172,7 @@
 			<EmptyState icon={Download} title="No updatable firmware" hint="Not every device speaks fwupd." />
 		{:else}
 			<div class="list">
-				{#each status.firmware as dev (dev.name)}
+				{#each status.firmware as dev, i (`${i}:${dev.name}`)}
 					<div class="row">
 						<span class="name">{dev.name}</span>
 						<span class="version">{dev.version}</span>

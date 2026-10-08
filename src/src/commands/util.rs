@@ -26,6 +26,7 @@ pub const PACMAN_ALLOWLIST: &[&str] = &[
     "steam",
     "nvidia",
     "nvidia-utils",
+    "tlp-pd",
 ];
 
 /// Bakery packages these panels may `bakery install`. breadcast is optional

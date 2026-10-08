@@ -79,6 +79,7 @@ pub fn run() {
             commands::power_settings::run_power_action,
             commands::power_settings::save_power_settings,
             commands::power_settings::get_power_modes,
+            commands::power_settings::enable_tlp_power_profiles,
             commands::power_settings::set_power_mode,
             commands::app_store::search_apps,
             commands::app_store::install_store_app,

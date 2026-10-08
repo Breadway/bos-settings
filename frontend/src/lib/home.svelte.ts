@@ -4,7 +4,7 @@ export interface RadioState {id:number;kind:string;blocked:boolean;hardware_bloc
 export const home = $state({
  account:null as {username:string;display_name:string}|null,
  notifications:null as NotificationPreferences|null,
- modes:null as {backend:string;current:string;profiles:string[]}|null,
+ modes:null as {backend:string;current:string;profiles:string[];tlp_setup_available?:boolean}|null,
  radios:null as RadioState[]|null,
  storage:null as {disks:{path:string;total:number;used:number;available:number}[];package_cache:number|null;app_cache:number|null;trash:number|null}|null,
  devices:null as {address:string;name:string;connected:boolean;battery:number|null}[]|null,
