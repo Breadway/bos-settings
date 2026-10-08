@@ -104,29 +104,24 @@
 </script>
 
 <ViewScaffold title="Wi-Fi">
-	<Group title="Radio">
-		<SwitchField label="Wi-Fi" hint={radioEnabled ? "On" : "Off"} bind:value={() => radioEnabled, (v) => toggleRadio(v)} />
-		{#if ethernetLabel}
-			<InfoRow label="Ethernet" value={ethernetLabel} />
-		{/if}
-	</Group>
-
-	{#if activeNet}
-		<Group title="This network">
-			<div class="wifi">
+	<Group title="Connection">
+		<div class="wifi hero">
+			{#if activeNet}
 				<div class="bars on">
 					{#each [1, 2, 3, 4] as n (n)}
 						<b style="height: {3 + n * 3}px" class:lit={bars(activeNet.signal) >= n}></b>
 					{/each}
 				</div>
-				<div class="ssid">
-					<strong>{activeNet.ssid}</strong>
-					<small>{activeNet.secured ? "Secured" : "Open"} · {activeNet.signal}%</small>
-				</div>
-				<span class="pill on">Connected</span>
-			</div>
-		</Group>
-	{/if}
+				<div class="ssid"><strong>{activeNet.ssid}</strong><small>Wi-Fi · {activeNet.secured ? "secured" : "open network"} · {activeNet.signal}% signal</small></div>
+			{:else if ethernetLabel}
+				<div class="ssid"><strong>Wired connection</strong><small>Ethernet · {ethernetLabel}</small></div>
+			{:else}
+				<div class="ssid"><strong>Not connected</strong><small>{radioEnabled ? "Pick a network below." : "Wi-Fi is off."}</small></div>
+			{/if}
+			{#if activeNet || ethernetLabel}<span class="pill on">Online</span>{/if}
+		</div>
+		<SwitchField label="Wi-Fi" hint={radioEnabled ? (ethernetLabel && !activeNet ? "On, using the wired connection" : "On") : "Off"} bind:value={() => radioEnabled, (v) => toggleRadio(v)} />
+	</Group>
 
 	<Group title="Nearby" wide>
 		<div class="list">
@@ -160,16 +155,17 @@
 						{#if net.secured}<Lock size={14} />{/if}
 						<button class="btn" onclick={() => connect(net.ssid, net.secured, net.known)}>Connect</button>
 					</div>
+					{#if pendingSsid === net.ssid}
+						<div class="pw-row">
+							<!-- svelte-ignore a11y_autofocus -->
+							<input type="password" bind:value={password} placeholder="Password for {pendingSsid}" autofocus onkeydown={(e) => e.key === "Enter" && connectWithPassword()} />
+							<button class="btn primary" onclick={connectWithPassword}>Join</button>
+						</div>
+					{/if}
 				{/each}
 			{/if}
 		</div>
 
-		{#if pendingSsid}
-			<div class="pw-row">
-				<input type="password" bind:value={password} placeholder="Password for {pendingSsid}" />
-				<button class="btn primary" onclick={connectWithPassword}>Connect</button>
-			</div>
-		{/if}
 		{#if status}
 			<span class="status">{status}</span>
 		{/if}
@@ -182,6 +178,8 @@
 </ViewScaffold>
 
 <style>
+	.hero { padding: 6px 2px 10px; }
+	.hero strong { font-size: 15px; }
 	.list {
 		min-height: 72px;
 		display: flex;
