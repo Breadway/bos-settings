@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { snapshotLabel } from "$lib/snapshotLabel";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
@@ -13,6 +14,7 @@
 		number: string;
 		date: string;
 		description: string;
+		kind?: string;
 	}
 
 	let snapshots = $state<SnapshotRow[] | "loading">("loading");
@@ -101,7 +103,7 @@
                 {#each snapshots as snap (snap.number)}
                  <div class="event" class:selected={selected===snap.number}>
                   <button class="dot" aria-label={`Select snapshot ${snap.number}`} onclick={()=>selected=snap.number}></button>
-                  <button class="snapshot-label" onclick={()=>selected=snap.number}><b>{snap.description || `Snapshot ${snap.number}`}</b><small>{snap.date} · #{snap.number}</small></button>
+                  <button class="snapshot-label" onclick={()=>selected=snap.number}><b title={snap.description}>{snapshotLabel(snap.description, snap.kind) || `Snapshot ${snap.number}`}</b><small>{snap.date} · #{snap.number}</small></button>
                   <button class="btn" disabled={restoring} onclick={async()=>{selected=snap.number;await restoreSelected()}}>Restore…</button>
                  </div>
                 {/each}

@@ -2,6 +2,7 @@
 	import {useDraft} from "$lib/drafts.svelte";
 	import SaveButton from "$lib/components/SaveButton.svelte";
 	import SelectField from "$lib/components/SelectField.svelte";
+	import { localeLabels } from "$lib/localeNames";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
@@ -52,8 +53,8 @@
 <ViewScaffold title="Date & language" lede="Time, region and language.">
  {#if locale}<Group title="Language and region" hint="Applies at your next login. The list contains the locales already installed on this computer.">
  <SelectField label="Clock format" bind:value={clock} options={["12","24"]} labels={{"12":"12-hour","24":"24-hour"}}/>
- <SelectField label="Language" bind:value={locale.language} options={Array.from(new Set([...locale.locales,locale.language]))}/>
- <SelectField label="Region" hint="Dates, numbers, currency and measurements." bind:value={locale.region} options={Array.from(new Set([...locale.locales,locale.region]))}/>
+ <SelectField label="Language" bind:value={locale.language} options={Array.from(new Set([...locale.locales,locale.language]))} labels={localeLabels([...locale.locales,locale.language])}/>
+ <SelectField label="Region" hint="Dates, numbers, currency and measurements." bind:value={locale.region} options={Array.from(new Set([...locale.locales,locale.region]))} labels={localeLabels([...locale.locales,locale.region])}/>
  </Group><SaveButton onSave={saveLocale}/>{/if}{#if localeError}<p role="alert">{localeError}</p>{/if}
 	{#if info}
 		<Group title="Current time">

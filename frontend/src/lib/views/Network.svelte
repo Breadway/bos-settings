@@ -184,8 +184,6 @@
 <style>
 	.list {
 		min-height: 72px;
-		max-height: 280px;
-		overflow-y: auto;
 		display: flex;
 		flex-direction: column;
 	}

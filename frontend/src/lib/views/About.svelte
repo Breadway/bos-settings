@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Row from "$lib/components/Row.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
@@ -87,9 +88,9 @@
 		</Group>
 
   <Group title="Help">
-   <button class="btn" disabled={checking} onclick={health}>{checking ? "Checking…" : "Run a health check"}</button>
+   <Row label="Health check" hint="Checks the bread daemon, bakery packages and BOS services."><button class="btn" disabled={checking} onclick={health}>{checking ? "Checking…" : "Run a health check"}</button></Row>
    {#each checks as check}<details><summary>{check.name}: {check.ok ? "OK" : "Attention"}</summary><pre>{check.output}</pre></details>{/each}
-   <button class="btn" onclick={async () => { try { await navigator.clipboard.writeText(`${info!.os}\nKernel: ${info!.kernel}\nCPU: ${info!.cpu}\nGPU: ${info!.gpu}\nMemory: ${info!.memory}\nChannel: ${track}`); status = "System info copied"; } catch(e) {status = String(e);} }}>Copy system info</button>
+   <Row label="System info" hint="Copies OS, kernel, hardware and channel to paste into a bug report."><button class="btn" onclick={async () => { try { await navigator.clipboard.writeText(`${info!.os}\nKernel: ${info!.kernel}\nCPU: ${info!.cpu}\nGPU: ${info!.gpu}\nMemory: ${info!.memory}\nChannel: ${track}`); status = "System info copied"; } catch(e) {status = String(e);} }}>Copy system info</button></Row>
   </Group>
   <Group title="Hostname" hint="Changes the machine's network name. Takes effect immediately; needs your password (polkit).">
 			<div class="hostname-row">

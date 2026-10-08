@@ -57,7 +57,7 @@
 	}
 </script>
 
-<ViewScaffold title="Printing">
+<ViewScaffold title="Printers">
 	<Group title="Printers" hint="CUPS + Avahi ship on the ISO. Discovery and drivers for odd hardware live in system-config-printer." wide>
 		{#if !status}
 			<Hint text="Loading…" />
