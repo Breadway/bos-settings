@@ -14,6 +14,15 @@
 		description: string;
 		mute: boolean;
 		percent: number;
+		virtual_device?: boolean;
+	}
+
+	interface AppStream {
+		index: number;
+		app: string;
+		title: string;
+		mute: boolean;
+		percent: number;
 	}
 
 	interface DeviceSection {
@@ -25,6 +34,7 @@
 
 	let output = $state<DeviceSection | null>(null);
 	let input = $state<DeviceSection | null>(null);
+	let streams = $state<AppStream[]>([]);
 
 	function pick(devices: SoundDevice[], defaultName: string | null): number {
 		const i = devices.findIndex((d) => d.name === defaultName);
@@ -55,6 +65,7 @@
 			}
 			output = o;
 			input = i;
+			streams = await invoke<AppStream[]>("get_app_streams");
 		} catch (e) {
 			console.error(e);
 			output ??= { kind: "sinks", title: "Output", devices: [], selected: 0 };
@@ -71,6 +82,23 @@
 			unlisten.then((f) => f());
 		};
 	});
+
+	async function setStreamVolume(stream: AppStream, percent: number) {
+		gate.touch();
+		stream.percent = percent;
+		await invoke("set_app_stream_volume", { index: stream.index, percent: Math.round(percent) }).catch(() => reload());
+	}
+
+	async function setStreamMute(stream: AppStream, mute: boolean) {
+		gate.touch();
+		stream.mute = mute;
+		await invoke("set_app_stream_mute", { index: stream.index, mute }).catch(() => reload());
+	}
+
+	// Real speakers and microphones first; monitor sources and loopback devices
+	// are listed under a disclosure unless one of them is the one in use.
+	const shown = (section: DeviceSection, i: number, d: SoundDevice) => !d.virtual_device || section.selected === i;
+	const hiddenCount = (section: DeviceSection) => section.devices.filter((d, i) => !shown(section, i, d)).length;
 
 	function current(section: DeviceSection): SoundDevice | null {
 		return section.devices[section.selected] ?? section.devices[0] ?? null;
@@ -106,11 +134,22 @@
 			<Hint text="No devices found." />
 		{:else}
 			{#each section.devices as d, i (d.name + i)}
+				{#if shown(section, i, d)}
 				<button type="button" class="dev" class:on={section.selected === i} onclick={() => selectDevice(section, i)}>
 					<span class="dev-name">{d.description || d.name}</span>
 					{#if section.selected === i}<span class="mark">In use</span>{/if}
 				</button>
+				{/if}
 			{/each}
+			{#if hiddenCount(section)}
+				<details class="more-devices"><summary>Monitor and loopback devices ({hiddenCount(section)})</summary>
+					{#each section.devices as d, i (d.name + i)}
+						{#if !shown(section, i, d)}
+						<button type="button" class="dev" onclick={() => selectDevice(section, i)}><span class="dev-name">{d.description || d.name}</span></button>
+						{/if}
+					{/each}
+				</details>
+			{/if}
 			{#if current(section)}
 				<Row label="Volume">
 					<input
@@ -142,12 +181,23 @@
 		{@render sectionCard(input)}
 	{/if}
 
-	<Group title="Advanced">
-		<button class="secondary" onclick={() => invoke("open_mixer")}>Per-app volume</button>
+	<Group title="Apps" hint={streams.length ? "Volume for each app that is playing sound right now." : "Apps that play sound show up here."}>
+		{#each streams as stream (stream.index)}
+			<Row label={stream.app} hint={stream.title}>
+				<button class="secondary mute" aria-label={stream.mute ? `Unmute ${stream.app}` : `Mute ${stream.app}`} aria-pressed={stream.mute} onclick={() => setStreamMute(stream, !stream.mute)}>{stream.mute ? "Muted" : "Mute"}</button>
+				<input type="range" min="0" max="150" value={Math.round(stream.percent)} aria-label={`${stream.app} volume`}
+					onpointerdown={() => gate.begin()} onpointerup={() => gate.end()} onpointercancel={() => gate.end()}
+					oninput={(e) => setStreamVolume(stream, Number(e.currentTarget.value))} />
+				<span class="pct">{Math.round(stream.percent)}%</span>
+			</Row>
+		{/each}
+		<button class="secondary" onclick={() => invoke("open_mixer")}>Open full mixer</button>
 	</Group>
 </ViewScaffold>
 
 <style>
+	.more-devices summary { cursor: pointer; color: var(--muted); font-size: 12.5px; padding: 8px 2px; }
+	.mute { flex: none; }
 	.dev {
 		display: flex;
 		align-items: center;
@@ -164,7 +214,6 @@
 
 	.dev:first-child {
 		border-top: none;
-		padding-top: 0;
 	}
 
 	.dev.on .dev-name {

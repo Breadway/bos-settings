@@ -9,12 +9,34 @@
 	import LogView from "$lib/components/LogView.svelte";
 	import BluetoothIcon from "@lucide/svelte/icons/bluetooth";
 	import BluetoothOff from "@lucide/svelte/icons/bluetooth-off";
+	import Headphones from "@lucide/svelte/icons/headphones";
+	import Gamepad from "@lucide/svelte/icons/gamepad-2";
+	import Mouse from "@lucide/svelte/icons/mouse";
+	import Keyboard from "@lucide/svelte/icons/keyboard";
+	import Smartphone from "@lucide/svelte/icons/smartphone";
+	import Speaker from "@lucide/svelte/icons/speaker";
+	import Laptop from "@lucide/svelte/icons/laptop";
+	import Watch from "@lucide/svelte/icons/watch";
+	// BlueZ "Icon" values (freedesktop device icon names) -> a type icon for the row.
+	function deviceIcon(icon: string | undefined) {
+		const i = icon ?? "";
+		if (i.startsWith("audio-head")) return Headphones;
+		if (i === "input-gaming") return Gamepad;
+		if (i === "input-mouse" || i === "input-tablet") return Mouse;
+		if (i === "input-keyboard") return Keyboard;
+		if (i.startsWith("phone")) return Smartphone;
+		if (i.startsWith("audio-")) return Speaker;
+		if (i === "computer") return Laptop;
+		if (i.includes("watch")) return Watch;
+		return BluetoothIcon;
+	}
 
 	interface BtDevice {
 		address: string;
 		name: string;
 		connected: boolean;
         battery:number|null;
+	icon?:string;
 	}
 
 	let powered = $state<boolean | null>(null);
@@ -97,7 +119,9 @@
 					<EmptyState icon={BluetoothIcon} title="No paired devices" hint="Scan and pair a device to see it here." />
 				{:else}
 					{#each paired as dev (dev.address)}
+						{@const Icon = deviceIcon(dev.icon)}
 						<div class="row">
+							<span class="type" aria-hidden="true"><Icon size={18} /></span>
 							<div class="name" class:active={dev.connected}>{dev.name}<small>{dev.address} · {dev.connected ? "Connected" : "Not connected"}{dev.battery==null ? "" : ` · ${dev.battery}% battery`}</small></div>
 							<button class="btn" onclick={() => toggleConnect(dev)}>{dev.connected ? "Disconnect" : "Connect"}</button>
 							<button class="remove" onclick={() => forget(dev)}>Forget</button>
@@ -133,6 +157,7 @@
 </ViewScaffold>
 
 <style>
+	.type { width: 34px; height: 34px; flex: none; border-radius: 10px; display: grid; place-items: center; background: var(--surface-2); color: var(--accent); }
 	.list {
 		min-height: 60px;
 

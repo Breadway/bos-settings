@@ -19,6 +19,9 @@ pub struct BtDevice {
     name: String,
     connected: bool,
     battery: Option<u32>,
+    /// BlueZ device class icon ("audio-headset", "input-gaming", ...), for a type icon.
+    #[serde(default)]
+    icon: String,
 }
 
 #[tauri::command]
@@ -62,6 +65,7 @@ fn parse_device_lines(text: &str) -> Vec<BtDevice> {
                 name: name.trim().to_string(),
                 connected: false,
                 battery: None,
+                icon: String::new(),
             })
         })
         .collect()
@@ -88,25 +92,32 @@ pub async fn get_paired_devices() -> Vec<BtDevice> {
         .collect();
     for d in &mut devices {
         d.connected = connected.contains(&d.address);
-        if d.connected {
-            if let Ok(out) = Command::new("bluetoothctl")
-                .args(["info", &d.address])
-                .output()
-                .await
-            {
-                d.battery = String::from_utf8_lossy(&out.stdout)
-                    .lines()
-                    .find_map(|line| {
-                        line.trim()
-                            .strip_prefix("Battery Percentage:")
-                            .and_then(|v| v.split_once('('))
-                            .and_then(|(_, v)| v.trim_end_matches(')').parse::<u32>().ok())
-                            .filter(|v| *v <= 100)
-                    });
+        if let Ok(out) = Command::new("bluetoothctl")
+            .args(["info", &d.address])
+            .output()
+            .await
+        {
+            let info = String::from_utf8_lossy(&out.stdout);
+            d.icon = info_field(&info, "Icon:").unwrap_or_default();
+            if d.connected {
+                d.battery = info_field(&info, "Battery Percentage:")
+                    .and_then(|v| {
+                        v.split_once('(')
+                            .map(|(_, v)| v.trim_end_matches(')').to_string())
+                    })
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .filter(|v| *v <= 100);
             }
         }
     }
     devices
+}
+
+fn info_field(info: &str, key: &str) -> Option<String> {
+    info.lines()
+        .find_map(|line| line.trim().strip_prefix(key))
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
 }
 
 /// Scans for a few seconds and returns every device BlueZ has seen that
@@ -188,5 +199,22 @@ pub async fn bt_pair(address: String) -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn info_fields_parse() {
+        let info =
+            "Device AA\n\tName: Buds\n\tIcon: audio-headset\n\tBattery Percentage: 0x50 (80)\n";
+        assert_eq!(info_field(info, "Icon:").as_deref(), Some("audio-headset"));
+        assert_eq!(
+            info_field(info, "Battery Percentage:").as_deref(),
+            Some("0x50 (80)")
+        );
+        assert_eq!(info_field(info, "Alias:"), None);
     }
 }
