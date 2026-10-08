@@ -83,6 +83,7 @@ pub async fn restore_radio_states(radios: Vec<RadioState>) -> Result<(), String>
 pub struct Account {
     username: String,
     display_name: String,
+    hostname: String,
 }
 #[tauri::command]
 pub fn get_current_account() -> Account {
@@ -101,5 +102,6 @@ pub fn get_current_account() -> Account {
     Account {
         username,
         display_name,
+        hostname: super::about::hostname(),
     }
 }

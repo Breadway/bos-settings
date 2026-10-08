@@ -32,7 +32,7 @@ fn os_pretty_name() -> String {
         .unwrap_or_else(|| "BOS".to_string())
 }
 
-fn hostname() -> String {
+pub(crate) fn hostname() -> String {
     fs::read_to_string("/etc/hostname")
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|_| "unknown".to_string())

@@ -4,6 +4,8 @@
 	import SelectField from "$lib/components/SelectField.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
+	import { runStreamed } from "$lib/streaming";
+	import LogView from "$lib/components/LogView.svelte";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import InfoRow from "$lib/components/InfoRow.svelte";
 	import Row from "$lib/components/Row.svelte";
@@ -29,7 +31,10 @@
 	}
 
 	let policy=$state<{dim:number;screen_off:number;lock:number;sleep:number;sleep_on_battery:boolean;lid:string;power_button:string}|null>(null);
- let modes=$state<{backend:string;current:string;profiles:string[]}|null>(null);
+ let modes=$state<{backend:string;current:string;profiles:string[];tlp_setup_available:boolean}|null>(null);
+ let setupLog=$state<string[]>([]);
+ // TLP users: install tlp-pd (allow-listed) and start its service so modes work.
+ async function setupModes(){if(modeBusy)return;modeBusy=true;modeError='';setupLog=[];try{const ok=await runStreamed('pacman_install',{packages:['tlp-pd']},l=>{setupLog=[...setupLog,l]});if(ok===false)throw new Error('Installing tlp-pd failed. See the log.');await invoke('enable_tlp_power_profiles');modes=await invoke('get_power_modes')}catch(e){modeError=String(e)}finally{modeBusy=false}}
  let automatic=$state(false);
  onMount(async()=>{automatic=await invoke("get_automatic_power_mode")});
  async function setAutomatic(enabled:boolean){if(modeBusy)return;modeBusy=true;modeError="";try{await invoke("set_automatic_power_mode",{enabled});automatic=enabled;}catch(e){modeError=String(e)}finally{modeBusy=false}}
@@ -39,7 +44,10 @@
  useDraft(()=>policy,savePolicy,()=>policy!==null);
  async function setMode(profile:string){if(modeBusy)return;modeBusy=true;modeError='';try{await invoke('set_power_mode',{profile});modes=await invoke('get_power_modes')}catch(e){modeError=String(e)}finally{modeBusy=false}}
  const timerOptions=['0','60','120','300','480','510','600','900','1200','1800','3600'];
- const timerLabels:Record<string,string>={'0':'Never','60':'1 minute','120':'2 minutes','300':'5 minutes','480':'8 minutes','510':'8 minutes 30 seconds','600':'10 minutes','900':'15 minutes','1200':'20 minutes','1800':'30 minutes','3600':'1 hour'};
+ // Any seconds value reads as words, including ones written outside these presets
+ // (hypridle.conf had 240 and 330, which the select showed as raw numbers).
+ function timerLabel(v:string):string{const n=Number(v);if(!n)return 'Never';const h=Math.floor(n/3600),m=Math.floor(n%3600/60),sec=n%60;const part=(x:number,u:string)=>`${x} ${u}${x===1?'':'s'}`;return [h&&part(h,'hour'),m&&part(m,'minute'),sec&&part(sec,'second')].filter(Boolean).join(' ');}
+ const timerLabels=(values:string[])=>Object.fromEntries(values.map(v=>[v,timerLabel(v)]));
  let history=$state<{time:number;percentage:number}[]>([]);let historyError=$state('');
  onMount(async()=>{try{history=await invoke("get_battery_history")}catch(e){historyError=String(e)}});
  let chart=$derived(history.length>1 ? history.map((s,i)=>`${i===0?"M":"L"}${(s.time-history[0].time)/(history[history.length-1].time-history[0].time || 1)*200} ${48-s.percentage*.48}`).join(" ") : "");
@@ -120,14 +128,14 @@
  {#if info}
  <div class="battery-hero"><div class="ring">{info.battery.find(([k])=>k==='Charge')?.[1] ?? 'AC'}</div><div><h2>{info.battery.find(([k])=>k==='Time remaining')?.[1] ?? info.power_source}</h2><p>{info.power_source} · {info.battery.find(([k])=>k==='Battery health')?.[1] ?? ''} · {info.battery.find(([k])=>k==='Power draw')?.[1] ?? ''}</p></div>{#if chart}<svg viewBox="0 0 200 48" aria-label="Battery level, last 24 hours"><path d={chart} fill="none" stroke="var(--accent)" stroke-width="1.6"/></svg>{:else}<small>{historyError || "Battery history is not available yet."}</small>{/if}</div>
  <Group title="Performance">
- {#if modes?.profiles.length}<Row label="Power mode"><div class="seg">{#each modes.profiles as profile}<button class="btn" class:primary={modes.current===profile} disabled={modeBusy||automatic} onclick={()=>setMode(profile)}>{{'power-saver':'Battery saver','balanced':'Balanced','performance':'Performance'}[profile] ?? profile}</button>{/each}</div></Row>{:else}<Hint text="No profile service is available. Install power-profiles-daemon or TLP with tlp-pd to enable mode switching."/>{/if}
+ {#if modes?.profiles.length}<Row label="Power mode"><div class="seg">{#each modes.profiles as profile}<button class="btn" class:primary={modes.current===profile} disabled={modeBusy||automatic} onclick={()=>setMode(profile)}>{{'power-saver':'Battery saver','balanced':'Balanced','performance':'Performance'}[profile] ?? profile}</button>{/each}</div></Row>{:else if modes?.tlp_setup_available}<Row label="Power mode" hint="TLP is installed. Power modes need its small profile service (tlp-pd). Needs your password."><button class="btn primary" disabled={modeBusy} onclick={setupModes}>{modeBusy ? "Setting up…" : "Set up power modes"}</button></Row>{#if setupLog.length}<LogView lines={setupLog}/>{/if}{:else}<Hint text="Power modes need a power profile service. None is installed."/>{/if}
  <SwitchField disabled={modeBusy||!modes?.profiles.includes("power-saver")||!modes?.profiles.includes("balanced")||!modes?.profiles.includes("performance")} label="Switch automatically" hint="Performance on AC, Balanced on battery, Battery saver below 20%." bind:value={()=>automatic,v=>{void setAutomatic(v)}}/>
  {#if modeError}<p role="alert">{modeError}</p>{/if}
  </Group>
  {#if policy}
  <Group title="When you step away">
  {#each [['dim','Dim the screen after'],['screen_off','Turn off the screen after'],['lock','Lock after'],['sleep','Sleep after']] as [key,label]}
- <SelectField {label} bind:value={()=>String(policy![key as 'dim']),v=>policy![key as 'dim']=Number(v)} options={Array.from(new Set([...timerOptions,String(policy[key as 'dim'])]))} labels={timerLabels}/>
+ <SelectField {label} bind:value={()=>String(policy![key as 'dim']),v=>policy![key as 'dim']=Number(v)} options={Array.from(new Set([...timerOptions,String(policy[key as 'dim'])])).sort((a,b)=>Number(a)-Number(b))} labels={timerLabels([...timerOptions,String(policy[key as 'dim'])])}/>
  {/each}
  <SwitchField label="Sleep only on battery" bind:value={policy.sleep_on_battery}/>
  </Group>

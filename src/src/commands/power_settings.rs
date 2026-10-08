@@ -31,6 +31,9 @@ pub struct PowerModes {
     backend: String,
     current: String,
     profiles: Vec<String>,
+    /// TLP is installed but its power-profile service (`tlp-pd`, which
+    /// provides `tlpctl`) is not, so modes can be set up with one install.
+    tlp_setup_available: bool,
 }
 async fn command_text(program: &str, args: &[&str]) -> Option<String> {
     let out = Command::new(program).args(args).output().await.ok()?;
@@ -52,6 +55,7 @@ pub async fn get_power_modes() -> PowerModes {
                     backend: backend.into(),
                     current: command_text(backend, &["get"]).await.unwrap_or_default(),
                     profiles,
+                    tlp_setup_available: false,
                 };
             }
         }
@@ -60,6 +64,26 @@ pub async fn get_power_modes() -> PowerModes {
         backend: String::new(),
         current: String::new(),
         profiles: vec![],
+        tlp_setup_available: util::command_exists("tlp") && !util::command_exists("tlpctl"),
+    }
+}
+
+/// Starts TLP's power-profile service after `tlp-pd` is installed (through
+/// the allow-listed `pacman_install`). Fixed unit, no caller-supplied argv.
+#[tauri::command]
+pub async fn enable_tlp_power_profiles() -> Result<(), String> {
+    if !util::command_exists("tlpctl") {
+        return Err("Install tlp-pd first".into());
+    }
+    let out = Command::new("pkexec")
+        .args(["systemctl", "enable", "--now", "tlp-pd.service"])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(util::fail_output(&out, "Turning on power modes"))
     }
 }
 #[tauri::command]

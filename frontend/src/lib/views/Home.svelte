@@ -28,6 +28,11 @@
  let disk=$derived(home.storage?.disks[0]);
  let connected=$derived(home.devices?.filter(d=>d.connected) ?? []);
  let timeLeft=$derived(home.power?.battery.find(([k])=>k==="Time remaining")?.[1]);
+ const ERROR_LABELS:Record<string,string>={wifi:"Wi-Fi",bluetooth:"Bluetooth",night:"Night light",power:"Battery",updates:"Updates",backup:"Backup",account:"Account",notifications:"Notifications",modes:"Power mode",radios:"Airplane mode",storage:"Storage",devices:"Bluetooth devices",automatic:"Automatic power mode"};
+ let untilFull=$derived(home.power?.battery.find(([k])=>k==="Time until full")?.[1]);
+ let battState=$derived(home.power?.battery.find(([k])=>k==="Status")?.[1]);
+ // Short battery phrase: time left on battery, time to full while charging, else the state.
+ let battNote=$derived(timeLeft ? `about ${timeLeft} left` : untilFull ? `charging, full in ${untilFull}` : battState ? battState.toLowerCase() : "");
  let cache=$derived(home.storage ? [home.storage.package_cache,home.storage.app_cache,home.storage.trash].reduce<number>((s,v)=>s+(v??0),0) : null);
  let charge = $derived(home.power?.battery.find(([k]) => k === "Charge")?.[1]);
  async function read<T>(key:keyof typeof home, command:string) {
@@ -71,13 +76,13 @@
   finally { busy = false; }
  }
 </script>
-<ViewScaffold title={`${greeting}${home.account ? `, ${home.account.display_name}` : ""}`} lede={`${home.wifi?.ssid ? `On ${home.wifi.ssid}` : "Your desktop at a glance"}${charge ? ` · battery ${charge}` : ""}${timeLeft ? `, about ${timeLeft} left` : ""}${connected.length ? ` · ${connected.map(d=>d.name).join(", ")} connected` : ""}.`}>
+<ViewScaffold title={`${greeting}${home.account ? `, ${home.account.display_name}` : ""}`} lede={`${home.wifi?.ssid ? `On ${home.wifi.ssid}` : "Your desktop at a glance"}${charge ? ` · battery ${charge}` : ""}${battNote ? `, ${battNote}` : ""}${connected.length ? ` · ${connected.map(d=>d.name).join(", ")} connected` : ""}.`}>
  <div class="quick">
   <button class="tile" class:on={home.wifi?.radio_enabled} disabled={busy || !home.wifi} onclick={() => toggle("wifi")} aria-pressed={home.wifi?.radio_enabled ?? false}><Wifi size={21} /><b>Wi-Fi</b><small>{home.wifi ? home.wifi.radio_enabled ? home.wifi.ssid || "On" : "Off" : home.errors.wifi ? "Unavailable" : "Checking…"}</small></button>
   <button class="tile" class:on={home.bluetooth} disabled={busy || home.bluetooth === null} onclick={() => toggle("bluetooth")} aria-pressed={home.bluetooth ?? false}><Bluetooth size={21} /><b>Bluetooth</b><small>{home.bluetooth === null ? home.errors.bluetooth ? "Unavailable" : "No adapter" : home.bluetooth ? connected.map(d=>d.name).join(", ") || "On" : "Off"}</small></button>
   <button class="tile" class:on={!!home.night?.enabled} disabled={busy || !home.night || !home.night.installed} onclick={() => toggle("night")} aria-pressed={!!home.night?.enabled}><Moon size={21} /><b>Night light</b><small>{home.night ? home.night.installed ? home.night.enabled ? "On" : "Off" : "Not installed" : "Checking…"}</small></button>
-  <button class="tile" class:on={dnd} disabled={busy||!home.notifications} onclick={()=>toggle('dnd')} aria-pressed={dnd}><Bell size={21}/><b>Do not disturb</b><small>{home.notifications ? dnd ? 'On' : home.notifications.schedule ? 'Scheduled' : 'Off' : 'Needs notification API'}</small></button>
-  <button class="tile" class:on={!!home.modes?.current} disabled={busy||home.automatic||!home.modes?.profiles.length} onclick={()=>toggle('mode')}><Zap size={21}/><b>Power mode{home.automatic ? " · Auto" : ""}</b><small>{({'power-saver':'Battery saver',balanced:'Balanced',performance:'Performance'} as Record<string,string>)[home.modes?.current ?? ''] ?? 'No profile service'}</small></button>
+  <button class="tile" class:on={dnd} disabled={busy||!home.notifications} onclick={()=>toggle('dnd')} aria-pressed={dnd} title={home.notifications ? undefined : "The running bar doesn't offer notification settings yet."}><Bell size={21}/><b>Do not disturb</b><small>{home.notifications ? dnd ? 'On' : home.notifications.schedule ? 'Scheduled' : 'Off' : 'Not available'}</small></button>
+  <button class="tile" class:on={!!home.modes?.current} disabled={busy||home.automatic||(!home.modes?.profiles.length&&!home.modes?.tlp_setup_available)} onclick={()=>home.modes?.profiles.length ? toggle('mode') : go('power')}><Zap size={21}/><b>Power mode{home.automatic ? " · Auto" : ""}</b><small>{({'power-saver':'Battery saver',balanced:'Balanced',performance:'Performance'} as Record<string,string>)[home.modes?.current ?? ''] ?? (home.modes?.tlp_setup_available ? 'Set up in Power' : 'Not available')}</small></button>
   <button class="tile" class:on={!!home.radios?.length&&home.radios.every(r=>r.blocked)} disabled={busy||!home.radios?.length} onclick={()=>toggle('plane')} aria-pressed={!!home.radios?.length&&home.radios.every(r=>r.blocked)}><Plane size={21}/><b>Airplane mode</b><small>{home.radios?.length ? home.radios.every(r=>r.blocked) ? 'Radios off' : 'Off' : 'No radios found'}</small></button>
  </div>
  <Group title="Needs your attention">
@@ -86,7 +91,7 @@
   <Row label={home.backup ? home.backup.repo ? "Your file backup" : "Set up a file backup" : "Backup & restore"} hint="System snapshots protect the system. A separate backup protects your personal files."><button class="btn" onclick={() => go("restore","backup")}>{home.backup?.repo ? "Review" : "Set up"}</button></Row>
  </Group>
  <div class="summaries">
- {#if home.power}<div class="summary"><div class="ring">{charge || "AC"}</div><div><b>Battery</b><small>{timeLeft ? `${timeLeft} left` : home.power.power_source} · {home.power.battery.find(([k])=>k==='Battery health')?.[1] ?? 'Health unavailable'}</small></div></div>{/if}
+ {#if home.power}<div class="summary"><div class="ring">{charge || "AC"}</div><div><b>Battery</b><small>{timeLeft ? `${timeLeft} left` : untilFull ? `Full in ${untilFull}` : battState ?? home.power.power_source} · {home.power.battery.find(([k])=>k==='Battery health')?.[1] ?? 'Health unavailable'}</small></div></div>{/if}
  {#each connected as device (device.address)}<div class="summary"><Bluetooth size={24}/><div><b>{device.name}</b><small>Connected{device.battery===null ? '' : ` · ${device.battery}% battery`}</small></div></div>{/each}
  {#if disk}<div class="summary"><div><b>Storage</b><small>{size(disk.used)} of {size(disk.total)} used</small><progress aria-label="Disk space used" value={disk.used} max={disk.total}></progress></div></div>{/if}
  </div>
@@ -95,13 +100,17 @@
    {#each changes.recent as change (change.id)}<Row label={change.label} hint={change.at.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}>{#if change.undo}<button class="btn" disabled={changes.busy} onclick={() => undoChange(change)}>Undo</button>{:else}<small>Undone</small>{/if}</Row>{/each}
   </Group>
  {/if}
- {#each Object.entries(home.errors) as [key,error]}<Hint text={`${key}: ${error}`} />{/each}
- <button class="btn refresh" onclick={refresh}>Refresh status</button>
+ {#if Object.keys(home.errors).length}
+  <details class="status-errors"><summary>Some status couldn't be read ({Object.keys(home.errors).length})</summary>
+   {#each Object.entries(home.errors) as [key,error]}<Hint text={`${ERROR_LABELS[key] ?? key}: ${error}`} />{/each}
+   <button class="btn refresh" onclick={refresh}>Try again</button>
+  </details>
+ {/if}
 </ViewScaffold>
 <style>
  .summaries{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.summary{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--line);background:var(--surface);border-radius:14px}.summary b{font-weight:400}.summary small{display:block;color:var(--muted);font-size:12px}.summary progress{width:100%;accent-color:var(--accent)}.ring{width:48px;height:48px;border:4px solid var(--accent);border-radius:50%;display:grid;place-items:center;flex:none}
  .quick { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; }
  .tile { display:flex; flex-direction:column; gap:10px; min-width:0; padding:16px; background:var(--surface); border:1px solid var(--line); color:var(--fg); border-radius:14px; text-align:left; cursor:pointer; }
  .tile b { font-weight:400; } .tile small { color:var(--muted); font-size:12px; } .tile.on { background:var(--accent-soft); border-color:color-mix(in srgb,var(--accent) 55%,transparent); }
- .tile.on :global(svg) { color:var(--accent); } .tile:disabled { opacity:.6; cursor:default; } .refresh { align-self:flex-start; }
+ .tile.on :global(svg) { color:var(--accent); } .tile:disabled { opacity:.6; cursor:default; } .refresh { align-self:flex-start; margin-top:8px; } .status-errors { color:var(--muted); font-size:12.5px; } .status-errors summary { cursor:pointer; padding:4px 0; }
 </style>

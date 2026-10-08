@@ -32,8 +32,12 @@ async fn battery_summary() -> Vec<(String, String)> {
         return vec![("Battery".to_string(), "No battery detected".to_string())];
     };
     let mut rows = Vec::new();
-    if let Some(state) = upower_field(&bat, "state").await {
-        rows.push(("Status".to_string(), state));
+    let state = upower_field(&bat, "state").await.unwrap_or_default();
+    if !state.is_empty() {
+        rows.push((
+            "Status".to_string(),
+            battery_state_label(&state).to_string(),
+        ));
     }
     if let Some(rate) = upower_field(&bat, "energy-rate").await {
         rows.push(("Power draw".into(), rate));
@@ -41,12 +45,13 @@ async fn battery_summary() -> Vec<(String, String)> {
     if let Some(pct) = upower_field(&bat, "percentage").await {
         rows.push(("Charge".to_string(), pct));
     }
-    let t = match upower_field(&bat, "time to empty").await {
-        Some(t) => Some(t),
-        None => upower_field(&bat, "time to full").await,
-    };
-    if let Some(t) = t {
-        rows.push(("Time remaining".to_string(), t));
+    // upower keeps estimating "time to empty" while on AC (even fully charged),
+    // which Home showed as "about 48.8 hours left". Only report the estimate
+    // that matches what the battery is actually doing.
+    if let Some((field, label)) = battery_time_field(&state) {
+        if let Some(t) = upower_field(&bat, field).await {
+            rows.push((label.to_string(), t));
+        }
     }
     let full: Option<f64> = upower_field(&bat, "energy-full")
         .await
@@ -63,6 +68,29 @@ async fn battery_summary() -> Vec<(String, String)> {
         }
     }
     rows
+}
+
+/// Human wording for upower's battery `state` values.
+fn battery_state_label(state: &str) -> &str {
+    match state {
+        "charging" => "Charging",
+        "discharging" => "On battery",
+        "fully-charged" => "Fully charged",
+        "pending-charge" => "Plugged in, not charging",
+        "pending-discharge" => "About to discharge",
+        "empty" => "Empty",
+        other => other,
+    }
+}
+
+/// Which upower time estimate applies to a battery state, and the row label
+/// to show it under. `None` means no estimate is meaningful (full, idle on AC).
+fn battery_time_field(state: &str) -> Option<(&'static str, &'static str)> {
+    match state {
+        "discharging" | "pending-discharge" => Some(("time to empty", "Time remaining")),
+        "charging" => Some(("time to full", "Time until full")),
+        _ => None,
+    }
 }
 
 async fn power_source() -> String {
@@ -417,6 +445,27 @@ pub async fn set_charge_threshold(which: String, percent: i64) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn time_estimate_only_matches_the_battery_state() {
+        assert_eq!(
+            battery_time_field("discharging"),
+            Some(("time to empty", "Time remaining"))
+        );
+        assert_eq!(
+            battery_time_field("charging"),
+            Some(("time to full", "Time until full"))
+        );
+        assert_eq!(battery_time_field("fully-charged"), None);
+        assert_eq!(battery_time_field("pending-charge"), None);
+    }
+
+    #[test]
+    fn battery_states_read_as_words() {
+        assert_eq!(battery_state_label("fully-charged"), "Fully charged");
+        assert_eq!(battery_state_label("discharging"), "On battery");
+        assert_eq!(battery_state_label("something-new"), "something-new");
+    }
 
     #[test]
     fn charge_threshold_clamps_and_restricts_which() {

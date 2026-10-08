@@ -2,7 +2,12 @@
 	import {onMount} from "svelte";
 	import {invoke} from "@tauri-apps/api/core";
 	import {home} from "$lib/home.svelte";
-	let account=$state({username:"User",display_name:"User"});
+	let account=$state({username:"User",display_name:"User",hostname:""});
+	// Native title tooltips only help when the labels are hidden (icon rail); at full
+	// width they repeat the label and their popup covers the item below.
+	const railQuery=typeof window!=="undefined"?window.matchMedia("(max-width:900px)"):null;
+	let rail=$state(railQuery?.matches ?? false);
+	onMount(()=>{const f=(e:MediaQueryListEvent)=>rail=e.matches;railQuery?.addEventListener("change",f);return()=>railQuery?.removeEventListener("change",f);});
 	onMount(async()=>{try{account=await invoke("get_current_account")}catch{/* Keep account fallback */}});
 	const newPages=new Set(["sharing","notifications","getapps","storage"]);
 	const pending=$derived(home.updates ? home.updates.pacman.length+home.updates.bakery.length+home.updates.firmware.length : 0);
@@ -21,13 +26,13 @@
 			{#if section.title}<div class="section-header">{section.title}</div>{/if}
 			{#each section.items as item (item.id)}
 				<button class="item" class:selected={nav.page === item.id} aria-current={nav.page === item.id ? "page" : undefined}
-					aria-label={item.label} title={item.label} onclick={() => go(item.id)}>
+					aria-label={item.label} title={rail ? item.label : undefined} onclick={() => go(item.id)}>
 					<item.icon size={17} /><span>{item.label}</span>{#if item.id==="updates" && pending}<small class="badge">{pending}</small>{/if}{#if newPages.has(item.id)}<small class="new">NEW</small>{/if}
 				</button>
 			{/each}
 		{/each}
 	</div>
-	<div class="brand"><div class="avatar">{account.display_name.slice(0,1).toUpperCase()}</div><div><b>{account.display_name}</b><small>{account.username}</small></div></div>
+	<div class="brand"><div class="avatar">{account.display_name.slice(0,1).toUpperCase()}</div><div><b>{account.display_name}</b><small>{account.hostname ? `${account.hostname} · Bread OS` : account.username}</small></div></div>
 </nav>
 
 <style>
