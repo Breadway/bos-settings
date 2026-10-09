@@ -108,14 +108,26 @@ pub async fn set_power_mode(profile: String) -> Result<(), String> {
 }
 const BATTERY_SLEEP: &str =
     "if ! grep -q '^1$' /sys/class/power_supply/*/online 2>/dev/null; then systemctl suspend; fi";
+/// Screen off/on through the Lua API. BOS runs Hyprland's Lua config, where
+/// `hyprctl dispatch dpms off` is a Lua syntax error (exit 7), so idle
+/// screen-off written that way never fired.
+const DPMS_OFF: &str = "hyprctl eval \"hl.dispatch(hl.dsp.dpms({ action = 'off' }))\"";
+const DPMS_ON: &str = "hyprctl eval \"hl.dispatch(hl.dsp.dpms({ action = 'on' }))\"";
+/// Rewrites the legacy dispatch spelling (BOS's own skel shipped it) to the
+/// working one, so reading and saving both see the same command.
+fn migrate_dpms(text: &str) -> String {
+    text.replace("hyprctl dispatch dpms off", DPMS_OFF)
+        .replace("hyprctl dispatch dpms on", DPMS_ON)
+}
 const ACTIONS: [(&str, &str); 4] = [
     ("dim", "brightnessctl -s set 10%"),
-    ("screen_off", "hyprctl dispatch dpms off"),
+    ("screen_off", DPMS_OFF),
     ("lock", "loginctl lock-session"),
     ("sleep", "systemctl suspend"),
 ];
 fn idle_regex() -> regex::Regex {
-    regex::Regex::new(r"(?s)listener\s*\{[^{}]*\}").unwrap()
+    // Quoted strings may hold braces: the Lua dpms command does.
+    regex::Regex::new(r#"(?s)listener\s*\{(?:[^{}"]|"[^"]*")*\}"#).unwrap()
 }
 fn timeout_regex() -> regex::Regex {
     regex::Regex::new(r"(?m)^(\s*timeout\s*=\s*)(\d+)").unwrap()
@@ -130,17 +142,18 @@ fn matches_action(block: &str, action: &str) -> bool {
     })
 }
 fn timeout_of(text: &str, action: &str) -> Option<u32> {
+    let text = migrate_dpms(text);
     idle_regex()
-        .find_iter(text)
+        .find_iter(&text)
         .find(|m| matches_action(m.as_str(), action))
         .and_then(|m| timeout_regex().captures(m.as_str()))
         .and_then(|c| c[2].parse().ok())
 }
 fn render_idle(text: &str, p: &PowerSettings) -> String {
     let mut result = if text.trim().is_empty() {
-        "general {\n lock_cmd = pidof breadlock || breadlock\n before_sleep_cmd = loginctl lock-session\n after_sleep_cmd = hyprctl dispatch dpms on\n ignore_dbus_inhibit = false\n}\n".into()
+        format!("general {{\n lock_cmd = pidof breadlock || breadlock\n before_sleep_cmd = loginctl lock-session\n after_sleep_cmd = {DPMS_ON}\n ignore_dbus_inhibit = false\n}}\n")
     } else {
-        text.to_string()
+        migrate_dpms(text)
     };
     for ((_, action), seconds) in ACTIONS.iter().zip([p.dim, p.screen_off, p.lock, p.sleep]) {
         let mut found = false;
@@ -181,9 +194,9 @@ fn render_idle(text: &str, p: &PowerSettings) -> String {
             .into_owned();
         if !found && seconds > 0 {
             let resume = match *action {
-                "brightnessctl -s set 10%" => "\n on-resume = brightnessctl -r",
-                "hyprctl dispatch dpms off" => "\n on-resume = hyprctl dispatch dpms on",
-                _ => "",
+                a if a == DPMS_OFF => format!("\n on-resume = {DPMS_ON}"),
+                "brightnessctl -s set 10%" => "\n on-resume = brightnessctl -r".into(),
+                _ => String::new(),
             };
             let action = if *action == "systemctl suspend" && p.sleep_on_battery {
                 BATTERY_SLEEP
@@ -304,6 +317,20 @@ pub async fn save_power_settings(settings: PowerSettings) -> Result<(), String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn legacy_dpms_dispatch_is_read_and_rewritten_for_lua() {
+        // BOS's skel hypridle.conf: a Lua syntax error under the Lua config.
+        let text = "general {\n after_sleep_cmd = hyprctl dispatch dpms on\n}\nlistener {\n timeout = 330\n on-timeout = hyprctl dispatch dpms off\n on-resume  = hyprctl dispatch dpms on\n}\n";
+        assert_eq!(timeout_of(text, DPMS_OFF), Some(330));
+        let p = PowerSettings {
+            screen_off: 600,
+            ..Default::default()
+        };
+        let rendered = render_idle(text, &p);
+        assert!(!rendered.contains("dispatch dpms"), "{rendered}");
+        assert!(rendered.contains("hl.dsp.dpms({ action = 'off' })"));
+        assert_eq!(timeout_of(&rendered, DPMS_OFF), Some(600));
+    }
     #[test]
     fn battery_only_sleep_and_custom_command_are_preserved() {
         let text="listener {\n timeout = 42\n on-timeout = echo systemctl suspend\n}\nlistener {\n timeout = 300\n on-timeout = systemctl suspend\n}\n";

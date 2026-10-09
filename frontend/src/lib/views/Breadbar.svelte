@@ -4,9 +4,8 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
-	import TextField from "$lib/components/TextField.svelte";
+	import SelectField from "$lib/components/SelectField.svelte";
 	import SliderField from "$lib/components/SliderField.svelte";
-	import Hint from "$lib/components/Hint.svelte";
 	import { debounce } from "$lib/debounce";
 	import ChevronDown from "@lucide/svelte/icons/chevron-down";
 	import ChevronRight from "@lucide/svelte/icons/chevron-right";
@@ -74,40 +73,25 @@
 
 <ViewScaffold title="Bar">
 	{#if style}
-		<Group title="Text" hint="Clock, workspace numbers, and stats.">
-			<TextField label="Font" bind:value={style.font_family} placeholder="Varela Round" />
-			<SliderField label="Font size" bind:value={style.font_size} min={8} max={32} />
+		<Group title="Bar">
+			<SelectField label="Font" bind:value={style.font_family} options={[...new Set([style.font_family, "Varela Round", "Outfit", "Inter", "Noto Sans", "JetBrains Mono"].filter(Boolean))]} />
+			<SliderField label="Text size" bind:value={style.font_size} min={8} max={32} suffix=" px" />
+			<SliderField label="Workspace number size" bind:value={style.workspace_font_size} min={8} max={40} suffix=" px" />
+			<SliderField label="Inactive workspaces" hint="How visible the numbers of workspaces you're not on are." bind:value={style.workspace_inactive_opacity} min={0} max={1} step={0.05} format={(v) => `${Math.round(v * 100)}%`} />
+			<details class="ui-disclosure">
+				<summary>Shape and spacing</summary>
+				<SliderField label="Corner rounding" bind:value={style.bar_border_radius} min={0} max={40} suffix=" px" />
+				<SliderField label="Inner padding" bind:value={style.bar_padding} min={0} max={40} suffix=" px" />
+				<SliderField label="Gap between status items" bind:value={style.stat_gap} min={0} max={40} suffix=" px" />
+				<SliderField label="Tray icon size" bind:value={style.tray_icon_size} min={8} max={32} suffix=" px" />
+				<SliderField label="Notification corner rounding" bind:value={style.notification_border_radius} min={0} max={24} suffix=" px" />
+			</details>
 		</Group>
-
-		<Group title="Bar shape">
-			<SliderField label="Corner rounding" bind:value={style.bar_border_radius} min={0} max={40} />
-			<SliderField label="Inner padding" bind:value={style.bar_padding} min={0} max={40} />
-		</Group>
-
-		<Group title="Workspaces">
-			<SliderField label="Number size" bind:value={style.workspace_font_size} min={8} max={40} />
-			<SliderField
-				label="Inactive dimness"
-				bind:value={style.workspace_inactive_opacity}
-				min={0}
-				max={1}
-				step={0.05}
-			/>
-		</Group>
-
-		<Group title="Spacing and icons">
-			<SliderField label="Gap between stats" bind:value={style.stat_gap} min={0} max={40} />
-			<SliderField label="Tray icon size" bind:value={style.tray_icon_size} min={8} max={32} />
-			<SliderField label="Notification rounding" bind:value={style.notification_border_radius} min={0} max={24} />
-		</Group>
-
-		<Hint text="Applies as you change it." />
 	{/if}
-
-	<Group title="Advanced" hint="Raw CSS. Same file as the fields above." wide>
+	<Group title="Bar style sheet" hint="The CSS file behind the settings above, for changes they don't cover." wide>
 		<button class="toggle" onclick={() => (advancedOpen = !advancedOpen)}>
 			{#if advancedOpen}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
-			Edit raw CSS
+			Edit the CSS
 		</button>
 
 		{#if advancedOpen}
