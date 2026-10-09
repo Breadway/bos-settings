@@ -108,8 +108,9 @@ pub async fn set_power_mode(profile: String) -> Result<(), String> {
 }
 const BATTERY_SLEEP: &str =
     "if ! grep -q '^1$' /sys/class/power_supply/*/online 2>/dev/null; then systemctl suspend; fi";
-/// Screen off/on through the Lua API. BOS runs Hyprland's Lua config, where
-/// `hyprctl dispatch dpms off` is a Lua syntax error (exit 7), so idle
+/// Screen off/on through the Lua API. BOS configures stock Hyprland with
+/// hyprland.lua; in that mode `hyprctl dispatch dpms off` is parsed as Lua
+/// and fails (exit 7), so idle
 /// screen-off written that way never fired.
 const DPMS_OFF: &str = "hyprctl eval \"hl.dispatch(hl.dsp.dpms({ action = 'off' }))\"";
 const DPMS_ON: &str = "hyprctl eval \"hl.dispatch(hl.dsp.dpms({ action = 'on' }))\"";
@@ -319,7 +320,7 @@ mod tests {
     use super::*;
     #[test]
     fn legacy_dpms_dispatch_is_read_and_rewritten_for_lua() {
-        // BOS's skel hypridle.conf: a Lua syntax error under the Lua config.
+        // BOS's skel hypridle.conf: fails when Hyprland runs from hyprland.lua.
         let text = "general {\n after_sleep_cmd = hyprctl dispatch dpms on\n}\nlistener {\n timeout = 330\n on-timeout = hyprctl dispatch dpms off\n on-resume  = hyprctl dispatch dpms on\n}\n";
         assert_eq!(timeout_of(text, DPMS_OFF), Some(330));
         let p = PowerSettings {
