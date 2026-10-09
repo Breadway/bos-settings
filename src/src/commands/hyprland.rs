@@ -323,7 +323,8 @@ fn merge_rules(
     wild
 }
 
-/// Ask Hyprland (BOS's Lua config manager) to run `lua`; maps its answers to
+/// Ask Hyprland (configured with hyprland.lua, so `hyprctl eval` works) to
+/// run `lua`; maps its answers to
 /// readable errors.
 fn hyprctl_eval(lua: &str) -> Result<(), String> {
     let output = std::process::Command::new("hyprctl")
