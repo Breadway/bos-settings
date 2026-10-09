@@ -180,6 +180,7 @@ pub fn run() {
             commands::firewall::set_firewall_enabled,
             commands::firewall::add_firewall_rule,
             commands::firewall::remove_firewall_rule,
+            commands::firewall::remove_firewall_allow,
             commands::users::get_users_info,
             commands::users::change_password,
             commands::users::remove_user,

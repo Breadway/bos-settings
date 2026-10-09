@@ -27,6 +27,7 @@ pub const PACMAN_ALLOWLIST: &[&str] = &[
     "nvidia",
     "nvidia-utils",
     "tlp-pd",
+    "kdeconnect",
 ];
 
 /// Bakery packages these panels may `bakery install`. breadcast is optional

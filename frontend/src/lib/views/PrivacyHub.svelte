@@ -5,7 +5,7 @@
 
 <Hub
 	title="Privacy & security"
-	lede="Who can reach this computer."
+	lede="Who can reach this computer, and what apps can do."
 	tabs={[
 		{ id: "firewall", label: "Firewall", component: Firewall },
 	]}

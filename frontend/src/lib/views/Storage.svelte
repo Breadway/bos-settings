@@ -6,7 +6,6 @@
  import ViewScaffold from "$lib/components/ViewScaffold.svelte";
  import Group from "$lib/components/Group.svelte";
  import Row from "$lib/components/Row.svelte";
- import Hint from "$lib/components/Hint.svelte";
  interface Cache { name: string; bytes: number }
  interface StorageInfo { disks: {path:string; total:number; used:number; available:number}[]; package_cache:number|null; app_cache:number|null; trash:number|null; errors:string[] }
  let breakdown=$state<{label:string;bytes:number|null;error:string|null}[]>([]);
@@ -29,31 +28,60 @@
   catch(e) { message = String(e); } finally { busy = false; }
  }
 </script>
-<ViewScaffold title="Storage" lede="See what is using space and review what you can remove.">
+<ViewScaffold title="Storage" lede="See what is using space, and clear what you don't need.">
  {#if info}
-  <Group title="Disk space">
-   {#each info.disks as disk (disk.path)}
-    <Row label={disk.path}><span>{size(disk.used)} of {size(disk.total)} used</span></Row>
-    <progress aria-label={`Space used on ${disk.path}`} value={disk.used} max={disk.total}></progress>
-    <Hint text={`${size(disk.available)} available`} />
-   {/each}
-  </Group>
-  <Group title="Where space is used" hint="Directory usage, measured when requested. Your files include app caches and Trash. Btrfs snapshots share data with the system, so these figures overlap and must not be added or treated as reclaimable space."><button class="btn" disabled={busy} onclick={reviewBreakdown}>Measure directories</button>{#each breakdown as entry (entry.label)}<Row label={entry.label} hint={entry.error ?? undefined}><span>{size(entry.bytes)}</span></Row>{/each}</Group>
+  {#each info.disks as disk (disk.path)}
+   {@const pct = disk.total ? disk.used / disk.total : 0}
+   <div class="hero-card disk">
+    <div class="grow">
+     <h3>{size(disk.available)} free</h3>
+     <p>{info.disks.length === 1 || disk.path === "/" ? "This computer" : disk.path} · {size(disk.used)} of {size(disk.total)} used</p>
+     <div class="bar" class:full={pct > 0.85}><i style="width:{(pct * 100).toFixed(1)}%"></i></div>
+     {#if pct > 0.85}<p class="warn">Getting full. Clearing the items below can help.</p>{/if}
+    </div>
+   </div>
+  {/each}
   <Group title="Free up space">
-   <Row label="Package downloads" hint={`${size(info.package_cache)} cached. Cleanup keeps the latest 3 versions of each package.`}><button class="btn" disabled={busy} onclick={() => clean({kind:"package_cache"}, "Clean older package downloads")}>Clean older versions</button></Row>
-   <Row label="App caches" hint={`${size(info.app_cache)}. Review each app before deleting.`}><button class="btn" disabled={busy} onclick={review}>Review</button></Row>
-   <Row label="Trash" hint={size(info.trash)}><button class="btn danger" disabled={busy} onclick={() => clean({kind:"trash"}, "Empty Trash")}>Empty</button></Row>
+   <Row label="Old package downloads" hint={`${size(info.package_cache)} · BOS keeps the last 3 versions of each package.`}><button class="btn small" disabled={busy} onclick={() => clean({kind:"package_cache"}, "Clean older package downloads")}>Clean</button></Row>
+   <Row label="App caches" hint={`${size(info.app_cache)} · apps rebuild these when needed.`}><button class="btn small" disabled={busy} onclick={review}>Review</button></Row>
+   {#if caches}
+    <div class="sub">
+     {#each caches as cache (cache.name)}<Row label={cache.name} hint={size(cache.bytes)}><button class="btn small remove" disabled={busy} onclick={() => clean({kind:"app_cache",name:cache.name}, `Delete the ${cache.name} cache`)}>Clean</button></Row>{:else}<p>No app caches found.</p>{/each}
+     <p>Close an app before cleaning its cache.</p>
+    </div>
+   {/if}
+   <Row label="Trash" hint={size(info.trash)}><button class="btn small remove" disabled={busy || info.trash === 0} onclick={() => clean({kind:"trash"}, "Empty Trash")}>Empty</button></Row>
+   <Row label="Unused packages" hint="Installed to support apps that are gone now."><button class="btn small" disabled={busy} onclick={reviewUnused}>Review</button></Row>
+   {#if unused}
+    <div class="sub">
+     {#each unused as name (name)}<label class="pkg"><input type="checkbox" value={name} bind:group={selected}/>{name}</label>{:else}<p>Nothing unused.</p>{/each}
+     {#if unused.length}<button class="btn small remove" disabled={busy||!selected.length} onclick={removeUnused}>Remove {selected.length || ""} selected</button>{/if}
+    </div>
+   {/if}
   </Group>
-  {#if caches}
-   <Group title="App caches" hint="Close an app before cleaning its cache. Downloaded files stored outside the cache are kept.">
-    {#each caches as cache (cache.name)}<Row label={cache.name} hint={size(cache.bytes)}><button class="btn danger" disabled={busy} onclick={() => clean({kind:"app_cache",name:cache.name}, `Delete the ${cache.name} cache`)}>Clean</button></Row>{:else}<Hint text="No app cache directories found." />{/each}
-   </Group>
-  {/if}
-  <Group title="Unused dependencies" hint="Packages installed as dependencies that no installed package requires. Review before removing them."><button class="btn" disabled={busy} onclick={reviewUnused}>Review</button>{#if unused}{#each unused as name (name)}<Row label={name}><input type="checkbox" aria-label={`Remove ${name}`} value={name} bind:group={selected}/></Row>{:else}<Hint text="No unused dependencies found."/>{/each}<button class="btn danger" disabled={busy||!selected.length} onclick={removeUnused}>Remove selected</button>{/if}</Group>
-  <LogView lines={logs}/>
-  {#each info.errors as error}<Hint text={error} />{/each}
- {:else}<Hint text={message || "Measuring storage…"} />{/if}
- <div class="actions"><button class="btn" disabled={busy} onclick={refresh}>Refresh</button><button class="btn" onclick={() => invoke("open_storage_folder", {cache:false}).catch(e => message = String(e))}>Open your files</button></div>
+  <Group title="Where space goes">
+   {#if breakdown.length}
+    {#each breakdown as entry (entry.label)}<Row label={entry.label} hint={entry.error ?? undefined}><span class="num">{size(entry.bytes)}</span></Row>{/each}
+    <p>Snapshots share space with the system, so these numbers overlap.</p>
+   {:else}
+    <Row label="Measure folders" hint="Takes a moment on a full disk."><button class="btn small" disabled={busy} onclick={reviewBreakdown}>{busy ? "Measuring…" : "Measure"}</button></Row>
+   {/if}
+  </Group>
+  {#if logs.length}<details class="ui-disclosure"><summary>Details</summary><LogView lines={logs}/></details>{/if}
+  {#each info.errors as error}<p>{error}</p>{/each}
+ {:else}<p>{message || "Measuring storage…"}</p>{/if}
+ <div class="actions"><button class="btn small ghost" disabled={busy} onclick={refresh}>Refresh</button><button class="btn small ghost" onclick={() => invoke("open_storage_folder", {cache:false}).catch(e => message = String(e))}>Open your files</button></div>
  {#if message}<p role="status">{message}</p>{/if}
 </ViewScaffold>
-<style>progress { width:100%; accent-color:var(--accent); margin:0 0 8px; } .actions { display:flex; gap:8px; flex-wrap:wrap; } p { color:var(--muted); font-size:12px; }</style>
+<style>
+ .grow { flex:1; min-width:0; }
+ .bar { height:8px; border-radius:99px; background:var(--surface-2); overflow:hidden; margin-top:12px; }
+ .bar i { display:block; height:100%; background:var(--accent); border-radius:99px; }
+ .bar.full i { background:#d6b25e; }
+ .warn { color:#d6b25e !important; margin-top:8px !important; }
+ .sub { margin:0 0 6px 14px; padding-left:12px; border-left:2px solid var(--line); }
+ .pkg { display:flex; gap:8px; align-items:center; font-size:12.5px; padding:4px 0; }
+ .num { color:var(--muted); font-size:12.5px; }
+ .actions { display:flex; gap:8px; flex-wrap:wrap; }
+ p { color:var(--muted); font-size:12px; margin:4px 2px 8px; }
+</style>
