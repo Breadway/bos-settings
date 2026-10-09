@@ -99,11 +99,10 @@
 			/>
 			{#if st.enabled}
 				<Row label="When">
-					<div class="pills" role="radiogroup" aria-label="When night light is on">
+					<div class="ui-seg" role="radiogroup" aria-label="When night light is on">
 						{#each MODES as m (m.id)}
 							<button
 								type="button"
-								class="pill"
 								class:on={st.mode === m.id}
 								role="radio"
 								aria-checked={st.mode === m.id}

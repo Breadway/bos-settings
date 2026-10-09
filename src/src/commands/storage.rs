@@ -79,14 +79,15 @@ async fn size(path: &Path) -> Result<u64, String> {
         .output()
         .await
         .map_err(|e| e.to_string())?;
-    if !out.status.success() {
-        return Err(util::fail_output(&out, "Measuring storage"));
-    }
+    // du exits 1 when any folder inside can't be read (container overlays,
+    // root-only parts of /etc and /var) but still prints the total of what it
+    // could read. Use that: slightly low beats "Unavailable" and a wall of
+    // permission errors.
     String::from_utf8_lossy(&out.stdout)
         .split_whitespace()
         .next()
         .and_then(|n| n.parse().ok())
-        .ok_or_else(|| "Could not measure storage".into())
+        .ok_or_else(|| util::fail_output(&out, "Measuring storage"))
 }
 #[tauri::command]
 pub async fn get_storage_info() -> Result<StorageInfo, String> {
@@ -140,7 +141,8 @@ pub async fn get_cache_entries() -> Result<Vec<CacheEntry>, String> {
         .output()
         .await
         .map_err(|e| e.to_string())?;
-    if !out.status.success() {
+    // As in size(): unreadable folders make du exit 1 but the rest is fine.
+    if out.stdout.is_empty() && !out.status.success() {
         return Err(util::fail_output(&out, "Reading app caches"));
     }
     let mut entries = Vec::new();

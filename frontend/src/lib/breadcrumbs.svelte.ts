@@ -112,6 +112,6 @@ export function placeSentence(p: Place, globalExit: string): string {
  *  place requires Tailscale; set without it they do nothing. */
 export function unusedTailscaleBits(p: Place): string | null {
 	if (p.tailscale) return null;
-	const bits = [p.bootstrap && `signs in through ${p.bootstrap}`, p.exit_node && `uses ${p.exit_node} as exit node`].filter(Boolean);
-	return bits.length ? `Set to ${bits.join(" and ")}, but Tailscale is off for this place, so those are skipped.` : null;
+	const bits = [p.bootstrap && `sign in through ${p.bootstrap}`, p.exit_node && `use ${p.exit_node} as the exit node`].filter(Boolean);
+	return bits.length ? `Set to ${bits.join(" and ")}, but Tailscale is off for this place, so that is skipped.` : null;
 }
