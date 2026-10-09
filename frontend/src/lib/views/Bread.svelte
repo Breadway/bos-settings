@@ -50,7 +50,7 @@
 </script>
 
 <ViewScaffold title="Daemon">
-	<ServiceControl unit="breadd.service" critical hasConfig />
+	<ServiceControl unit="breadd.service" name="Bread daemon" about="runs your automations" critical hasConfig />
 
 	{#if cfg}
 		<Group title="Daemon">

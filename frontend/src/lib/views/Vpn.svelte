@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
+	import { open } from "@tauri-apps/plugin-dialog";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
-	import Hint from "$lib/components/Hint.svelte";
-	import EmptyState from "$lib/components/EmptyState.svelte";
-	import FileField from "$lib/components/FileField.svelte";
-	import ShieldEllipsis from "@lucide/svelte/icons/shield-ellipsis";
+	import Switch from "$lib/components/Switch.svelte";
+	import ShieldCheck from "@lucide/svelte/icons/shield-check";
+	import Plus from "@lucide/svelte/icons/plus";
 
 	interface VpnConnection {
 		name: string;
@@ -20,9 +20,10 @@
 	}
 
 	let status = $state<VpnStatus | null>(null);
-	let importPath = $state("");
 	let message = $state("");
 	let busy = $state(false);
+
+	const KIND: Record<string, string> = { wireguard: "WireGuard", vpn: "VPN", openvpn: "OpenVPN" };
 
 	async function refresh() {
 		status = await invoke<VpnStatus>("get_vpn_connections");
@@ -32,117 +33,57 @@
 
 	async function connect(name: string, up: boolean) {
 		busy = true;
-		message = "";
+		message = up ? `Connecting ${name}…` : "";
 		try {
 			await invoke(up ? "vpn_connect" : "vpn_disconnect", { name });
-			message = up ? `Connected ${name}` : `Disconnected ${name}`;
+			message = "";
 			await refresh();
 		} catch (e) {
-			message = `${e}`;
+			message = `Couldn't ${up ? "connect" : "disconnect"} ${name}: ${e}`;
 		}
 		busy = false;
 	}
 
-	async function doImport() {
-		if (!importPath.trim()) return;
+	async function addVpn() {
+		const picked = await open({ filters: [{ name: "WireGuard or OpenVPN file", extensions: ["conf", "ovpn"] }] });
+		if (typeof picked !== "string") return;
 		busy = true;
-		message = "";
+		message = "Adding…";
 		try {
-			await invoke("vpn_import", { path: importPath.trim() });
-			message = "Imported. Connect it from the list.";
-			importPath = "";
+			await invoke("vpn_import", { path: picked });
+			message = "Added. Turn it on below.";
 			await refresh();
 		} catch (e) {
-			message = `${e}`;
+			message = `Couldn't add that file: ${e}`;
 		}
 		busy = false;
 	}
 </script>
 
-<ViewScaffold title="VPN / WireGuard">
-	<Group
-		title="NetworkManager tunnels"
-		hint="WireGuard and OpenVPN. Tailscale is under Saved networks."
-		wide
-	>
+<ViewScaffold title="Other connections">
+	<Group title="VPN">
 		{#if !status}
-			<Hint text="Loading…" />
+			<p class="empty">Loading…</p>
 		{:else if status.error}
-			<EmptyState icon={ShieldEllipsis} title="Couldn't list connections" hint={status.error} />
+			<p class="empty">Couldn't list VPN connections: {status.error}</p>
 		{:else if status.connections.length === 0}
-			<EmptyState icon={ShieldEllipsis} title="No VPN or WireGuard connections" hint="Import a .conf below, or use nm-connection-editor from Network." />
+			<p class="empty">No VPN yet. Add a WireGuard (.conf) or OpenVPN (.ovpn) file from your provider. Tailscale is set per place, above.</p>
 		{:else}
-			<div class="list">
-				{#each status.connections as c (c.name)}
-					<div class="row">
-						<div class="meta">
-							<span class="name">{c.name}</span>
-							<span class="kind">{c.kind}{c.active ? " · connected" : ""}{c.autoconnect ? " · autoconnect" : ""}</span>
-						</div>
-						{#if c.active}
-							<button disabled={busy} onclick={() => connect(c.name, false)}>Disconnect</button>
-						{:else}
-							<button class="primary" disabled={busy} onclick={() => connect(c.name, true)}>Connect</button>
-						{/if}
-					</div>
-				{/each}
-			</div>
+			{#each status.connections as c (c.name)}
+				<div class="ui-item" data-setting={c.name}>
+					<span class="ico"><ShieldCheck size={18} /></span>
+					<div class="lb"><b>{c.name}</b><small>{KIND[c.kind] ?? c.kind}{c.active ? " · connected" : ""}{c.autoconnect ? " · connects by itself" : ""}</small></div>
+					<Switch disabled={busy} bind:value={() => c.active, (v) => connect(c.name, v)} ariaLabel={c.name} />
+				</div>
+			{/each}
 		{/if}
-		<button onclick={refresh}>Refresh</button>
-		{#if message}<Hint text={message} />{/if}
-	</Group>
-
-	<Group title="Import" hint="WireGuard .conf or OpenVPN .ovpn. NetworkManager stores the secret after import.">
-		<FileField label="Config" bind:value={importPath} placeholder="wg0.conf" extensions={["conf", "ovpn"]} />
-		<button class="primary" disabled={busy || !importPath.trim()} onclick={doImport}>Import</button>
+		{#if message}<p class="empty" role="status">{message}</p>{/if}
+		<div class="foot"><button class="btn small" disabled={busy} onclick={addVpn}><Plus size={14} />Add VPN</button></div>
 	</Group>
 </ViewScaffold>
 
 <style>
-	.list {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		margin-bottom: var(--space-sm, 8px);
-	}
-
-	.row {
-		display: flex;
-		align-items: center;
-		gap: var(--space-md, 12px);
-		background-color: var(--surface);
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-sm, 8px) var(--space-md, 12px);
-	}
-
-	.meta {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-	}
-
-	.kind {
-		opacity: 0.7;
-		font-size: var(--font-size-secondary, 12px);
-	}
-
-	button {
-		background-color: var(--surface);
-		color: var(--on-surface);
-		border: none;
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-xs, 4px) var(--space-md, 12px);
-		cursor: pointer;
-	}
-
-	button.primary {
-		background-color: var(--accent);
-		color: var(--on-accent);
-	}
-
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
+	.empty { color:var(--muted); font-size:12.5px; margin:6px 2px 10px; line-height:1.45; }
+	.foot { padding:4px 0 10px; }
+	.foot .btn { display:inline-flex; align-items:center; gap:6px; }
 </style>

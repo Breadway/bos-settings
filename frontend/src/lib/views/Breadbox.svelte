@@ -70,7 +70,7 @@
 
 	{/if}
 
-	<ServiceControl unit="breadbox-sync.service" hasConfig />
+	<ServiceControl unit="breadbox-sync.service" name="Launcher app list sync" hasConfig />
 </ViewScaffold>
 
 <style>
