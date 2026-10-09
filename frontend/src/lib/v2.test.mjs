@@ -44,7 +44,9 @@ try {
  await saveDrafts();
  assert.equal(navigated,1,"Navigate after a successful save");
  drafts.items[0].dirty = true;
+ drafts.items[0].save = async () => {throw new Error("still refused");};
  guardNavigation(() => navigated++);
+ await saveDrafts();
  discardAndContinue();
  assert.equal(navigated,2,"Explicit discard allows navigation");
  drafts.items = [];

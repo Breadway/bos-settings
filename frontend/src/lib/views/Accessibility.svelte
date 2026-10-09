@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type {DesktopPreferences} from "$lib/desktopPreferences";
 	import {useDraft} from "$lib/drafts.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 	import SelectField from "$lib/components/SelectField.svelte";
 	import SwitchField from "$lib/components/SwitchField.svelte";
 	import {refreshTheme} from "$lib/theme";
@@ -99,7 +98,6 @@
   <SwitchField label="Stronger window borders" bind:value={prefs.stronger_borders}/>
  </Group>
  <Group title="Motion"><SwitchField label="Reduce motion" hint="Turns off window and workspace animations." bind:value={prefs.reduce_motion}/></Group>
- <SaveButton onSave={savePreferences}/>
  {/if}
 	<Group title="Screen reader" hint="Orca. Works on Wayland; start/stop is process-level, not a compositor setting.">
 		{#if !st}

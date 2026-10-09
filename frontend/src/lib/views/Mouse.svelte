@@ -8,7 +8,7 @@
  import SliderField from '$lib/components/SliderField.svelte';
  import SwitchField from '$lib/components/SwitchField.svelte';
  import SelectField from '$lib/components/SelectField.svelte';
- import SaveButton from '$lib/components/SaveButton.svelte';
+
  import Appearance from './Appearance.svelte';
  let prefs=$state<DesktopPreferences|null>(null);
  let error=$state('');
@@ -29,7 +29,6 @@
   <SliderField label="Scroll speed" bind:value={prefs.scroll_factor} min={0.1} max={5} step={0.1}/>
  </Group>
  <details><summary>Focus and existing input settings</summary><Appearance scope="mouse"/></details>
- <SaveButton onSave={save}/>
  {/if}
  {#if error}<p role="alert">{error}</p>{/if}
 </ViewScaffold>

@@ -7,7 +7,6 @@
 	import { open } from "@tauri-apps/plugin-dialog";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 	import FolderOpen from "@lucide/svelte/icons/folder-open";
 
 	interface AutostartEntry {
@@ -106,7 +105,6 @@
      {/if}
     {/each}
    </details>
-   <SaveButton onSave={save} />
 		</Group>
 	{/if}
 </ViewScaffold>

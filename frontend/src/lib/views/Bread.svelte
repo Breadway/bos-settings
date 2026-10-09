@@ -11,7 +11,6 @@
 	import NumberField from "$lib/components/NumberField.svelte";
 	import TagsField from "$lib/components/TagsField.svelte";
 	import ChipPickerField from "$lib/components/ChipPickerField.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 
 	interface BreadConfig {
 		log_level: string;
@@ -94,6 +93,5 @@
 			<TextField label="notify-send path" bind:value={cfg.notif_notify_send_path} placeholder="auto-detected" />
 		</Group>
 
-		<SaveButton onSave={save} />
 	{/if}
 </ViewScaffold>

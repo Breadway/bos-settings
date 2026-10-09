@@ -5,7 +5,6 @@
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import ServiceControl from "$lib/components/ServiceControl.svelte";
 	import Group from "$lib/components/Group.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 
 	interface Context {
 		name: string;
@@ -69,7 +68,6 @@
 			<button class="add" onclick={addContext}>Add context</button>
 		</Group>
 
-		<SaveButton onSave={save} />
 	{/if}
 
 	<ServiceControl unit="breadbox-sync.service" hasConfig />

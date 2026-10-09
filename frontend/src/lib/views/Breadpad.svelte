@@ -12,7 +12,6 @@
 	import NumberField from "$lib/components/NumberField.svelte";
 	import TagsField from "$lib/components/TagsField.svelte";
 	import Row from "$lib/components/Row.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 
 	interface BreadpadConfig {
 		default_type: string;
@@ -119,7 +118,6 @@
 			<PasswordField label="Password" bind:value={cfg.calendar_password} />
 		</Group>
 
-		<SaveButton onSave={save} />
 	{/if}
 </ViewScaffold>
 

@@ -1,6 +1,5 @@
 <script lang="ts">
 	import {useDraft} from "$lib/drafts.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 	import SelectField from "$lib/components/SelectField.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
@@ -142,8 +141,7 @@
  <Group title="Buttons and lid" hint="Changes to these two settings take effect after restarting the computer.">
  <SelectField label="When I close the lid" bind:value={policy.lid} options={['suspend','lock','ignore']} labels={{suspend:'Sleep',lock:'Lock',ignore:'Do nothing'}}/>
  <SelectField label="Power button" bind:value={policy.power_button} options={['menu','suspend','poweroff','ignore']} labels={{menu:'Show menu',suspend:'Sleep',poweroff:'Power off',ignore:'Do nothing'}}/>
- </Group><SaveButton onSave={savePolicy}/>
- {/if}
+ </Group> {/if}
 		<Group title="Battery">
 			{#each info.battery as [label, value] (label)}
 				<InfoRow {label} {value} />

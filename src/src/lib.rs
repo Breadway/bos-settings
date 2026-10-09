@@ -119,6 +119,8 @@ pub fn run() {
             commands::breadbox::get_breadbox_contexts,
             commands::breadbox::save_breadbox_contexts,
             commands::breadcrumbs::get_breadcrumbs_config,
+            commands::breadcrumbs::get_current_place,
+            commands::breadcrumbs::set_current_place,
             commands::breadcrumbs::save_breadcrumbs_config,
             commands::breadpaper::get_current_wallpaper,
             commands::breadpaper::set_wallpaper,
