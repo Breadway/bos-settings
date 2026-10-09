@@ -44,7 +44,7 @@
 </script>
 
 <ViewScaffold title="File Search">
-	<ServiceControl unit="breadmill.service" hasConfig />
+	<ServiceControl unit="breadmill.service" name="Search indexer" hasConfig />
 
 	{#if cfg}
 		<Group

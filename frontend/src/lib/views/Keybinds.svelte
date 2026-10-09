@@ -100,9 +100,9 @@
 		move: "Move window to workspace",
 		move_dir: "Move window",
 		resize_dir: "Resize window",
-		layout: "Layout",
+		layout: "Change window layout",
 		drag: "Mouse drag",
-		exit: "Exit Hyprland",
+		exit: "Log out",
 	};
 
 	const KEY_LABELS: Record<string, string> = {
@@ -134,7 +134,7 @@
 	let filter=$state("");
 	let filterGroup=$state("all");
 	function groupOf(row:EditRow) { const cmd=String(row.extraValue.command ?? "");return /wpctl|playerctl|brightnessctl/.test(cmd) ? "Media" : row.action === "exec" ? "Applications" : "Windows"; }
-	function matches(row:EditRow) { return (filterGroup === "all" || groupOf(row) === filterGroup) && `${bindTitle(row)} ${row.mods} ${row.key} ${JSON.stringify(row.extraValue)}`.toLowerCase().includes(filter.toLowerCase()); }
+	function matches(row:EditRow) { return (filterGroup === "all" || groupOf(row) === filterGroup) && `${bindTitle(row)} ${keyChips(row).join(" ")} ${JSON.stringify(row.extraValue)}`.toLowerCase().includes(filter.toLowerCase()); }
 	function bindTitle(row: EditRow): string {
 		if (row.action === "exec") {
 			const cmd = String(row.extraValue.command ?? "");
@@ -165,12 +165,16 @@
 		}
 		const dir = String(row.extraValue.direction ?? "").toLowerCase();
 		const DIRS: Record<string, string> = { l: "left", left: "left", r: "right", right: "right", u: "up", up: "up", t: "up", d: "down", down: "down", b: "down" };
+		const LAYOUT_MSGS: Record<string, string> = { togglesplit: "Switch split direction", swapsplit: "Swap split sides", preselect: "Choose where the next window opens" };
+		if (row.action === "layout" && typeof row.extraValue.layout === "string") return LAYOUT_MSGS[row.extraValue.layout.split(" ")[0]] ?? `Window layout: ${row.extraValue.layout}`;
 		if (DIRS[dir] && /_dir$/.test(row.action)) return `${ACTION_LABELS[row.action] ?? row.action} ${DIRS[dir]}`;
 		return ACTION_LABELS[row.action] ?? row.action;
 	}
 
+	// A bind without its own `mods` uses the default modifier, so show it:
+	// "Super + B", not a bare "B" that reads as the B key alone.
 	function keyChips(row: EditRow): string[] {
-		const mods = textToMods(row.mods);
+		const mods = row.modsTouched ? textToMods(row.mods) : textToMods(defaultMods);
 		const key = row.key.trim();
 		return [...mods, key].filter(Boolean).map(keyLabel);
 	}
@@ -559,7 +563,7 @@
 					</button>
 					<button type="button" class="remove" onclick={() => onRemove(i)}>Remove</button>
 				</div>
-				<details class="bind-bottom"><summary>Advanced action settings</summary>
+				<details class="bind-bottom"><summary>Options</summary>
 					{@render extraFields(row)}
 				</details>
 				{#if row.advancedOpen && KNOWN_ACTIONS.includes(row.action as (typeof KNOWN_ACTIONS)[number]) && row.action !== "drag"}
@@ -607,9 +611,9 @@
 		{:else if kind === "flat"}
 			<Group
 				title="Defaults"
-				hint="Click a shortcut, then press the keys. Save when you are done."
+				hint="Click a shortcut, then press the keys you want."
 			>
-				<TextField label="Default mods" bind:value={defaultMods} placeholder="SUPER" />
+				<SelectField label="Main modifier key" hint="Used by every shortcut that doesn't name its own." bind:value={defaultMods} options={[...new Set([defaultMods, "SUPER", "ALT", "CTRL", "SUPER, SHIFT"])].filter(Boolean)} labels={{ SUPER: "Super", ALT: "Alt", CTRL: "Ctrl", "SUPER, SHIFT": "Super + Shift" }} />
 			</Group>
 
 			<Group title="Bindings" wide>
@@ -623,15 +627,15 @@
 		{:else}
 			<Group
 				title="Layout"
-				hint="Click a shortcut, then press the keys. Save when you are done."
+				hint="Click a shortcut, then press the keys you want."
 			>
 				{#if layoutOrder.length > 0}
 					<SelectField label="Active layout" bind:value={activeLayout} options={layoutOrder} />
 				{/if}
-				<TextField label="Default mods" bind:value={defaultMods} placeholder="SUPER" />
+				<SelectField label="Main modifier key" hint="Used by every shortcut that doesn't name its own." bind:value={defaultMods} options={[...new Set([defaultMods, "SUPER", "ALT", "CTRL", "SUPER, SHIFT"])].filter(Boolean)} labels={{ SUPER: "Super", ALT: "Alt", CTRL: "Ctrl", "SUPER, SHIFT": "Super + Shift" }} />
 			</Group>
 
-			<Group title="Media & function keys (globals)" wide>
+			<Group title="Media and function keys" wide>
 				{@render section(
 					globalsRows,
 					() => globalsRows.push(emptyRow()),
@@ -639,7 +643,7 @@
 				)}
 			</Group>
 
-			<Group title="Common (every layout)" wide>
+			<Group title="In every layout" wide>
 				{@render section(
 					commonRows,
 					() => commonRows.push(emptyRow()),
@@ -713,6 +717,9 @@
 		padding: 10px 2px;
 		border-top: 1px solid var(--line);
 	}
+
+	.bind-bottom > summary { cursor:pointer; color:var(--faint); font-size:11.5px; }
+	.bind-bottom > summary:hover, .bind-bottom[open] > summary { color:var(--muted); }
 
 	.bind-card:first-child {
 		border-top: none;

@@ -16,7 +16,7 @@
 	>
 		<button class="open-btn" onclick={openHistory}>Open history (SUPER+V)</button>
 	</Group>
-	<ServiceControl unit="breadclipd.service" />
+	<ServiceControl unit="breadclipd.service" name="Clipboard history" />
 </ViewScaffold>
 
 <style>

@@ -22,6 +22,16 @@ pub struct BtDevice {
     /// BlueZ device class icon ("audio-headset", "input-gaming", ...), for a type icon.
     #[serde(default)]
     icon: String,
+    /// False when the device only broadcasts its address: BlueZ then uses
+    /// the address itself ("7D-70-3F-22-2D-62") as the name. These are
+    /// mostly beacons and phones nearby, not something you'd pair.
+    named: bool,
+}
+
+/// Whether `name` is a real name rather than BlueZ's address stand-in.
+fn has_real_name(name: &str, address: &str) -> bool {
+    let stand_in = name.replace('-', ":");
+    !name.is_empty() && !stand_in.eq_ignore_ascii_case(address)
 }
 
 #[tauri::command]
@@ -60,12 +70,14 @@ fn parse_device_lines(text: &str) -> Vec<BtDevice> {
         .filter_map(|l| {
             let rest = l.strip_prefix("Device ")?;
             let (addr, name) = rest.split_once(' ')?;
+            let (addr, name) = (addr.trim(), name.trim());
             Some(BtDevice {
-                address: addr.trim().to_string(),
-                name: name.trim().to_string(),
+                address: addr.to_string(),
+                name: name.to_string(),
                 connected: false,
                 battery: None,
                 icon: String::new(),
+                named: has_real_name(name, addr),
             })
         })
         .collect()
@@ -133,11 +145,24 @@ pub async fn scan_bluetooth() -> Vec<BtDevice> {
         .into_iter()
         .map(|d| d.address)
         .collect();
-    run_devices(None)
+    let mut found: Vec<BtDevice> = run_devices(None)
         .await
         .into_iter()
         .filter(|d| !paired.contains(&d.address))
-        .collect()
+        .collect();
+    // Type icons for the named ones only: there are usually a handful,
+    // while unnamed beacons can number in the dozens.
+    for d in found.iter_mut().filter(|d| d.named) {
+        if let Ok(out) = Command::new("bluetoothctl")
+            .args(["info", &d.address])
+            .output()
+            .await
+        {
+            d.icon = info_field(&String::from_utf8_lossy(&out.stdout), "Icon:").unwrap_or_default();
+        }
+    }
+    found.sort_by_key(|d| !d.named);
+    found
 }
 
 #[tauri::command]
@@ -216,5 +241,15 @@ mod tests {
             Some("0x50 (80)")
         );
         assert_eq!(info_field(info, "Alias:"), None);
+    }
+
+    #[test]
+    fn address_stand_in_is_not_a_name() {
+        let devs = parse_device_lines(
+            "Device 7D:70:3F:22:2D:62 7D-70-3F-22-2D-62\nDevice E8:C9:13:88:AE:3F Galaxy Buds3\n",
+        );
+        assert!(!devs[0].named);
+        assert!(devs[1].named);
+        assert!(!has_real_name("7d-70-3f-22-2d-62", "7D:70:3F:22:2D:62"));
     }
 }

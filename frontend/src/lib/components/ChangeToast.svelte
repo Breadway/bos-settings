@@ -1,4 +1,13 @@
-<script lang="ts">import { changes } from "$lib/changes.svelte";</script>
+<script lang="ts">
+ import { changes } from "$lib/changes.svelte";
+ // Fades on its own: long enough to reach Undo, short enough not to linger.
+ $effect(() => {
+  const message = changes.message;
+  if (!message) return;
+  const t = setTimeout(() => { if (changes.message === message && !changes.busy) { changes.message = ""; changes.undo = null; } }, changes.undo ? 8000 : 3500);
+  return () => clearTimeout(t);
+ });
+</script>
 {#if changes.message}
  <div class="toast" role="status"><span>{changes.message}</span>{#if changes.undo}<button class="btn" disabled={changes.busy} onclick={() => changes.undo?.()}>Undo</button>{/if}<button class="dismiss" aria-label="Dismiss notification" onclick={() => {changes.message = ""; changes.undo = null;}}>×</button></div>
 {/if}
