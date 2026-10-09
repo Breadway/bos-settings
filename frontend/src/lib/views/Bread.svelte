@@ -49,10 +49,14 @@
 	useDraft(() => (cfg), save, () => cfg !== null);
 </script>
 
-<ViewScaffold title="Daemon">
-	<ServiceControl unit="breadd.service" name="Bread daemon" about="runs your automations" critical hasConfig />
+<ViewScaffold title="Automations">
+	<Group title="Automations" hint="The bread daemon reacts to your devices, screens and network, and runs your automation modules.">
+		<ServiceControl unit="breadd.service" name="Bread daemon" critical hasConfig bare />
+	</Group>
 
 	{#if cfg}
+	<details class="ui-disclosure">
+		<summary>Advanced settings for automation authors</summary>
 		<Group title="Daemon">
 			<SelectField label="Log level" bind:value={cfg.log_level} options={["error", "warn", "info", "debug", "trace"]} />
 			<TextField label="Socket path" bind:value={cfg.socket_path} placeholder="default (XDG runtime dir)" />
@@ -93,5 +97,6 @@
 			<TextField label="notify-send path" bind:value={cfg.notif_notify_send_path} placeholder="auto-detected" />
 		</Group>
 
+	</details>
 	{/if}
 </ViewScaffold>

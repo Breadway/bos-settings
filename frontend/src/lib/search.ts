@@ -123,7 +123,7 @@ export const SEARCH_INDEX: SearchHit[] = [
 	{"page": "network", "tab": "advanced", "label": "Give up joining a network after", "target": "Give up joining a network after", "keywords": "connection timeout wait"},
 	{"page": "network", "tab": "advanced", "label": "Check the connection every", "target": "Check the connection every", "keywords": "connectivity interval watch"},
 	{"page": "network", "tab": "advanced", "label": "More connection settings", "target": "More connection settings", "keywords": "connection editor ip proxy static ethernet"},
-	{"page": "a11y", "label": "Zoom factor", "target": "Zoom factor", "keywords": "zoom factor"},
+	{"page": "a11y", "label": "Zoom", "target": "Zoom", "keywords": "zoom magnifier magnify enlarge"},
 
 	{ page: "home", label: "Home", keywords: "search overview status" },
 	{

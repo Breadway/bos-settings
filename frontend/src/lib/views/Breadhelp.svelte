@@ -3,7 +3,6 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
-	import Hint from "$lib/components/Hint.svelte";
 	import SwitchField from "$lib/components/SwitchField.svelte";
 
 	interface AutostartEntry {
@@ -37,7 +36,7 @@
 		try {
 			await invoke("save_autostart_entries", { entries: next, allowSystemChanges: true });
 			entries = next;
-			status = enabled ? "First-run help will launch at login." : "First-run help won't launch at login.";
+			status = enabled ? "The welcome guide opens at your next login." : "The welcome guide won't open at login.";
 		} catch (e) {
 			status = `Error: ${e}`;
 		}
@@ -45,32 +44,16 @@
 </script>
 
 <ViewScaffold title="Help">
-	<Group
-		title="BOS Help"
-		hint="Opens the help app."
-	>
-		<button class="primary" onclick={() => invoke("open_breadhelp")}>Open breadhelp</button>
-	</Group>
-
-	<Group title="Show on login">
-		<SwitchField label="Show help on login" bind:value={() => autostartOn, (v) => setAutostart(v)} />
-		{#if !helpEntry}
-			<Hint text="Turning this on adds the first-run command." />
-		{/if}
-		{#if status}
-			<Hint text={status} />
-		{/if}
+	<Group title="Help">
+		<div class="ui-item">
+			<div class="lb"><b>BOS Help</b><small>Guides for getting started and fixing common problems.</small></div>
+			<button class="btn small" onclick={() => invoke("open_breadhelp")}>Open</button>
+		</div>
+		<SwitchField label="Show the welcome guide at login" bind:value={() => autostartOn, (v) => setAutostart(v)} />
+		{#if status}<p class="msg" role="status">{status}</p>{/if}
 	</Group>
 </ViewScaffold>
 
 <style>
-	.primary {
-		align-self: flex-start;
-		background-color: var(--accent);
-		color: var(--on-accent);
-		border: none;
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-sm, 8px) var(--space-lg, 16px);
-		cursor: pointer;
-	}
+	.msg { margin:0 2px 10px; color:var(--muted); font-size:12px; }
 </style>

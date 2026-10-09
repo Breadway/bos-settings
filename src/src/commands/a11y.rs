@@ -61,16 +61,20 @@ pub async fn get_a11y_status() -> A11yStatus {
 #[tauri::command]
 pub async fn set_cursor_zoom(factor: f64) -> Result<f64, String> {
     let factor = factor.clamp(1.0, 8.0);
-    let value = format!("{factor:.2}");
+    // BOS runs Hyprland's Lua config, where `hyprctl keyword` is refused
+    // ("keyword can't work with non-legacy parsers") yet still exits 0, so
+    // the zoom silently never applied. `eval` sets it through the Lua API.
+    let lua = format!("hl.config({{ cursor = {{ zoom_factor = {factor:.2} }} }})");
     let output = Command::new("hyprctl")
-        .args(["keyword", "cursor:zoom_factor", &value])
+        .args(["eval", &lua])
         .output()
         .await
         .map_err(|e| e.to_string())?;
-    if output.status.success() {
+    let said = String::from_utf8_lossy(&output.stdout);
+    if output.status.success() && said.trim() == "ok" {
         Ok(factor)
     } else {
-        Err(fail_output(&output, "hyprctl keyword cursor:zoom_factor"))
+        Err(fail_output(&output, "Setting the zoom"))
     }
 }
 
