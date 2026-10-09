@@ -203,6 +203,7 @@ export const SEARCH_INDEX: SearchHit[] = [
 	{ page: "apps", tab: "optional", label: "Optional software", keywords: "steam flatpak libreoffice" },
 	{ page: "apps", tab: "printing", label: "Printing", keywords: "cups printer" },
 	{ page: "privacy", label: "Firewall", keywords: "firewall ufw port allow" },
+	{ page: "privacy", tab: "bugs", label: "Bug reports", keywords: "bug report crash freeze breadbug send privacy telemetry diagnostics problem" },
 	{ page: "privacy", tab: "users", label: "Users", keywords: "users password account" },
 	{ page: "system", label: "Updates", keywords: "update bakery pacman firmware nvidia" },
 	{ page: "system", tab: "packages", label: "Packages", keywords: "packages bakery install" },

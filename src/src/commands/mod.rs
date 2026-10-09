@@ -8,6 +8,7 @@ pub mod bluetooth;
 pub mod bread;
 pub mod breadbar;
 pub mod breadbox;
+pub mod breadbug;
 pub mod breadclip;
 pub mod breadcrumbs;
 pub mod breadhelp;
