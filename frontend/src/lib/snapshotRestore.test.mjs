@@ -17,8 +17,8 @@ test("cancel leaves the snapshot root untouched", async () => {
 		() => assert.fail("cancel must not report an error"),
 	);
 	assert.equal(invoked, false);
-	assert.match(message, /current @ root will be preserved/);
-	assert.match(message, /system will reboot automatically/);
+	assert.match(message, /current system is kept as a backup/);
+	assert.match(message, /restarts into the system/);
 });
 
 test("confirmation passes the selected snapshot number to restore", async () => {

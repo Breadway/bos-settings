@@ -10,6 +10,7 @@
  import SelectField from '$lib/components/SelectField.svelte';
 
  import Appearance from './Appearance.svelte';
+ import Embed from '$lib/components/Embed.svelte';
  let prefs=$state<DesktopPreferences|null>(null);
  let error=$state('');
  onMount(async()=>{try{prefs=await invoke('get_desktop_preferences')}catch(e){error=String(e)}});
@@ -19,16 +20,16 @@
 <ViewScaffold title="Mouse & touchpad" lede="Pointer speed, scrolling and touchpad gestures.">
  {#if prefs}
  <Group title="Pointer">
-  <SliderField label="Speed" bind:value={prefs.pointer_speed} min={-1} max={1} step={0.05}/>
+  <SliderField label="Speed" bind:value={prefs.pointer_speed} min={-1} max={1} step={0.05} format={v => Math.abs(v) < 0.001 ? "Normal" : `${v > 0 ? "+" : ""}${Math.round(v * 100)}%`}/>
  </Group>
  <Group title="Touchpad">
   <SwitchField label="Tap to click" bind:value={prefs.tap_to_click}/>
   <SwitchField label="Natural scrolling" bind:value={prefs.natural_scroll}/>
   <SwitchField label="Disable while typing" bind:value={prefs.disable_while_typing}/>
   <SelectField label="Click method" bind:value={prefs.click_method} options={['clickfinger','buttonareas']} labels={{clickfinger:'Click with fingers',buttonareas:'Bottom corners'}}/>
-  <SliderField label="Scroll speed" bind:value={prefs.scroll_factor} min={0.1} max={5} step={0.1}/>
+  <SliderField label="Scroll speed" bind:value={prefs.scroll_factor} min={0.1} max={5} step={0.1} format={v => `${Math.round(v * 100)}%`}/>
  </Group>
- <details><summary>Focus and existing input settings</summary><Appearance scope="mouse"/></details>
+ <Embed><Appearance scope="mouse"/></Embed>
  {/if}
  {#if error}<p role="alert">{error}</p>{/if}
 </ViewScaffold>
