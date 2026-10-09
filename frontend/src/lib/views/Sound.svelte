@@ -6,8 +6,12 @@
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
 	import Row from "$lib/components/Row.svelte";
-	import Hint from "$lib/components/Hint.svelte";
-	import SwitchField from "$lib/components/SwitchField.svelte";
+	import Speaker from "@lucide/svelte/icons/speaker";
+	import Headphones from "@lucide/svelte/icons/headphones";
+	import Mic from "@lucide/svelte/icons/mic";
+	import Monitor from "@lucide/svelte/icons/monitor";
+	import Volume2 from "@lucide/svelte/icons/volume-2";
+	import VolumeX from "@lucide/svelte/icons/volume-x";
 
 	interface SoundDevice {
 		name: string;
@@ -17,6 +21,22 @@
 		virtual_device?: boolean;
 	}
 
+	// "Ryzen HD Audio Controller Speaker" -> Speakers · Built-in.
+	function friendly(d: SoundDevice, kind: "sinks" | "sources"): { name: string; where: string; Icon: typeof Speaker } {
+		const desc = d.description || d.name;
+		const bt = d.name.startsWith("bluez");
+		const hdmi = /hdmi|displayport/i.test(desc);
+		const builtIn = /HD Audio Controller|Built-in|Analog|Speaker|Digital Microphone|sof-|acp/i.test(desc) && !bt && !hdmi;
+		let name = desc;
+		let Icon: typeof Speaker = kind === "sinks" ? Speaker : Mic;
+		if (bt) { Icon = kind === "sinks" ? Headphones : Mic; }
+		else if (hdmi) { name = desc.replace(/^.*?(HDMI|DisplayPort)/i, "$1"); Icon = Monitor; }
+		else if (/headphone/i.test(desc)) { name = "Headphones"; Icon = Headphones; }
+		else if (/speaker/i.test(desc)) name = "Speakers";
+		else if (/digital microphone/i.test(desc)) name = "Microphone";
+		else if (/stereo microphone|headset microphone|mic/i.test(desc) && builtIn) name = "Headset jack microphone";
+		return { name, where: bt ? "Bluetooth" : hdmi ? "Screen" : builtIn ? "Built-in" : d.virtual_device ? "Virtual" : "External", Icon };
+	}
 	interface AppStream {
 		index: number;
 		app: string;
@@ -128,52 +148,48 @@
 	}
 </script>
 
+{#snippet card(section: DeviceSection, d: SoundDevice, i: number)}
+	{@const f = friendly(d, section.kind)}
+	<button type="button" class="dev-card pick" class:on={section.selected === i} onclick={() => selectDevice(section, i)} title={d.description || d.name}>
+		<span class="t"><span class="ico"><f.Icon size={18} /></span><span><b>{f.name}</b><small>{f.where}{section.selected === i ? " · in use" : ""}</small></span></span>
+	</button>
+{/snippet}
+
 {#snippet sectionCard(section: DeviceSection)}
 	<Group title={section.title}>
 		{#if section.devices.length === 0}
-			<Hint text="No devices found." />
+			<p class="muted">No devices found.</p>
 		{:else}
-			{#each section.devices as d, i (d.name + i)}
-				{#if shown(section, i, d)}
-				<button type="button" class="dev" class:on={section.selected === i} onclick={() => selectDevice(section, i)}>
-					<span class="dev-name">{d.description || d.name}</span>
-					{#if section.selected === i}<span class="mark">In use</span>{/if}
-				</button>
-				{/if}
-			{/each}
+			<div class="devgrid picks">
+				{#each section.devices as d, i (d.name + i)}
+					{#if shown(section, i, d)}{@render card(section, d, i)}{/if}
+				{/each}
+			</div>
 			{#if hiddenCount(section)}
-				<details class="more-devices"><summary>Monitor and loopback devices ({hiddenCount(section)})</summary>
-					{#each section.devices as d, i (d.name + i)}
-						{#if !shown(section, i, d)}
-						<button type="button" class="dev" onclick={() => selectDevice(section, i)}><span class="dev-name">{d.description || d.name}</span></button>
-						{/if}
-					{/each}
+				<details class="ui-disclosure"><summary>Monitor and loopback devices ({hiddenCount(section)})</summary>
+					<div class="devgrid picks">
+						{#each section.devices as d, i (d.name + i)}
+							{#if !shown(section, i, d)}{@render card(section, d, i)}{/if}
+						{/each}
+					</div>
 				</details>
 			{/if}
 			{#if current(section)}
-				<Row label="Volume">
-					<input
-						type="range"
-						min="0"
-						max="150"
-						value={Math.round(current(section)!.percent)}
-						onpointerdown={() => gate.begin()}
-					onpointerup={() => gate.end()}
-					onpointercancel={() => gate.end()}
-					oninput={(e) => setVolume(section, Number(e.currentTarget.value))}
-					/>
-					<span class="pct">{Math.round(current(section)!.percent)}%</span>
-				</Row>
-				<SwitchField
-					label="Mute"
-					bind:value={() => current(section)!.mute, (v) => setMute(section, v)}
-				/>
+				{@const dev = current(section)!}
+				<div class="vol">
+					<button class="btn small ghost icon" aria-label={dev.mute ? "Unmute" : "Mute"} aria-pressed={dev.mute} onclick={() => setMute(section, !dev.mute)}>
+						{#if dev.mute}<VolumeX size={16} />{:else if section.kind === "sources"}<Mic size={16} />{:else}<Volume2 size={16} />{/if}
+					</button>
+					<input type="range" min="0" max="150" value={Math.round(dev.percent)} aria-label="{section.title} volume"
+						onpointerdown={() => gate.begin()} onpointerup={() => gate.end()} onpointercancel={() => gate.end()}
+						oninput={(e) => setVolume(section, Number(e.currentTarget.value))} />
+					<span class="pct">{dev.mute ? "Muted" : `${Math.round(dev.percent)}%`}</span>
+				</div>
 			{/if}
 		{/if}
 	</Group>
 {/snippet}
-
-<ViewScaffold title="Sound" lede="Output, input, and volume.">
+<ViewScaffold title="Sound" lede="Where sound goes, what it picks up, and how loud each app is.">
 	{#if output}
 		{@render sectionCard(output)}
 	{/if}
@@ -191,67 +207,20 @@
 				<span class="pct">{Math.round(stream.percent)}%</span>
 			</Row>
 		{/each}
-		<button class="secondary" onclick={() => invoke("open_mixer")}>Open full mixer</button>
+		<div class="vol"><button class="btn small" onclick={() => invoke("open_mixer")}>Open full mixer</button></div>
 	</Group>
 </ViewScaffold>
 
 <style>
-	.more-devices summary { cursor: pointer; color: var(--muted); font-size: 12.5px; padding: 8px 2px; }
-	.mute { flex: none; }
-	.dev {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		width: 100%;
-		text-align: left;
-		background: transparent;
-		border: none;
-		border-top: 1px solid var(--line, #ffffff12);
-		padding: 10px 2px;
-		color: inherit;
-		cursor: pointer;
-	}
-
-	.dev:first-child {
-		border-top: none;
-	}
-
-	.dev.on .dev-name {
-		font-weight: 600;
-	}
-
-	.dev-name {
-		flex: 1;
-	}
-
-	.mark {
-		font-size: 11px;
-		padding: 4px 8px;
-		border-radius: 999px;
-		background: var(--accent);
-		color: var(--on-accent);
-		font-weight: 600;
-	}
-
-	input[type="range"] {
-		width: 180px;
-		accent-color: var(--accent);
-	}
-
-	.pct {
-		margin-left: 8px;
-		font-size: 12px;
-		opacity: 0.7;
-		min-width: 4ch;
-	}
-
-	.secondary {
-		background-color: var(--bg);
-		color: var(--on-surface);
-		border: none;
-		border-radius: 10px;
-		padding: 8px 16px;
-		cursor: pointer;
-		align-self: flex-start;
-	}
+	.muted { color:var(--muted); font-size:12.5px; margin:4px 2px 8px; }
+	.picks { grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); padding:2px 0 10px; }
+	.pick { cursor:pointer; color:inherit; font:inherit; text-align:left; padding:12px; }
+	.pick:hover { border-color:color-mix(in oklab, var(--accent) 35%, var(--line)); }
+	.pick .t > span:last-child { display:flex; flex-direction:column; min-width:0; }
+	.vol { display:flex; align-items:center; gap:10px; padding:4px 0 12px; }
+	.vol input { flex:1; }
+	.icon { display:grid; place-items:center; padding:6px; }
+	.pct { min-width:5ch; text-align:right; font-size:12px; color:var(--muted); }
+	.mute { flex:none; }
+	.secondary { background:var(--surface-2); color:var(--fg); border:1px solid var(--line); border-radius:10px; padding:6px 12px; cursor:pointer; }
 </style>

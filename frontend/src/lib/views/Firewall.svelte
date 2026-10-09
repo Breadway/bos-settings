@@ -2,12 +2,8 @@
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
-	import Row from "$lib/components/Row.svelte";
+	import SwitchField from "$lib/components/SwitchField.svelte";
 	import Group from "$lib/components/Group.svelte";
-	import EmptyState from "$lib/components/EmptyState.svelte";
-	import LogView from "$lib/components/LogView.svelte";
-	import Shield from "@lucide/svelte/icons/shield";
-	import ShieldAlert from "@lucide/svelte/icons/shield-alert";
 
 	interface FirewallRule {
 		number: string;
@@ -22,6 +18,31 @@
 	let enabledSensitive = $state(false);
 	let newRule = $state("");
 	let log = $state<string[]>([]);
+	let busy = $state(false);
+	// Apps by name instead of raw ufw rules; each needs all its ports open.
+	const APPS = [
+		{ name: "Remote login (SSH)", hint: "Others can open a terminal on this computer.", specs: ["22/tcp"] },
+		{ name: "LocalSend", hint: "Receive files from nearby devices.", specs: ["53317/tcp", "53317/udp"] },
+		{ name: "KDE Connect", hint: "Phone link.", specs: ["1714:1764/tcp", "1714:1764/udp"] },
+		{ name: "Tailscale", hint: "Faster direct connections on your private network.", specs: ["41641/udp"] },
+	];
+	const ruleSpecs = (st: FirewallStatus) => new Set(st.rules.filter((r) => /ALLOW/.test(r.text)).map((r) => r.text.trim().split(/\s+/)[0]));
+	const allowed = (st: FirewallStatus, specs: string[]) => specs.every((sp) => ruleSpecs(st).has(sp));
+	async function setApp(specs: string[], allow: boolean) {
+		if (typeof status !== "object" || !("active" in status)) return;
+		const have = ruleSpecs(status);
+		busy = true; log = [];
+		try {
+			for (const spec of specs) {
+				if (allow && !have.has(spec)) await invoke("add_firewall_rule", { rule: spec });
+				if (!allow && have.has(spec)) await invoke("remove_firewall_allow", { rule: spec });
+			}
+		} catch (e) {
+			log = [`${e}`];
+		}
+		busy = false;
+		await refresh();
+	}
 
 	onMount(refresh);
 
@@ -34,7 +55,7 @@
 			s.includes("authentication") ||
 			s.includes("controlling terminal")
 		) {
-			return "Need your password to read firewall rules.";
+			return "it needs your password, which wasn't given.";
 		}
 		return raw;
 	}
@@ -83,136 +104,42 @@
 </script>
 
 <ViewScaffold title="Firewall">
-	<Group title="Firewall" hint="Needs your password.">
-		<Row label="Firewall enabled">
-			<button
-				class="switch"
-				class:on={typeof status === "object" && "active" in status && status.active}
-				disabled={!enabledSensitive}
-				role="switch"
-				aria-checked={typeof status === "object" && "active" in status && status.active}
-				aria-label="Firewall enabled"
-				onclick={() => toggleEnabled(!(typeof status === "object" && "active" in status && status.active))}
-			>
-				<span class="knob"></span>
-			</button>
-		</Row>
-	</Group>
-
-	<Group title="Add rule" hint={'A port, optionally with a protocol. e.g. "22", "8080/tcp", "53/udp".'}>
-		<div class="add-row">
-			<input type="text" bind:value={newRule} placeholder="port/proto, e.g. 8080/tcp" />
-			<button class="allow" onclick={addRule}>Allow</button>
-		</div>
-	</Group>
-
-	<Group title="Rules" wide>
-		<div class="list">
-			{#if status === "unloaded"}
-				<EmptyState icon={Shield} title="Loading…" hint="May ask for your password." />
-			{:else if "error" in status}
-				<EmptyState icon={ShieldAlert} title="Couldn't read firewall status" hint={status.error} />
-			{:else if status.rules.length === 0}
-				<EmptyState icon={Shield} title="No rules" hint="Only the default policy (deny incoming, allow outgoing) applies." />
-			{:else}
-				{#each status.rules as rule (rule.number)}
-					<div class="rule-row">
-						<span class="text">{rule.text}</span>
-						<button class="remove" onclick={() => removeRule(rule.number)}>Remove</button>
-					</div>
+	<Group title="Firewall">
+		{#if status === "unloaded"}
+			<p class="muted">Checking… this may ask for your password.</p>
+		{:else if "error" in status}
+			<div class="ui-item">
+				<div class="lb"><b>Firewall</b><small>Couldn't check it: {status.error}</small></div>
+				<button class="btn small" onclick={refresh}>Try again</button>
+			</div>
+		{:else}
+			{@const st = status}
+			<SwitchField label="Firewall" hint="Blocks incoming connections you haven't allowed. Changes ask for your password." bind:value={() => st.active, (v) => toggleEnabled(v)} />
+			<p class="sub">Allowed to connect in</p>
+			{#each APPS as app (app.name)}
+				<SwitchField label={app.name} hint={app.hint} disabled={busy} bind:value={() => allowed(st, app.specs), (v) => setApp(app.specs, v)} />
+			{/each}
+			<details class="ui-disclosure">
+				<summary>Advanced rules ({st.rules.length})</summary>
+				{#each st.rules as rule (rule.number)}
+					<div class="ui-item"><code class="lb">{rule.text}</code><button class="btn small ghost" disabled={busy} onclick={() => removeRule(rule.number)}>Remove</button></div>
+				{:else}
+					<p class="muted">No extra rules. Incoming is blocked and outgoing is allowed.</p>
 				{/each}
-			{/if}
-		</div>
-
-		<button class="refresh" onclick={refresh}>Refresh status</button>
+				<div class="add-row">
+					<input class="ui-input" bind:value={newRule} placeholder="Port, e.g. 8080/tcp" onkeydown={(e) => e.key === "Enter" && addRule()} />
+					<button class="btn small" disabled={busy || !newRule.trim()} onclick={addRule}>Allow</button>
+				</div>
+			</details>
+		{/if}
+		{#if log.length}<p class="muted bad" role="alert">{log.join(" ")}</p>{/if}
 	</Group>
-
-	<LogView lines={log} />
 </ViewScaffold>
 
 <style>
-	.switch {
-		width: 40px;
-		height: 22px;
-		border-radius: 999px;
-		border: none;
-		background-color: var(--overlay);
-		padding: 2px;
-		cursor: pointer;
-		display: flex;
-		align-items: center;
-	}
-	.switch.on {
-		background-color: var(--accent);
-		justify-content: flex-end;
-	}
-	.switch:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-	.knob {
-		width: 18px;
-		height: 18px;
-		border-radius: 50%;
-		background-color: var(--on-surface);
-	}
-
-	.list {
-		min-height: 60px;
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.rule-row {
-		display: flex;
-		align-items: center;
-		gap: var(--space-sm, 8px);
-		background-color: var(--surface);
-		border-radius: var(--radius-secondary, 6px);
-		padding: var(--space-sm, 8px) var(--space-md, 12px);
-	}
-
-	.text {
-		flex: 1;
-	}
-
-	button {
-		border: none;
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-xs, 4px) var(--space-md, 12px);
-		cursor: pointer;
-	}
-
-	.remove {
-		background-color: transparent;
-		border: 1px solid color-mix(in oklab, var(--red) 45%, transparent);
-		color: var(--red);
-	}
-
-	.refresh {
-		background-color: var(--surface);
-		color: var(--on-surface);
-		align-self: flex-start;
-		margin-top: var(--space-sm, 8px);
-	}
-
-	.add-row {
-		display: flex;
-		gap: var(--space-sm, 8px);
-	}
-
-	.add-row input {
-		flex: 1;
-		background-color: var(--surface);
-		color: var(--on-surface);
-		border: 1px solid transparent;
-		border-radius: var(--radius-secondary, 6px);
-		padding: var(--space-xs, 4px) var(--space-sm, 8px);
-	}
-
-	.allow {
-		background-color: var(--accent);
-		color: var(--on-accent);
-	}
+	.muted { color:var(--muted); font-size:12.5px; margin:4px 2px 8px; } .bad { color:var(--red); }
+	.sub { margin:12px 2px 2px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+	code { font-size:12px; color:var(--muted); overflow-wrap:anywhere; }
+	.add-row { display:flex; gap:8px; padding:6px 0 10px; }
+	.add-row input { flex:1; }
 </style>

@@ -336,18 +336,18 @@
 				{/if}
 			</Row>
 			<Row label="Scale">
-				<div class="pills">
+				<div class="ui-seg">
 					{#each SCALES as s (s.value)}
-						<button type="button" class="pill" class:on={nearestScale(live.scale) === s.value} onclick={() => setScale(s.value)}>
+						<button type="button" class:on={nearestScale(live.scale) === s.value} onclick={() => setScale(s.value)}>
 							{s.label}
 						</button>
 					{/each}
 				</div>
 			</Row>
 			<Row label="Rotation">
-				<div class="pills">
+				<div class="ui-seg">
 					{#each TURNS as t (t.value)}
-						<button type="button" class="pill" class:on={live.transform % 4 === t.value} onclick={() => setTransform(t.value)}>
+						<button type="button" class:on={live.transform % 4 === t.value} onclick={() => setTransform(t.value)}>
 							{t.label}
 						</button>
 					{/each}
@@ -359,9 +359,6 @@
 				bind:value={() => (live?.vrr ?? 0) > 0, (v) => setVrr(v)}
 			/>
 			{#if monitors.length>1}<Row label="Mirror another display"><select aria-label="Mirror another display" value={live.mirror_of} disabled={applying||!!pending} onchange={e=>applyRisky(m=>{m.mirror_of=e.currentTarget.value;})}><option value="">Use as a separate display</option>{#each monitors.filter(m=>m.name!==live!.name && !m.mirror_of) as monitor}<option value={monitor.name}>{monitor.name}</option>{/each}</select></Row>{/if}
-            <Row label="Position">
-				<span class="mode">{live.x}, {live.y}</span>
-			</Row>
 			{#if message}
 				<Hint text={message} />
 			{/if}
