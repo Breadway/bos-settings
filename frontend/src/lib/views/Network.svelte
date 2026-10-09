@@ -150,6 +150,9 @@
 			{:else if ethernetUp}
 				<h3>Wired connection</h3>
 				<p>Connected by cable{radioEnabled ? " · Wi-Fi is on" : ""}</p>
+			{:else if radioEnabled && networks === null}
+				<h3>Checking…</h3>
+				<p>Looking at your connections.</p>
 			{:else}
 				<h3>Not connected</h3>
 				<p>{radioEnabled ? "Pick a network below." : "Wi-Fi is off."}</p>

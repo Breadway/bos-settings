@@ -9,7 +9,9 @@
  interface Cache { name: string; bytes: number }
  interface StorageInfo { disks: {path:string; total:number; used:number; available:number}[]; package_cache:number|null; app_cache:number|null; trash:number|null; errors:string[] }
  let breakdown=$state<{label:string;bytes:number|null;error:string|null}[]>([]);
- async function reviewBreakdown(){busy=true;try{breakdown=await invoke("get_storage_breakdown")}catch(e){message=String(e)}finally{busy=false}}
+ // Measuring a full disk takes a minute; it shouldn't lock the cleanup buttons.
+ let measuring=$state(false);
+ async function reviewBreakdown(){measuring=true;try{breakdown=await invoke("get_storage_breakdown")}catch(e){message=String(e)}finally{measuring=false}}
  let info = $state<StorageInfo|null>(null);
  let caches = $state<Cache[]|null>(null);
  let busy = $state(false);let unused=$state<string[]|null>(null);let selected=$state<string[]>([]);let logs=$state<string[]>([]);
@@ -46,7 +48,7 @@
    <Row label="App caches" hint={`${size(info.app_cache)} · apps rebuild these when needed.`}><button class="btn small" disabled={busy} onclick={review}>Review</button></Row>
    {#if caches}
     <div class="sub">
-     {#each caches as cache (cache.name)}<Row label={cache.name} hint={size(cache.bytes)}><button class="btn small remove" disabled={busy} onclick={() => clean({kind:"app_cache",name:cache.name}, `Delete the ${cache.name} cache`)}>Clean</button></Row>{:else}<p>No app caches found.</p>{/each}
+     {#each caches.filter((c) => c.bytes >= 1024 ** 2).sort((a, b) => b.bytes - a.bytes) as cache (cache.name)}<Row label={cache.name} hint={size(cache.bytes)}><button class="btn small remove" disabled={busy} onclick={() => clean({kind:"app_cache",name:cache.name}, `Delete the ${cache.name} cache`)}>Clean</button></Row>{:else}<p>No app caches found.</p>{/each}
      <p>Close an app before cleaning its cache.</p>
     </div>
    {/if}
@@ -61,10 +63,10 @@
   </Group>
   <Group title="Where space goes">
    {#if breakdown.length}
-    {#each breakdown as entry (entry.label)}<Row label={entry.label} hint={entry.error ?? undefined}><span class="num">{size(entry.bytes)}</span></Row>{/each}
-    <p>Snapshots share space with the system, so these numbers overlap.</p>
+    {#each breakdown as entry (entry.label)}<Row label={entry.label} hint={entry.error ?? undefined}><span class="num">{entry.label === "System snapshots" && entry.bytes !== null && info.disks[0] && entry.bytes > info.disks[0].used ? "Shared with the system" : size(entry.bytes)}</span></Row>{/each}
+    <p>Snapshots share space with the system, so these numbers overlap. Folders only the system can read aren't counted.</p>
    {:else}
-    <Row label="Measure folders" hint="Takes a moment on a full disk."><button class="btn small" disabled={busy} onclick={reviewBreakdown}>{busy ? "Measuring…" : "Measure"}</button></Row>
+    <Row label="Measure folders" hint="Takes a moment on a full disk."><button class="btn small" disabled={measuring} onclick={reviewBreakdown}>{measuring ? "Measuring…" : "Measure"}</button></Row>
    {/if}
   </Group>
   {#if logs.length}<details class="ui-disclosure"><summary>Details</summary><LogView lines={logs}/></details>{/if}
