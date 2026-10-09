@@ -9,7 +9,6 @@
 	import TextField from "$lib/components/TextField.svelte";
 	import NumberField from "$lib/components/NumberField.svelte";
 	import ChipPickerField from "$lib/components/ChipPickerField.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 	import Switch from "$lib/components/Switch.svelte";
 
 	interface Settings {
@@ -220,7 +219,6 @@
 			<button class="add" onclick={addProfile}>Add profile</button>
 		</Group>
 
-		<SaveButton onSave={save} />
 	{/if}
 </ViewScaffold>
 

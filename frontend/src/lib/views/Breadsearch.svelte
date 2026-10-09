@@ -10,7 +10,6 @@
 	import NumberField from "$lib/components/NumberField.svelte";
 	import PathListField from "$lib/components/PathListField.svelte";
 	import TagsField from "$lib/components/TagsField.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 
 	const BACKEND_LABELS: Record<string, string> = {
 		cpu: "CPU",
@@ -81,7 +80,6 @@
 			<TagsField label="File extensions" bind:value={cfg.index_extensions} />
 		</Group>
 
-		<SaveButton onSave={save} />
 	{/if}
 </ViewScaffold>
 

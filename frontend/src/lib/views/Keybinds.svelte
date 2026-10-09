@@ -7,7 +7,6 @@
 	import Hint from "$lib/components/Hint.svelte";
 	import TextField from "$lib/components/TextField.svelte";
 	import SelectField from "$lib/components/SelectField.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 	import Switch from "$lib/components/Switch.svelte";
 	import { hyprFromKeyEvent } from "$lib/keycapture";
 	import { findConflict } from "$lib/bindConflicts";
@@ -621,7 +620,6 @@
 				)}
 			</Group>
 
-			<SaveButton onSave={save} />
 		{:else}
 			<Group
 				title="Layout"
@@ -667,7 +665,6 @@
 				</div>
 			</Group>
 
-			<SaveButton onSave={save} />
 		{/if}
 	{/if}
 </ViewScaffold>

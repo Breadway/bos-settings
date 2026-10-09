@@ -10,7 +10,6 @@
 	import TextField from "$lib/components/TextField.svelte";
 	import FileField from "$lib/components/FileField.svelte";
 	import PasswordField from "$lib/components/PasswordField.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 	import EmptyState from "$lib/components/EmptyState.svelte";
 	import LogView from "$lib/components/LogView.svelte";
 	import Archive from "@lucide/svelte/icons/archive";
@@ -143,7 +142,6 @@
 			<FileField label="Local path" bind:value={repo} mode="folder" placeholder="/mnt/backup/bos" />
 			<TextField label="Or SFTP" bind:value={repo} placeholder="sftp:user@host:/backups/bos" />
 			<PasswordField label={st.has_password ? "Password (leave empty to keep)" : "Password"} bind:value={password} />
-			<SaveButton onSave={saveWithSchedule} />
 		{/if}
 	</Group>
 

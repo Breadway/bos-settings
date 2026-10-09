@@ -9,7 +9,7 @@
  import Row from '$lib/components/Row.svelte';
  import SwitchField from '$lib/components/SwitchField.svelte';
  import SelectField from '$lib/components/SelectField.svelte';
- import SaveButton from '$lib/components/SaveButton.svelte';
+
  let prefs=$state<NotificationPreferences|null>(null);let error=$state('');
  onMount(async()=>{try{prefs=await invoke('get_notification_preferences')}catch(e){error=String(e)}});
  async function save(){await invoke('save_notification_preferences',{preferences:prefs})}
@@ -28,8 +28,7 @@
  <Group title="Apps">
  {#each Object.keys(prefs.apps).sort() as app (app)}<SelectField label={app} bind:value={prefs.apps[app]} options={['all','banners','history','off']} labels={{all:'Banners and sound',banners:'Banners',history:'Only in history',off:'Off'}}/>{/each}
  {#if !Object.keys(prefs.apps).length}<p>Apps appear here after sending a notification.</p>{/if}
- </Group><SaveButton onSave={save}/>
- {/if}
+ </Group> {/if}
  <Group title="History and appearance"><Row label="Notification history"><button class="btn" onclick={history}>Open history</button></Row><Row label="Notification appearance"><button class="btn" onclick={()=>go('appearance','shelltheme')}>Choose a theme</button></Row></Group>
  {#if error}
   {#if error.includes('notification settings API') || error.includes('org.freedesktop.Notifications')}

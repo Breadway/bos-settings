@@ -10,7 +10,6 @@
 	import TextField from "$lib/components/TextField.svelte";
 	import NumberField from "$lib/components/NumberField.svelte";
 	import SwitchField from "$lib/components/SwitchField.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 
 	interface ShotBind {
 		shortcut: string;
@@ -61,7 +60,6 @@
 			<Hint text="Freeze needs hyprpicker. Filenames are <date_format>_breadshot.png." />
 			<NumberField label="Notification timeout (ms)" bind:value={cfg.notif_timeout} min={0} max={60000} />
 			<TextField label="Filename date format" bind:value={cfg.date_format} placeholder="%Y-%m-%d-%H%M%S" />
-			<SaveButton onSave={save} />
 		</Group>
 	{/if}
 </ViewScaffold>

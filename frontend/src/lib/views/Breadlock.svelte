@@ -9,7 +9,6 @@
 	import FileField from "$lib/components/FileField.svelte";
 	import TextField from "$lib/components/TextField.svelte";
 	import SwitchField from "$lib/components/SwitchField.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 
 	interface BreadlockConfig {
 		background_mode: string;
@@ -64,7 +63,6 @@
 			<details class="adv"><summary>Custom clock format</summary><TextField label="Format" bind:value={cfg.clock_format} placeholder="%H:%M" /></details>
 			<TextField label="Font" bind:value={cfg.font_family} placeholder="Varela Round" />
 			<SelectField label="After a wrong password, wait" bind:value={() => String(cfg!.fail_timeout_ms), (v) => (cfg!.fail_timeout_ms = Number(v))} options={waitOptions(cfg.fail_timeout_ms)} labels={waitLabels(cfg.fail_timeout_ms)} />
-			<SaveButton onSave={save} />
 		</Group>
 	{/if}
 
