@@ -172,13 +172,14 @@
 
 		{/if}
 		{#if scope !== "windows"}
-		<Group title={scope === "keyboard" ? "Keyboard layout" : "Mouse & touchpad"}>
+		<Group title={scope === "keyboard" ? "Keyboard layout" : scope === "mouse" ? "Windows" : "Mouse & touchpad"}>
 			{#if scope === "all" || scope === "keyboard"}
 			<SelectField label="Keyboard layout" bind:value={cfg.kb_layout} options={kbLayoutOptions} labels={KB_LABELS} />
 			{/if}
 			{#if scope === "all" || scope === "mouse"}
 			<SelectField
 				label="Focus"
+				hint="Which window gets your typing."
 				bind:value={followMouse}
 				options={FOLLOW_MOUSE_MODES.map((m) => m.value)}
 				labels={Object.fromEntries(FOLLOW_MOUSE_MODES.map((m) => [m.value, m.label]))}
@@ -188,7 +189,7 @@
 		</Group>
 
 		{/if}
-		<Hint text="Applies as you change it." />
+		{#if scope === "all"}<Hint text="Applies as you change it." />{/if}
         {#if status}<p role="alert">{status}</p><button class="btn" onclick={()=>saveNow().catch(e=>status=String(e))}>Retry saving</button>{/if}
 	{/if}
 </ViewScaffold>

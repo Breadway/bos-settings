@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { isSystemStartup } from "$lib/systemStartup";
-	import Hint from "$lib/components/Hint.svelte";
+	import Switch from "$lib/components/Switch.svelte";
+	import Sheet from "$lib/components/Sheet.svelte";
+	import Plus from "@lucide/svelte/icons/plus";
+	import { changes } from "$lib/changes.svelte";
 	import { useDraft } from "$lib/drafts.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
@@ -16,11 +19,14 @@
 	}
 
 	let apps=$state<{id:string;name:string}[]>([]);
-	let picking=$state(false);let picker=$state<HTMLDialogElement>();
- $effect(()=>{if(picking&&picker&&!picker.open)picker.showModal()});
+	let picking=$state(false);
+	let editing=$state<AutostartEntry|null>(null);
+	let custom=$state<AutostartEntry|null>(null);
+	// "gtk-launch org.gnome.Nautilus.desktop" -> "org.gnome.Nautilus"; a path -> its file name.
+	function appName(command:string):string{const first=command.trim().split(/\s+/);const target=first[0]==="gtk-launch"?first[1]??"":first[0]??"";return target.replace(/\.desktop$/,"").split("/").pop()||"Command";}
 	let appQuery=$state("");
 	onMount(async()=>{apps=await invoke("list_startup_apps")});
-	function addApp(app:{id:string;name:string}) { if(!/^[a-zA-Z0-9_.-]+\.desktop$/.test(app.id)) return; entries=[...(entries ?? []),{command:`gtk-launch ${app.id}`,label:app.name,enabled:true}];picking=false; }
+	function addApp(app:{id:string;name:string}) { if(!/^[a-zA-Z0-9_.-]+\.desktop$/.test(app.id)) return; entries=[...(entries ?? []),{command:`gtk-launch ${app.id}`,label:app.name,enabled:true}];picking=false; changes.message=`${app.name} opens at login`; changes.undo=null; }
 	let editSystem = $state(false);
 	let originalSystem = "";
 	let entries = $state<AutostartEntry[] | null>(null);
@@ -29,10 +35,6 @@
 		entries = await invoke<AutostartEntry[]>("get_autostart_entries");
 		originalSystem = JSON.stringify(entries.filter(e => isSystemStartup(e.command)));
 	});
-
-	function addEntry() {
-		entries = [...(entries ?? []), { command: "", label: "", enabled: true }];
-	}
 
 	function removeEntry(i: number) {
 		entries = entries!.filter((_, idx) => idx !== i);
@@ -55,155 +57,95 @@
 
 <ViewScaffold title="Startup" lede="Apps that open when you log in.">
 	{#if entries}
-		<Group
-			title="Your apps"
-			hint="Your apps start after login. Core desktop services are listed separately below."
-			wide
-		>
+		<Group title="Your apps">
 			{#each entries as entry, i (i)}
 				{#if !isSystemStartup(entry.command)}
-				<div class="row">
-					<button
-						class="switch"
-						class:on={entry.enabled}
-						role="switch"
-						aria-checked={entry.enabled}
-						aria-label="Enabled"
-						onclick={() => (entry.enabled = !entry.enabled)}
-					>
-						<span class="knob"></span>
-					</button>
-					<div class="fields">
-						<input type="text" bind:value={entry.label} placeholder="Label" class="label" title={entry.label} />
-						<details><summary>Advanced command</summary><input type="text" bind:value={entry.command} placeholder="command" class="command" title={entry.command} /></details>
+					<div class="ui-item">
+						<div class="lb"><b>{entry.label || appName(entry.command)}</b><small title={entry.command}>{entry.enabled ? "Opens at login" : "Off"}</small></div>
+						<button class="btn small ghost" onclick={() => (editing = entry)}>Edit</button>
+						<Switch bind:value={entry.enabled} ariaLabel={`Open ${entry.label || "this"} at login`} />
 					</div>
-					<button class="browse" onclick={() => browseFor(entry)} aria-label="Browse for program">
-						<FolderOpen size={14} />
-					</button>
-					<button class="remove" onclick={() => removeEntry(i)}>Remove</button>
-				</div>
-							{/if}
+				{/if}
 			{/each}
-			<button class="btn" onclick={() => picking=true}>Add an app</button>
- {#if picking}<dialog bind:this={picker} aria-label="Add a startup app" oncancel={()=>picking=false}><h3>Add a startup app</h3><input class="inp" aria-label="Search installed apps" bind:value={appQuery} placeholder="Search installed apps"/>
- <div class="picker">{#each apps.filter(a=>a.name.toLowerCase().includes(appQuery.toLowerCase())) as app (app.id)}<button class="btn" onclick={()=>addApp(app)}>{app.name}<span>Add</span></button>{/each}</div><button class="btn" onclick={()=>picking=false}>Cancel</button></dialog>{/if}
- <details><summary>Add a custom command</summary><button class="btn" onclick={addEntry}>Add custom command</button></details>
+			{#if !entries.some((e) => !isSystemStartup(e.command))}<p class="empty">Nothing opens at login yet.</p>{/if}
+			<div class="foot">
+				<button class="btn small" onclick={() => { appQuery = ""; picking = true; }}><Plus size={14} />Add an app</button>
+				<button class="btn small ghost" onclick={() => (custom = { command: "", label: "", enabled: true })}>Add a command</button>
+			</div>
+		</Group>
 
-
-   <details class="system" open>
-    <summary>Managed by BOS</summary>
-    <Hint text="These services provide the bar, locking and desktop integrations. Leave them enabled unless you are replacing them." />
-    <details><summary>Advanced service editing</summary><button class="btn" onclick={() => { if (confirm("Enable advanced editing of core startup services? Changing them can break desktop features.")) editSystem = true; }}>Enable advanced editing</button></details>
-    {#each entries as entry, i (i)}
-     {#if isSystemStartup(entry.command)}
-      <div class="row managed">
-       <div class="fields"><b>{entry.label || entry.command}</b><small class="state" class:off={!entry.enabled}>{entry.enabled ? "Runs at login" : "Turned off"}</small>
-        {#if editSystem}<input aria-label="System service command" bind:value={entry.command} />{/if}
-       </div>
-       {#if editSystem}<button class="btn" onclick={() => entry.enabled = !entry.enabled}>{entry.enabled ? "Disable" : "Enable"}</button><button class="btn danger" onclick={() => removeEntry(i)}>Remove</button>{/if}
-      </div>
-     {/if}
-    {/each}
-   </details>
+		<Group title="Desktop services">
+			<details class="ui-disclosure">
+				<summary>Started by BOS ({entries.filter((e) => isSystemStartup(e.command)).length})</summary>
+				<p class="empty">These run the bar, locking, screenshots and other parts of the desktop. Leave them on unless you are replacing one.</p>
+				{#each entries as entry, i (i)}
+					{#if isSystemStartup(entry.command)}
+						<div class="ui-item">
+							<div class="lb"><b>{entry.label || entry.command}</b><small class:off={!entry.enabled}>{entry.enabled ? "Runs at login" : "Turned off"}</small>
+								{#if editSystem}<input class="ui-input cmd" aria-label="Command" bind:value={entry.command} />{/if}
+							</div>
+							{#if editSystem}<Switch bind:value={entry.enabled} ariaLabel={entry.label || entry.command} /><button class="btn small remove" onclick={() => removeEntry(i)}>Remove</button>{/if}
+						</div>
+					{/if}
+				{/each}
+				{#if !editSystem}
+					<div class="foot"><button class="btn small ghost" onclick={() => { if (confirm("Change desktop services? Turning one off can stop locking, screenshots, the wallpaper or other parts of the desktop.")) editSystem = true; }}>Change these…</button></div>
+				{/if}
+			</details>
 		</Group>
 	{/if}
 </ViewScaffold>
 
+{#if picking}
+	<Sheet title="Add a startup app" onClose={() => (picking = false)}>
+		<input class="ui-input" aria-label="Search installed apps" bind:value={appQuery} placeholder="Search installed apps" />
+		<div class="picker">
+			{#each apps.filter((a) => a.name.toLowerCase().includes(appQuery.toLowerCase())) as app (app.id)}
+				<div class="ui-item"><div class="lb"><b>{app.name}</b></div><button class="btn small primary" onclick={() => addApp(app)}>Add</button></div>
+			{/each}
+		</div>
+		{#snippet actions()}<button class="btn" onclick={() => (picking = false)}>Done</button>{/snippet}
+	</Sheet>
+{/if}
+
+{#if editing}
+	{@const entry = editing}
+	<Sheet title={entry.label || "Startup command"} onClose={() => (editing = null)}>
+		<label class="field"><span>Name</span><input class="ui-input" bind:value={entry.label} placeholder={appName(entry.command)} /></label>
+		<label class="field"><span>Command</span>
+			<span class="cmdrow"><input class="ui-input" bind:value={entry.command} /><button class="btn small ghost" onclick={() => browseFor(entry)} aria-label="Pick a program"><FolderOpen size={14} /></button></span>
+		</label>
+		{#snippet actions()}
+			<button class="btn remove" onclick={() => { removeEntry(entries!.indexOf(entry)); editing = null; }}>Remove</button>
+			<span class="spacer"></span>
+			<button class="btn primary" onclick={() => (editing = null)}>Done</button>
+		{/snippet}
+	</Sheet>
+{/if}
+
+{#if custom}
+	{@const c = custom}
+	<Sheet title="Add a command" lede="Runs once each time you log in." onClose={() => (custom = null)}>
+		<label class="field"><span>Name</span><input class="ui-input" bind:value={c.label} placeholder="What it is, e.g. Sync notes" /></label>
+		<label class="field"><span>Command</span>
+			<span class="cmdrow"><input class="ui-input" bind:value={c.command} placeholder="e.g. syncthing --no-browser" /><button class="btn small ghost" onclick={() => browseFor(c)} aria-label="Pick a program"><FolderOpen size={14} /></button></span>
+		</label>
+		{#snippet actions()}
+			<button class="btn" onclick={() => (custom = null)}>Cancel</button>
+			<button class="btn primary" disabled={!c.command.trim()} onclick={() => { entries = [...entries!, { ...c, command: c.command.trim() }]; custom = null; }}>Add</button>
+		{/snippet}
+	</Sheet>
+{/if}
+
 <style>
- .managed{display:flex;align-items:center;gap:12px;padding:10px 4px;border-top:1px solid var(--line)}
- .managed .fields{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
- .managed b{font-weight:400}
- .managed .state{color:var(--muted);font-size:12px}
- .managed .state.off{color:var(--red,#e0736a)}
-
- dialog{background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:14px;width:min(480px,calc(100vw - 32px));}dialog::backdrop{background:#0009;}
-	.picker {max-height:320px;overflow:auto;display:flex;flex-direction:column;gap:4px;margin:8px 0;}
-	.picker span {margin-left:auto;}
-	.row {
-		display: flex;
-		align-items: center;
-		gap: var(--space-sm, 8px);
-		margin-bottom: var(--space-xs, 4px);
-	}
-
-	.fields {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
-	.label,
-	.command {
-		width: 100%;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.command {
-		opacity: 0.65;
-		font-size: var(--font-size-secondary, 12px);
-	}
-
-	input[type="text"] {
-		background-color: var(--bg);
-		color: var(--on-surface);
-		border: 1px solid transparent;
-		border-radius: var(--radius-secondary, 6px);
-		padding: var(--space-xs, 4px) var(--space-sm, 8px);
-	}
-
-	input:focus {
-		outline: none;
-		border-color: var(--accent);
-	}
-
-	button {
-		border: none;
-		border-radius: var(--radius-primary, 8px);
-		cursor: pointer;
-	}
-
-	.browse {
-		background-color: var(--surface);
-		color: var(--on-surface);
-		border: none;
-		padding: var(--space-xs, 4px) var(--space-sm, 8px);
-		display: flex;
-	}
-
-	.remove {
-		background-color: transparent;
-		border: 1px solid color-mix(in oklab, var(--red) 45%, transparent);
-		color: var(--red);
-		padding: var(--space-xs, 4px) var(--space-md, 12px);
-	}
-
-
-	.switch {
-		width: 36px;
-		height: 20px;
-		flex-shrink: 0;
-		border-radius: 999px;
-		background-color: var(--overlay);
-		padding: 2px;
-		display: flex;
-		align-items: center;
-	}
-
-	.switch.on {
-		background-color: var(--accent);
-		justify-content: flex-end;
-	}
-
-	.knob {
-		width: 16px;
-		height: 16px;
-		border-radius: 50%;
-		background-color: var(--on-surface);
-		display: block;
-	}
-	.system { border-top:1px solid var(--line); margin-top:12px; padding-top:12px; } summary { cursor:pointer; color:var(--muted); } small { color:var(--muted); }
+	.empty { color:var(--muted); font-size:12.5px; margin:6px 2px 8px; line-height:1.45; }
+	.foot { display:flex; gap:8px; padding:6px 0 10px; flex-wrap:wrap; }
+	.foot .btn { display:inline-flex; align-items:center; gap:6px; }
+	.ui-item small.off { color:var(--red); }
+	.cmd { width:100%; margin-top:6px; font-size:12px; }
+	.picker { max-height:340px; overflow:auto; margin-top:8px; }
+	.field { display:flex; flex-direction:column; gap:6px; padding:8px 0; font-size:13px; }
+	.cmdrow { display:flex; gap:6px; }
+	.cmdrow input { flex:1; }
+	.spacer { flex:1; }
 </style>

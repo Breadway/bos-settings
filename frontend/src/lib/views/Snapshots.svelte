@@ -4,11 +4,8 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
-	import Hint from "$lib/components/Hint.svelte";
-	import EmptyState from "$lib/components/EmptyState.svelte";
-	import History from "@lucide/svelte/icons/history";
-	import CircleAlert from "@lucide/svelte/icons/circle-alert";
-	import { confirmAndRestoreSnapshot } from "$lib/snapshotRestore";
+	import { snapshotRestoreConfirmation } from "$lib/snapshotRestore";
+	import Sheet from "$lib/components/Sheet.svelte";
 
 	interface SnapshotRow {
 		number: string;
@@ -19,7 +16,9 @@
 
 	let snapshots = $state<SnapshotRow[] | "loading">("loading");
 	let errorHint = $state<string | null>(null);
-	let selected = $state<string | null>(null);
+	let picked = $state<SnapshotRow | null>(null);
+	let sheetError = $state("");
+	let showAll = $state(false);
 	let restoring = $state(false);
  async function takeSnapshot(){if(restoring)return;restoring=true;try{await invoke("create_manual_snapshot");await refresh()}catch(e){errorHint=String(e)}finally{restoring=false}}
 
@@ -38,43 +37,39 @@
 			}
 			snapshots = [];
 		}
-		selected = null;
+		picked = null;
 	}
 
 	onMount(refresh);
 
-	function bootIntoSelected() {
-		if (!selected) return;
-		if (
-			confirm(
-				`Reboot to pick snapshot #${selected} in GRUB? BOS boots snapshots from the GRUB “BOS snapshots” submenu. This does not run snapper rollback.`,
-			)
-		) {
-			invoke("reboot_system");
-		}
+	// "2026-10-07 16:32:00" -> "7 Oct, 16:32" (or "Today, 16:32").
+	function when(date: string): string {
+		const d = new Date(date.replace(" ", "T"));
+		if (Number.isNaN(d.getTime())) return date;
+		const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+		if (d.toDateString() === new Date().toDateString()) return `Today, ${time}`;
+		return `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })}, ${time}`;
 	}
 
-	async function deleteSelected() {
-		if (!selected) return;
-		if (!confirm(`Delete snapshot #${selected}? This cannot be undone.`)) return;
+	async function deleteSnapshot(number: string) {
+		if (!confirm(`Delete snapshot #${number}? This can't be undone.`)) return;
+		sheetError = "";
 		try {
-			await invoke("delete_snapshot", { number: selected });
+			await invoke("delete_snapshot", { number });
 			await refresh();
 		} catch (e) {
-			alert(`${e}`);
+			sheetError = `Couldn't delete it: ${e}`;
 		}
 	}
 
-	async function restoreSelected() {
-		if (!selected || restoring) return;
+	async function restore(number: string) {
+		if (restoring) return;
 		restoring = true;
+		sheetError = "";
 		try {
-			await confirmAndRestoreSnapshot(
-				selected,
-				(message) => confirm(message),
-				(number) => invoke("restore_snapshot", { number }),
-				(message) => alert(message),
-			);
+			await invoke("restore_snapshot", { number });
+		} catch (e) {
+			sheetError = `Couldn't restore: ${e}`;
 		} finally {
 			restoring = false;
 		}
@@ -82,87 +77,64 @@
 </script>
 
 <ViewScaffold title="Snapshots">
- <button class="btn" disabled={restoring} onclick={takeSnapshot}>Take a snapshot now</button>
-	<Hint text="Reboot and pick a snapshot in GRUB to undo an update." />
-	<Hint text="Automatic cleanup keeps 2 to 20 regular snapshots and 4 to 10 important snapshots. With Btrfs quotas enabled, it also keeps at least 20% of the filesystem free and limits snapshots to 50% of its space. Low disk space can reduce these counts." />
-	<Group
-		title="What to pick in GRUB"
-		hint="Reboot and choose that entry in GRUB."
-		wide
-	>
-		<div class="list">
-			{#if snapshots === "loading"}
-				<Hint text="Loading…" />
-			{:else if errorHint}
-				<EmptyState icon={CircleAlert} title="Couldn't read snapshots" hint={errorHint} />
-			{:else if snapshots.length === 0}
-				<EmptyState icon={History} title="No snapshots yet" hint="Snapshots are created automatically on every pacman transaction." />
-			{:else}
-                <div class="timeline">
-                <div class="event current"><div class="dot"></div><div><b>Now</b><small>Current system</small></div></div>
-                {#each snapshots as snap (snap.number)}
-                 <div class="event" class:selected={selected===snap.number}>
-                  <button class="dot" aria-label={`Select snapshot ${snap.number}`} onclick={()=>selected=snap.number}></button>
-                  <button class="snapshot-label" onclick={()=>selected=snap.number}><b title={snap.description}>{snapshotLabel(snap.description, snap.kind) || `Snapshot ${snap.number}`}</b><small>{snap.date} · #{snap.number}</small></button>
-                  <button class="btn" disabled={restoring} onclick={async()=>{selected=snap.number;await restoreSelected()}}>Restore…</button>
-                 </div>
-                {/each}
-                </div>
-			{/if}
-		</div>
-
-		<div class="btn-row">
-			<button onclick={refresh}>Refresh</button>
-			<button disabled={!selected} onclick={bootIntoSelected}>Reboot to pick in GRUB</button>
-			<button class="destructive" disabled={!selected || restoring} onclick={restoreSelected}>
-				{restoring ? "Restoring…" : "Restore selected snapshot and reboot"}
-			</button>
-			<button class="destructive" disabled={!selected} onclick={deleteSelected}>Delete selected</button>
-		</div>
+	<Group title="System snapshots" hint="BOS saves the system before every update. If something breaks, go back to one of these.">
+		{#if snapshots === "loading"}
+			<p class="muted">Loading…</p>
+		{:else if errorHint}
+			<p class="muted bad">Couldn't read snapshots. {errorHint}</p>
+		{:else if snapshots.length === 0}
+			<p class="muted">No snapshots yet. One is taken before every update.</p>
+		{:else}
+			<div class="timeline">
+				<div class="event current"><div class="dot"></div><div class="lbl"><b>Now</b><small>Current system</small></div></div>
+				{#each [...snapshots].reverse().slice(0, showAll ? undefined : 5) as snap (snap.number)}
+					<div class="event">
+						<div class="dot"></div>
+						<div class="lbl"><b title={snap.description}>{snapshotLabel(snap.description, snap.kind) || `Snapshot ${snap.number}`}</b><small>{when(snap.date)} · #{snap.number}</small></div>
+						<button class="btn small" disabled={restoring} onclick={() => (picked = snap)}>Restore…</button>
+					</div>
+				{/each}
+			</div>
+			{#if snapshots.length > 5 && !showAll}<button class="btn small ghost older" onclick={() => (showAll = true)}>Show {snapshots.length - 5} older</button>{/if}
+		{/if}
+		<details class="ui-disclosure">
+			<summary>More</summary>
+			<div class="ui-item">
+				<div class="lb"><b>Take a snapshot now</b><small>Handy before you change something by hand.</small></div>
+				<button class="btn small" disabled={restoring} onclick={takeSnapshot}>Take snapshot</button>
+			</div>
+			<div class="ui-item">
+				<div class="lb"><b>How many are kept</b><small>Up to 20 automatic snapshots and 10 important ones, fewer when the disk is getting full.</small></div>
+			</div>
+		</details>
 	</Group>
 </ViewScaffold>
 
+{#if picked}
+	{@const snap = picked}
+	<Sheet title="Restore snapshot #{snap.number}?" lede={snapshotRestoreConfirmation(snap.number)} onClose={() => (picked = null)}>
+		<p class="muted">{snapshotLabel(snap.description, snap.kind) || snap.description} · {when(snap.date)}</p>
+		{#if sheetError}<p class="muted bad" role="alert">{sheetError}</p>{/if}
+		{#snippet actions()}
+			<button class="btn remove" disabled={restoring} onclick={() => deleteSnapshot(snap.number)}>Delete snapshot</button>
+			<span class="spacer"></span>
+			<button class="btn" onclick={() => (picked = null)}>Cancel</button>
+			<button class="btn primary" disabled={restoring} onclick={() => restore(snap.number)}>{restoring ? "Restoring…" : "Restore and restart"}</button>
+		{/snippet}
+	</Sheet>
+{/if}
+
 <style>
- .timeline{display:flex;flex-direction:column;padding:8px 0}.event{display:flex;align-items:center;gap:12px;padding:12px 0;position:relative}.dot{width:12px;height:12px;border-radius:50%;background:var(--surface-2);border:2px solid var(--muted);padding:0;flex:none}.current .dot,.selected .dot{background:var(--accent);border-color:var(--accent)}.snapshot-label{flex:1;min-width:0;display:flex;flex-direction:column;text-align:left;background:transparent;border:0;padding:0;color:var(--fg)}.event b{font-weight:400}.event small{display:block;color:var(--muted);font-size:12px;margin-top:2px}.event:before{content:"";position:absolute;left:5px;top:-3px;height:14px;width:2px;background:var(--line)}.event:first-child:before{display:none}
-	.list {
-
-		overflow-y: auto;
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-
-
-
-
-
-
-
-	.btn-row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-sm, 8px);
-		margin-top: var(--space-sm, 8px);
-	}
-
-	button {
-		background-color: var(--bg);
-		color: var(--on-surface);
-		border: none;
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-xs, 4px) var(--space-md, 12px);
-		cursor: pointer;
-	}
-
-	button.destructive {
-		background-color: transparent;
-		border: 1px solid color-mix(in oklab, var(--red) 45%, transparent);
-		color: var(--red);
-	}
-
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
+	.muted { color:var(--muted); font-size:12.5px; margin:4px 2px 8px; line-height:1.45; } .bad { color:var(--red); }
+	.timeline { display:flex; flex-direction:column; padding:4px 0; }
+	.event { display:flex; align-items:center; gap:12px; padding:10px 0; position:relative; }
+	.event::before { content:""; position:absolute; left:5px; top:-10px; height:20px; width:2px; background:var(--line); }
+	.event:first-child::before { display:none; }
+	.dot { width:12px; height:12px; border-radius:50%; background:var(--surface-2); border:2px solid var(--muted); flex:none; position:relative; z-index:1; }
+	.current .dot { background:var(--accent); border-color:var(--accent); }
+	.lbl { flex:1; min-width:0; }
+	.lbl b { display:block; font-weight:400; overflow-wrap:anywhere; }
+	.lbl small { display:block; color:var(--muted); font-size:12px; margin-top:2px; }
+	.spacer { flex:1; }
+	.older { margin:0 0 8px 22px; }
 </style>
