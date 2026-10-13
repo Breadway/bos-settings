@@ -10,6 +10,8 @@
 	import Download from "@lucide/svelte/icons/download";
 	import Cpu from "@lucide/svelte/icons/cpu";
 	import Check from "@lucide/svelte/icons/check";
+	import CircleAlert from "@lucide/svelte/icons/circle-alert";
+	import { heroState, failedParts } from "$lib/updateHero";
 
 	interface PendingUpdate {
 		name: string;
@@ -38,6 +40,7 @@
 
 	let status = $state<UpdatesStatus | null>(null);
 	let total = $derived(status ? status.pacman.length + status.bakery.length : 0);
+	let hero = $derived(heroState(status, updateRun.busy));
 	let summary = $derived.by(() => {
 		if (!status) return "";
 		const parts: string[] = [];
@@ -101,13 +104,15 @@
 
 <ViewScaffold title="Updates">
 	<div class="hero-card">
-		<span class="big">{#if total === 0 && status && !updateRun.busy}<Check size={26} />{:else}<Download size={26} />{/if}</span>
+		<span class="big">{#if hero === "current"}<Check size={26} />{:else if hero === "failed"}<CircleAlert size={26} />{:else}<Download size={26} />{/if}</span>
 		<div>
-			{#if updateRun.busy}
+			{#if hero === "updating"}
 				<h3>Updating…</h3><p>You can keep working. Don't turn the computer off.</p>
-			{:else if !status}
+			{:else if hero === "checking"}
 				<h3>Checking for updates…</h3><p>This takes a few seconds.</p>
-			{:else if total === 0}
+			{:else if hero === "failed" && status}
+				<h3>Couldn't check for updates</h3><p>BOS couldn't check {failedParts(status)}. Check your connection and try again. Details are below.</p>
+			{:else if hero === "current"}
 				<h3>You're up to date</h3><p>{updateRun.message || "System and bread apps are current."}</p>
 			{:else}
 				<h3>{total} {total === 1 ? "update" : "updates"} ready</h3><p>{summary}</p>
