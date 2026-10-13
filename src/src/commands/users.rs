@@ -11,12 +11,34 @@ use super::util;
 pub struct Account {
     username: String,
     full_name: String,
+    admin: bool,
+}
+
+/// Members of the groups that grant sudo (`wheel` on Arch, `sudo` on Debian).
+fn admin_members(group_text: &str) -> Vec<String> {
+    group_text
+        .lines()
+        .filter_map(|line| {
+            let f: Vec<&str> = line.split(':').collect();
+            if f.len() < 4 || !matches!(f[0], "wheel" | "sudo") {
+                return None;
+            }
+            Some(
+                f[3].split(',')
+                    .filter(|m| !m.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .flatten()
+        .collect()
 }
 
 fn list_accounts() -> Vec<Account> {
     let Ok(text) = std::fs::read_to_string("/etc/passwd") else {
         return Vec::new();
     };
+    let admins = admin_members(&std::fs::read_to_string("/etc/group").unwrap_or_default());
     text.lines()
         .filter_map(|line| {
             let f: Vec<&str> = line.split(':').collect();
@@ -36,6 +58,7 @@ fn list_accounts() -> Vec<Account> {
             Some(Account {
                 username: f[0].to_string(),
                 full_name: f[4].split(',').next().unwrap_or("").to_string(),
+                admin: admins.iter().any(|a| a == f[0]),
             })
         })
         .collect()
@@ -192,6 +215,14 @@ mod tests {
         assert!(chpasswd_input("al:ice", "pw").is_err());
         assert!(chpasswd_input("alice", "p:w").is_err());
         assert_eq!(chpasswd_input("alice", "secret").unwrap(), "alice:secret\n");
+    }
+
+    #[test]
+    fn admin_members_reads_wheel_and_sudo() {
+        let text =
+            "root:x:0:\nwheel:x:998:alice,bob\nusers:x:100:carol\nsudo:x:27:dave\nempty:x:5:\n";
+        assert_eq!(admin_members(text), vec!["alice", "bob", "dave"]);
+        assert!(admin_members("wheel:x:998:\nbroken").is_empty());
     }
 
     #[test]
