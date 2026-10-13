@@ -4,7 +4,6 @@
 	import { runStreamed } from "$lib/streaming";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
-	import Hint from "$lib/components/Hint.svelte";
 	import LogView from "$lib/components/LogView.svelte";
 
 	interface BakeryTrack {
@@ -12,10 +11,11 @@
 		tracks: string[];
 	}
 
+	const LABELS: Record<string, string> = { stable: "Stable", beta: "Beta", dev: "Development" };
 	const BLURBS: Record<string, string> = {
-		stable: "Last tagged release.",
-		beta: "Latest release candidate (vX.Y.Z-rc.N).",
-		dev: "Every push to main.",
+		stable: "Finished releases. The safest choice.",
+		beta: "Releases being tested before they become stable.",
+		dev: "Every change as soon as it is made. Newest, and sometimes broken.",
 	};
 
 	let track = $state<BakeryTrack | null>(null);
@@ -37,7 +37,7 @@
 		message = "";
 		try {
 			track = await invoke<BakeryTrack>("set_bakery_track", { track: name });
-			message = `Now on ${name}. Run bakery update --all to install this track’s builds.`;
+			message = `Switched to ${LABELS[name] ?? name}. Update bread apps to get its builds.`;
 		} catch (e) {
 			message = `${e}`;
 		}
@@ -53,75 +53,24 @@
 	}
 </script>
 
-<ViewScaffold title="Bakery channel">
-	<Group
-		title="Track"
-		hint="Nothing downloads until you update."
-	>
+<ViewScaffold title="Update channel">
+	<Group title="Bread apps channel" hint="How new the bread apps you get are. Nothing changes until you update.">
 		{#if !track}
-			<Hint text="Loading…" />
+			<p class="muted">Loading…</p>
 		{:else}
-			<div class="tracks">
+			<div class="ui-seg">
 				{#each track.tracks as name (name)}
-					<button class="track" class:on={track.current === name} onclick={() => setTrack(name)}>
-						<strong>{name}</strong>
-						<span>{BLURBS[name] ?? ""}</span>
-					</button>
+					<button class:on={track.current === name} onclick={() => setTrack(name)}>{LABELS[name] ?? name}</button>
 				{/each}
 			</div>
-			<Hint text={`Current track: ${track.current}`} />
+			<p class="muted">{BLURBS[track.current] ?? ""}</p>
 		{/if}
-		<button class="primary" disabled={busy} onclick={updateAll}>Update all on this track</button>
-		{#if message}<Hint text={message} />{/if}
+		{#if message}<p class="muted" role="status">{message}</p>{/if}
+		<div class="foot"><button class="btn small" disabled={busy} onclick={updateAll}>{busy ? "Updating…" : "Update bread apps now"}</button></div>
+		{#if log.length}<details class="ui-disclosure"><summary>Details</summary><LogView lines={log} /></details>{/if}
 	</Group>
-	<LogView lines={log} />
 </ViewScaffold>
-
 <style>
-	.tracks {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.track {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 2px;
-		background-color: var(--surface);
-		color: inherit;
-		border: none;
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-md, 12px) var(--space-lg, 16px);
-		cursor: pointer;
-		text-align: left;
-		font: inherit;
-	}
-
-	.track span {
-		opacity: 0.7;
-		font-size: var(--font-size-secondary, 12px);
-	}
-
-	.track.on {
-		background-color: var(--accent);
-		color: var(--on-accent);
-	}
-
-	button.primary {
-		background-color: var(--accent);
-		color: var(--on-accent);
-		border: none;
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-xs, 4px) var(--space-md, 12px);
-		cursor: pointer;
-		align-self: flex-start;
-		margin-top: var(--space-sm, 8px);
-	}
-
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
+	.muted { color:var(--muted); font-size:12.5px; margin:8px 2px; }
+	.foot { padding:2px 0 10px; }
 </style>

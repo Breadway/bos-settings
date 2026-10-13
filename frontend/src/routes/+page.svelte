@@ -8,6 +8,7 @@
 	import { drafts } from "$lib/drafts.svelte";
 	import Sidebar from "$lib/components/Sidebar.svelte";
 	import Placeholder from "$lib/components/Placeholder.svelte";
+	import SectionError from "$lib/components/SectionError.svelte";
 	import { go, nav, NAVIGATE_KEY, type Navigate } from "$lib/nav.svelte";
 	import { initTheme } from "$lib/theme";
 	import { VIEWS } from "$lib/views/registry";
@@ -54,6 +55,14 @@
 		};
 	});
 
+ // A new page starts at the top. The content pane is shared across pages, so
+ // without this the next page opened at the previous page's scroll offset.
+ // Search jumps (focusLabel) and hub tab requests scroll on their own after.
+ $effect(() => {
+  void nav.page;
+  if (contentEl) contentEl.scrollTop = 0;
+ });
+
  $effect(() => {
   const target = nav.focusLabel;
   if (!target || !contentEl) return;
@@ -79,7 +88,12 @@
 		<main class="content" bind:this={contentEl} inert={drafts.saving}>
 			{#key nav.page}
 				{#if ActiveView}
-					<ActiveView />
+					<svelte:boundary onerror={(e) => console.error("page failed", e)}>
+						<ActiveView />
+						{#snippet failed(error, reset)}
+							<div class="page-error"><SectionError {error} {reset} /></div>
+						{/snippet}
+					</svelte:boundary>
 				{:else}
 					<Placeholder page={nav.page} />
 				{/if}
@@ -92,6 +106,11 @@
 </div>
 
 <style>
+	.page-error {
+		max-width: 760px;
+		margin: 28px auto;
+		padding: 0 24px;
+	}
 	.app {
 		display: flex;
 		flex-direction: column;

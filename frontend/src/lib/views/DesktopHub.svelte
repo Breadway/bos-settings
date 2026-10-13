@@ -16,6 +16,6 @@
  { id: "breadclip", label: "Clipboard", component: Breadclip },
  { id: "breadpad", label: "Notes", component: Breadpad },
  { id: "breadsearch", label: "File search", component: Breadsearch },
- { id: "bread", label: "Daemon", component: Bread },
+ { id: "bread", label: "Automations", component: Bread },
  { id: "breadhelp", label: "Help", component: Breadhelp },
 ]} />

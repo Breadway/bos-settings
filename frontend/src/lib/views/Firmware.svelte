@@ -4,10 +4,7 @@
 	import { runStreamed } from "$lib/streaming";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
-	import Hint from "$lib/components/Hint.svelte";
-	import EmptyState from "$lib/components/EmptyState.svelte";
 	import LogView from "$lib/components/LogView.svelte";
-	import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 
 	interface FwDevice {
 		name: string;
@@ -47,101 +44,34 @@
 </script>
 
 <ViewScaffold title="Firmware">
-	<Group
-		title="Updatable devices"
-		hint="UEFI and devices that speak fwupd."
-		wide
-	>
-		<div class="list">
-			{#if devices === null}
-				<Hint text="Loading…" />
-			{:else if devices.filter(d => !d.security_database).length === 0}
-				<EmptyState icon={RefreshCw} title="No updatable firmware devices found" hint="Not every device supports firmware updates through fwupd." />
-			{:else}
-				{#each devices.filter(d => !d.security_database) as dev, i (`${dev.name}:${i}`)}
-					<div class="row">
-						<span class="name" title={dev.name}>{dev.name}</span>
-						<span class="version" title={dev.version}>{dev.version}</span>
-					</div>
+	<Group title="Device firmware" hint="Updates for the computer itself: the BIOS, camera, dock and other parts that support it.">
+		{#if devices === null}
+			<p class="muted">Loading…</p>
+		{:else if devices.filter((d) => !d.security_database).length === 0}
+			<p class="muted">No parts of this computer can update their firmware from here.</p>
+		{:else}
+			{#each devices.filter((d) => !d.security_database) as dev, i (`${dev.name}:${i}`)}
+				<div class="ui-item"><div class="lb"><b>{dev.name}</b><small>Version {dev.version}</small></div></div>
+			{/each}
+		{/if}
+		{#if devices?.some((d) => d.security_database)}
+			<details class="ui-disclosure">
+				<summary>Secure Boot certificate lists ({devices.filter((d) => d.security_database).length})</summary>
+				<p class="muted">Lists of trusted and revoked boot software. They update together with the firmware.</p>
+				{#each devices.filter((d) => d.security_database) as dev, i (`${dev.name}:${i}`)}
+					<div class="ui-item"><div class="lb"><b>{dev.name}</b><small>Version {dev.version}</small></div></div>
 				{/each}
-			{/if}
+			</details>
+		{/if}
+		<div class="foot">
+			<button class="btn small" disabled={busy} onclick={checkForUpdates}>{busy ? "Working…" : "Check for firmware updates"}</button>
+			<button class="btn small primary" disabled={busy} onclick={updateAll}>Install firmware updates</button>
 		</div>
-
-		{#if devices?.some(d => d.security_database)}
-   <details><summary>Secure Boot certificate databases</summary>
-    <Hint text="Trust and revocation databases used by UEFI Secure Boot. These are not hardware devices; firmware updates include them." />
-    {#each devices.filter(d => d.security_database) as dev, i (`${dev.name}:${i}`)}<div class="row"><span class="name">{dev.name}</span><span class="version">{dev.version}</span></div>{/each}
-   </details>
-  {/if}
-  <div class="btn-row">
-			<button disabled={busy} onclick={checkForUpdates}>Check for updates</button>
-			<button disabled={busy} class="primary" onclick={updateAll}>Update all</button>
-			<button disabled={busy} onclick={refresh}>Refresh list</button>
-		</div>
+		{#if log.length}<details class="ui-disclosure"><summary>Details</summary><LogView lines={log} /></details>{/if}
 	</Group>
-
-	<LogView lines={log} />
 </ViewScaffold>
 
 <style>
-	.list {
-		max-height: 320px;
-		overflow-y: auto;
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.row {
-		display: flex;
-		align-items: center;
-		gap: var(--space-md, 12px);
-		background-color: var(--surface);
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-sm, 8px) var(--space-md, 12px);
-		min-width: 0;
-	}
-
-	.name {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.version {
-		opacity: 0.75;
-		font-size: var(--font-size-secondary, 12px);
-		flex-shrink: 0;
-		max-width: 40%;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.btn-row {
-		display: flex;
-		gap: var(--space-sm, 8px);
-		margin-top: var(--space-sm, 8px);
-	}
-
-	button {
-		background-color: var(--surface);
-		color: var(--on-surface);
-		border: none;
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-xs, 4px) var(--space-md, 12px);
-		cursor: pointer;
-	}
-
-	button.primary {
-		background-color: var(--accent);
-		color: var(--on-accent);
-	}
-
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
+	.muted { color:var(--muted); font-size:12.5px; margin:4px 2px 8px; }
+	.foot { display:flex; gap:8px; flex-wrap:wrap; padding:6px 0 10px; }
 </style>

@@ -79,7 +79,8 @@ pub fn save_desktop_preferences(preferences: DesktopPreferences) -> Result<(), S
     validate(&preferences)?;
     let main = config::config_dir().join("hypr/hyprland.lua");
     let mut main_text = std::fs::read_to_string(&main).map_err(|_| {
-        "BOS Lua configuration was not found. Preferences have not been saved.".to_string()
+        "Hyprland's config file (hyprland.lua) was not found. Preferences have not been saved."
+            .to_string()
     })?;
     if !main_text.contains("/hypr/bos-settings-v2.lua") {
         main_text.push_str(HOOK);
@@ -147,7 +148,7 @@ mod tests {
 pub(crate) fn install_lua_include(filename: &str, source: &str) -> Result<(), String> {
     let main = config::config_dir().join("hypr/hyprland.lua");
     let mut text = std::fs::read_to_string(&main)
-        .map_err(|e| format!("Cannot update BOS Lua configuration: {e}"))?;
+        .map_err(|e| format!("Cannot update Hyprland's config file (hyprland.lua): {e}"))?;
     let suffix = format!("/hypr/{filename}");
     if !text.contains(&suffix) {
         text.push_str(&format!("\n-- BOS Settings managed desktop settings\npcall(dofile, (os.getenv('XDG_CONFIG_HOME') or (os.getenv('HOME') .. '/.config')) .. '{suffix}')\n"));
