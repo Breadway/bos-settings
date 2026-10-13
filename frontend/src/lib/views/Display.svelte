@@ -7,6 +7,7 @@
 	import Row from "$lib/components/Row.svelte";
 	import SwitchField from "$lib/components/SwitchField.svelte";
 	import KeepSettings from "$lib/components/KeepSettings.svelte";
+	import { uniqueBy } from "$lib/uniqueBy";
 
 	interface LiveMonitor {
 		name: string;
@@ -48,6 +49,8 @@
 	let applying = $state(false);
 
 	let live = $derived(monitors.find((m) => m.name === selected) ?? null);
+	// Never key the picker by a mode string the compositor may repeat.
+	let modeChoices = $derived(uniqueBy(live?.available_modes ?? [], (mode) => mode));
 
 	let view = $derived.by(() => {
 		if (monitors.length === 0) return { minX: 0, minY: 0, scale: 0.1 };
@@ -100,7 +103,7 @@
 	}
 
 	async function refresh() {
-		monitors = await invoke<LiveMonitor[]>("get_live_monitors");
+		monitors = uniqueBy(await invoke<LiveMonitor[]>("get_live_monitors"), (m) => m.name);
 		if (!selected || !monitors.some((m) => m.name === selected)) {
 			selected = monitors[0]?.name ?? null;
 		}
@@ -325,9 +328,9 @@
 	{#if live}
 		<Group title={live.name}>
 			<Row label="Resolution">
-				{#if live.available_modes.length > 0}
+				{#if modeChoices.length > 0}
 					<select value={`${live.width}x${live.height}@${live.refresh.toFixed(2)}Hz`} onchange={(e) => setMode(e.currentTarget.value)}>
-						{#each live.available_modes as mode, i (mode)}
+						{#each modeChoices as mode, i (mode)}
 							<option value={mode}>{modeLabel(mode)}{i === 0 ? " (recommended)" : ""}</option>
 						{/each}
 					</select>
