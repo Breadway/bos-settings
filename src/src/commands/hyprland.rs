@@ -323,7 +323,8 @@ fn merge_rules(
     wild
 }
 
-/// Ask Hyprland (BOS's Lua config manager) to run `lua`; maps its answers to
+/// Ask Hyprland (configured with hyprland.lua, so `hyprctl eval` works) to
+/// run `lua`; maps its answers to
 /// readable errors.
 fn hyprctl_eval(lua: &str) -> Result<(), String> {
     let output = std::process::Command::new("hyprctl")
@@ -350,6 +351,14 @@ fn persist_layout(monitors: &[LiveMonitor]) -> Result<(), String> {
         lua_ident(&m.name)?;
     }
     let merged = merge_rules(read_rule_objects(), monitors);
+    let stmts = monitors
+        .iter()
+        .map(lua_statement)
+        .collect::<Result<Vec<_>, _>>()?;
+    super::desktop_preferences::install_lua_include(
+        "bos-settings-display-overrides.lua",
+        &format!("-- Managed by BOS Settings.\n{}\n", stmts.join("\n")),
+    )?;
     write_rule_objects(&merged)
 }
 

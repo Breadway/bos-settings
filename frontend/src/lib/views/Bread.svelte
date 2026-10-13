@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { useDraft } from "$lib/drafts.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
@@ -10,7 +11,6 @@
 	import NumberField from "$lib/components/NumberField.svelte";
 	import TagsField from "$lib/components/TagsField.svelte";
 	import ChipPickerField from "$lib/components/ChipPickerField.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 
 	interface BreadConfig {
 		log_level: string;
@@ -46,12 +46,17 @@
 	async function save() {
 		await invoke("save_bread_config", { cfg });
 	}
+	useDraft(() => (cfg), save, () => cfg !== null);
 </script>
 
-<ViewScaffold title="Daemon">
-	<ServiceControl unit="breadd.service" critical hasConfig />
+<ViewScaffold title="Automations">
+	<Group title="Automations" hint="The bread daemon reacts to your devices, screens and network, and runs your automation modules.">
+		<ServiceControl unit="breadd.service" name="Bread daemon" critical hasConfig bare />
+	</Group>
 
 	{#if cfg}
+	<details class="ui-disclosure">
+		<summary>Advanced settings for automation authors</summary>
 		<Group title="Daemon">
 			<SelectField label="Log level" bind:value={cfg.log_level} options={["error", "warn", "info", "debug", "trace"]} />
 			<TextField label="Socket path" bind:value={cfg.socket_path} placeholder="default (XDG runtime dir)" />
@@ -92,6 +97,6 @@
 			<TextField label="notify-send path" bind:value={cfg.notif_notify_send_path} placeholder="auto-detected" />
 		</Group>
 
-		<SaveButton onSave={save} />
+	</details>
 	{/if}
 </ViewScaffold>

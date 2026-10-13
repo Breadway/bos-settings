@@ -486,3 +486,115 @@ mod tests {
         assert!(joined.contains(".git"));
     }
 }
+
+/// Timer entry point: no window, webview or command output events.
+pub async fn scheduled_backup() -> Result<(), String> {
+    let s = require_ready()?;
+    let home = home_dir().to_string_lossy().into_owned();
+    let mut args = vec!["--repo".to_string(), s.repo];
+    args.extend(exclude_args(&home));
+    args.extend(["backup".into(), home]);
+    let status = Command::new("restic")
+        .args(args)
+        .env("RESTIC_PASSWORD", s.password.unwrap_or_default())
+        .stdin(std::process::Stdio::null())
+        .status()
+        .await
+        .map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("Scheduled backup failed; inspect the user service journal".into())
+    }
+}
+#[tauri::command]
+pub async fn get_backup_schedule() -> String {
+    let active = Command::new("systemctl")
+        .args(["--user", "is-enabled", "bos-settings-backup.timer"])
+        .output()
+        .await
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if !active {
+        return "off".into();
+    }
+    let text = std::fs::read_to_string(
+        config::config_dir().join("systemd/user/bos-settings-backup.timer"),
+    )
+    .unwrap_or_default();
+    if text.contains("OnCalendar=weekly") {
+        "weekly".into()
+    } else {
+        "daily".into()
+    }
+}
+fn timer_units(schedule: &str, exe: &Path) -> Result<(String, String), String> {
+    if !["daily", "weekly"].contains(&schedule) {
+        return Err("Invalid backup schedule".into());
+    }
+    let exe = exe.to_str().ok_or("The executable path is not UTF-8")?;
+    if exe.contains(['\n', '\r', '\0']) {
+        return Err("Invalid executable path".into());
+    }
+    let quoted = exe
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('%', "%%");
+    Ok((format!("[Unit]\nDescription=BOS personal file backup\n[Service]\nType=oneshot\nNice=10\nExecStart=\"{quoted}\" --scheduled-backup\n"),format!("[Unit]\nDescription=Scheduled BOS personal file backup\n[Timer]\nOnCalendar={schedule}\nPersistent=true\nRandomizedDelaySec=15m\n[Install]\nWantedBy=timers.target\n")))
+}
+#[tauri::command]
+pub async fn set_backup_schedule(schedule: String) -> Result<(), String> {
+    if schedule == "off" {
+        let out = Command::new("systemctl")
+            .args(["--user", "disable", "--now", "bos-settings-backup.timer"])
+            .output()
+            .await
+            .map_err(|e| e.to_string())?;
+        return if out.status.success() {
+            Ok(())
+        } else {
+            Err(fail_output(&out, "Disabling backup schedule"))
+        };
+    }
+    require_ready()?;
+    let (service, timer) = timer_units(
+        &schedule,
+        &std::env::current_exe().map_err(|e| e.to_string())?,
+    )?;
+    let dir = config::config_dir().join("systemd/user");
+    config::atomic_write(&dir.join("bos-settings-backup.service"), &service)
+        .map_err(|e| e.to_string())?;
+    config::atomic_write(&dir.join("bos-settings-backup.timer"), &timer)
+        .map_err(|e| e.to_string())?;
+    for args in [
+        vec!["--user", "daemon-reload"],
+        vec!["--user", "enable", "--now", "bos-settings-backup.timer"],
+    ] {
+        let out = Command::new("systemctl")
+            .args(args)
+            .output()
+            .await
+            .map_err(|e| e.to_string())?;
+        if !out.status.success() {
+            return Err(fail_output(&out, "Enabling backup schedule"));
+        }
+    }
+    Ok(())
+}
+#[cfg(test)]
+mod timer_tests {
+    use super::*;
+    #[test]
+    fn timer_contains_no_password_and_escapes_paths() {
+        let (service, timer) =
+            timer_units("weekly", Path::new("/tmp/BOS Settings/100%/bos-settings")).unwrap();
+        assert!(service.contains("\"/tmp/BOS Settings/100%%/bos-settings\" --scheduled-backup"));
+        assert!(!service.contains("PASSWORD"));
+        assert!(timer.contains("Persistent=true"));
+        assert!(timer_units(
+            "daily\nExecStart=reboot",
+            Path::new("/usr/bin/bos-settings")
+        )
+        .is_err());
+    }
+}

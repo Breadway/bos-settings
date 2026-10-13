@@ -7,6 +7,17 @@ use tauri::{Emitter, Manager};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--scheduled-backup") {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("backup runtime");
+        if let Err(e) = runtime.block_on(commands::backup::scheduled_backup()) {
+            eprintln!("{e}");
+            std::process::exit(1)
+        }
+        return;
+    }
     let screenshot_req = screenshot::parse(&args);
     let initial_page = page::parse(&args);
 
@@ -49,6 +60,43 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::backup::get_backup_schedule,
+            commands::backup::set_backup_schedule,
+            commands::about::run_health_checks,
+            commands::locale_settings::get_clock_format,
+            commands::locale_settings::set_clock_format,
+            commands::locale_settings::get_locale_info,
+            commands::locale_settings::save_locale_choice,
+            commands::dashboard::get_current_account,
+            commands::dashboard::get_radio_states,
+            commands::dashboard::set_airplane_mode,
+            commands::dashboard::restore_radio_states,
+            commands::notification_settings::get_notification_preferences,
+            commands::notification_settings::save_notification_preferences,
+            commands::power_settings::get_automatic_power_mode,
+            commands::power_settings::set_automatic_power_mode,
+            commands::power_settings::get_power_settings,
+            commands::power_settings::run_power_action,
+            commands::power_settings::save_power_settings,
+            commands::power_settings::get_power_modes,
+            commands::power_settings::enable_tlp_power_profiles,
+            commands::power_settings::set_power_mode,
+            commands::app_store::search_apps,
+            commands::app_store::install_store_app,
+            commands::defaults::list_startup_apps,
+            commands::desktop_preferences::get_desktop_preferences,
+            commands::desktop_preferences::save_desktop_preferences,
+            commands::sharing::get_sharing_status,
+            commands::sharing::set_remote_login,
+            commands::sharing::open_sharing_app,
+            commands::sharing::open_notification_history,
+            commands::storage::get_storage_info,
+            commands::storage::get_storage_breakdown,
+            commands::storage::get_unused_dependencies,
+            commands::storage::remove_unused_dependencies,
+            commands::storage::get_cache_entries,
+            commands::storage::clean_storage,
+            commands::storage::open_storage_folder,
             commands::navigation::get_initial_page,
             commands::theme::get_theme_css,
             commands::about::get_system_info,
@@ -71,6 +119,8 @@ pub fn run() {
             commands::breadbox::get_breadbox_contexts,
             commands::breadbox::save_breadbox_contexts,
             commands::breadcrumbs::get_breadcrumbs_config,
+            commands::breadcrumbs::get_current_place,
+            commands::breadcrumbs::set_current_place,
             commands::breadcrumbs::save_breadcrumbs_config,
             commands::breadpaper::get_current_wallpaper,
             commands::breadpaper::set_wallpaper,
@@ -100,14 +150,19 @@ pub fn run() {
             commands::sound::set_sound_volume,
             commands::sound::set_sound_mute,
             commands::sound::open_mixer,
+            commands::sound::get_app_streams,
+            commands::sound::set_app_stream_volume,
+            commands::sound::set_app_stream_mute,
             commands::sound::watch_sound,
             commands::datetime::get_datetime_info,
             commands::datetime::set_timezone,
             commands::datetime::set_ntp_enabled,
             commands::power::get_power_info,
+            commands::power::get_battery_history,
             commands::power::get_brightness,
             commands::power::set_brightness,
             commands::power::set_charge_threshold,
+            commands::power::set_battery_protection,
             commands::network::get_network_info,
             commands::network::set_wifi_radio,
             commands::network::scan_wifi,
@@ -125,6 +180,7 @@ pub fn run() {
             commands::firewall::set_firewall_enabled,
             commands::firewall::add_firewall_rule,
             commands::firewall::remove_firewall_rule,
+            commands::firewall::remove_firewall_allow,
             commands::users::get_users_info,
             commands::users::change_password,
             commands::users::remove_user,
@@ -142,6 +198,8 @@ pub fn run() {
             commands::aur::install_aur_package,
             commands::firmware::get_updatable_firmware,
             commands::snapshots::get_snapshots,
+            commands::snapshots::create_update_snapshot,
+            commands::snapshots::create_manual_snapshot,
             commands::snapshots::delete_snapshot,
             commands::snapshots::restore_snapshot,
             commands::snapshots::reboot_system,

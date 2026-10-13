@@ -25,15 +25,20 @@
 		{ id: "editor", label: "Editor" },
 	];
 
+	let error = $state("");
+	let saved: Record<string,string> = {};
+	let saving = $state(false);
 	let st = $state<DefaultsStatus | null>(null);
 
 	onMount(async () => {
 		st = await invoke<DefaultsStatus>("get_default_apps");
+		saved = {...st.current};
 	});
 
 	async function save() {
 		if (!st) return;
-		await invoke("save_default_apps", { input: { current: st.current } });
+		saving = true; error = "";
+		try { await invoke("save_default_apps", { input: { current: st.current } }); saved = {...st.current}; } catch(e) { st.current = {...saved}; error = String(e); } finally { saving = false; }
 	}
 </script>
 
@@ -42,7 +47,7 @@
 		{#if st}
 			{#each CATEGORIES as cat (cat.id)}
 				<Row label={cat.label}>
-					<select bind:value={st.current[cat.id]} onchange={save}>
+					<select disabled={saving} aria-label={cat.label} bind:value={st.current[cat.id]} onchange={save}>
 						<option value="">Not set</option>
 						{#each st.options[cat.id] ?? [] as app (app.id)}
 							<option value={app.id}>{app.name}</option>
@@ -50,7 +55,7 @@
 					</select>
 				</Row>
 			{/each}
-			<Hint text="Applies as you change it." />
+			<Hint text={error || "Applies as you change it."} />
 		{:else}
 			<Hint text="Loading…" />
 		{/if}

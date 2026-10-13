@@ -204,11 +204,39 @@ fn options_for(
             0,
             DesktopApp {
                 id: current.to_string(),
-                name: current.trim_end_matches(".desktop").to_string(),
+                name: hidden_desktop_name(current)
+                    .unwrap_or_else(|| current.trim_end_matches(".desktop").to_string()),
             },
         );
     }
     out
+}
+
+/// Name of a desktop entry the scan skips (NoDisplay/Hidden). xdg-mime and
+/// browsers register defaults as hidden `userapp-*.desktop` files, which
+/// otherwise showed as raw ids like "userapp-Zen-W24BP3".
+fn hidden_desktop_name(id: &str) -> Option<String> {
+    if !valid_desktop_id(id) {
+        return None;
+    }
+    applications_dirs().into_iter().find_map(|dir| {
+        let text = std::fs::read_to_string(dir.join(id)).ok()?;
+        desktop_entry_name(&text)
+    })
+}
+
+fn desktop_entry_name(text: &str) -> Option<String> {
+    let mut in_entry = false;
+    for line in text.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_entry = line.eq_ignore_ascii_case("[Desktop Entry]");
+        } else if in_entry {
+            if let Some(v) = line.strip_prefix("Name=") {
+                return Some(v.to_string()).filter(|v| !v.is_empty());
+            }
+        }
+    }
+    None
 }
 
 #[tauri::command]
@@ -406,6 +434,15 @@ text/html=extra.desktop;
     }
 
     #[test]
+    fn hidden_entry_names_are_read() {
+        assert_eq!(
+            desktop_entry_name("[Desktop Entry]\nNoDisplay=true\nName=Zen\n[Desktop Action new]\nName=New window\n"),
+            Some("Zen".into())
+        );
+        assert_eq!(desktop_entry_name("[Desktop Action x]\nName=Nope\n"), None);
+    }
+
+    #[test]
     fn desktop_id_check() {
         assert!(valid_desktop_id("zen.desktop"));
         assert!(valid_desktop_id("org.gnome.Nautilus.desktop"));
@@ -428,4 +465,15 @@ text/html=extra.desktop;
         assert_eq!(ok.name, "Editor");
         assert!(ok.mimes.contains(&"text/plain".into()));
     }
+}
+
+#[tauri::command]
+pub fn list_startup_apps() -> Vec<DesktopApp> {
+    scan_desktops()
+        .into_iter()
+        .map(|a| DesktopApp {
+            id: a.id,
+            name: a.name,
+        })
+        .collect()
 }

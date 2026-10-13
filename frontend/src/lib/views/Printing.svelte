@@ -3,9 +3,6 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
-	import Hint from "$lib/components/Hint.svelte";
-	import EmptyState from "$lib/components/EmptyState.svelte";
-	import TextField from "$lib/components/TextField.svelte";
 	import Printer from "@lucide/svelte/icons/printer";
 
 	interface PrinterRow {
@@ -23,8 +20,12 @@
 
 	let status = $state<PrintingStatus | null>(null);
 	let message = $state("");
-	let newName = $state("");
-	let newUri = $state("");
+	let address = $state("");
+	function printerState(p: PrinterRow): string {
+		if (!p.enabled) return "Turned off";
+		const st = p.status.toLowerCase();
+		return st.includes("idle") ? "Ready" : st.includes("print") ? "Printing" : p.status.charAt(0).toUpperCase() + p.status.slice(1);
+	}
 
 	async function refresh() {
 		status = await invoke<PrintingStatus>("get_printers");
@@ -43,105 +44,61 @@
 		}
 	}
 
-	async function addIpp() {
+	// An address or full URI -> an IPP Everywhere queue named after the host.
+	async function addByAddress() {
 		message = "";
+		const raw = address.trim();
+		const uri = raw.includes("://") ? raw : `ipp://${raw}/ipp/print`;
+		const host = uri.replace(/^\w+:\/\//, "").split(/[/:]/)[0] ?? "printer";
+		const name = `Printer_${host}`.replace(/[^A-Za-z0-9_-]/g, "_");
 		try {
-			await invoke("add_ipp_printer", { name: newName.trim(), uri: newUri.trim() });
-			message = `Added ${newName.trim()}.`;
-			newName = "";
-			newUri = "";
+			await invoke("add_ipp_printer", { name, uri });
+			message = `Added the printer at ${host}.`;
+			address = "";
 			await refresh();
 		} catch (e) {
-			message = `${e}`;
+			message = `Couldn't add it: ${e}`;
 		}
 	}
 </script>
 
-<ViewScaffold title="Printing">
-	<Group title="Printers" hint="CUPS + Avahi ship on the ISO. Discovery and drivers for odd hardware live in system-config-printer." wide>
+<ViewScaffold title="Printers" lede="Printers on your network usually show up on their own.">
+	<Group title="Your printers">
 		{#if !status}
-			<Hint text="Loading…" />
+			<p class="muted">Loading…</p>
 		{:else if status.error}
-			<EmptyState icon={Printer} title="Couldn't talk to CUPS" hint={status.error} />
+			<p class="muted bad">The printing service isn't answering. {status.error}</p>
 		{:else if status.printers.length === 0}
-			<EmptyState icon={Printer} title="No printers yet" hint="Add one below, or open the CUPS printer wizard." />
+			<p class="muted">No printers yet. Add one below.</p>
 		{:else}
-			<div class="list">
-				{#each status.printers as p (p.name)}
-					<div class="row">
-						<div class="meta">
-							<span class="name">{p.name}{p.is_default ? " (default)" : ""}</span>
-							<span class="status">{p.enabled ? p.status : "disabled"}</span>
-						</div>
-						<button disabled={p.is_default} onclick={() => setDefault(p.name)}>Set default</button>
-					</div>
-				{/each}
-			</div>
+			{#each status.printers as p (p.name)}
+				<div class="ui-item">
+					<span class="ico"><Printer size={18} /></span>
+					<div class="lb"><b>{p.name.replace(/[_-]+/g, " ")}</b><small>{printerState(p)}{p.is_default ? " · default printer" : ""}</small></div>
+					{#if !p.is_default && status.printers.length > 1}<button class="btn small ghost" onclick={() => setDefault(p.name)}>Make default</button>{/if}
+				</div>
+			{/each}
 		{/if}
-		<div class="btn-row">
-			<button onclick={refresh}>Refresh</button>
-			<button class="primary" onclick={() => invoke("open_printer_settings")}>Add printer…</button>
-		</div>
-		{#if message}<Hint text={message} />{/if}
+		{#if message}<p class="muted" role="status">{message}</p>{/if}
 	</Group>
-
-	<Group title="IPP Everywhere" hint="For a printer that already speaks IPP. Name must be letters, digits, dash, underscore.">
-		<TextField label="Name" bind:value={newName} placeholder="Office" />
-		<TextField label="URI" bind:value={newUri} placeholder="ipp://192.168.1.20/ipp/print" />
-		<button disabled={!newName.trim() || !newUri.trim()} onclick={addIpp}>Add IPP printer</button>
+	<Group title="Add a printer">
+		<div class="ui-item">
+			<div class="lb"><b>Find a printer</b><small>Looks on your network and USB, and installs drivers.</small></div>
+			<button class="btn small primary" onclick={() => invoke("open_printer_settings")}>Open</button>
+		</div>
+		<details class="ui-disclosure">
+			<summary>Add by address</summary>
+			<div class="addr">
+				<input class="ui-input" bind:value={address} placeholder="192.168.1.20 or ipp://printer.local/ipp/print" />
+				<button class="btn small" disabled={!address.trim()} onclick={addByAddress}>Add</button>
+			</div>
+			<p class="muted">For printers that aren't found by themselves. Works with most printers made after 2015.</p>
+		</details>
 	</Group>
 </ViewScaffold>
 
 <style>
-	.list {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.row {
-		display: flex;
-		align-items: center;
-		gap: var(--space-md, 12px);
-		background-color: var(--surface);
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-sm, 8px) var(--space-md, 12px);
-	}
-
-	.meta {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-	}
-
-	.status {
-		opacity: 0.7;
-		font-size: var(--font-size-secondary, 12px);
-	}
-
-	.btn-row {
-		display: flex;
-		gap: var(--space-sm, 8px);
-		margin-top: var(--space-sm, 8px);
-	}
-
-	button {
-		background-color: var(--surface);
-		color: var(--on-surface);
-		border: none;
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-xs, 4px) var(--space-md, 12px);
-		cursor: pointer;
-	}
-
-	button.primary {
-		background-color: var(--accent);
-		color: var(--on-accent);
-	}
-
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
+	.muted { color:var(--muted); font-size:12.5px; margin:4px 2px 8px; line-height:1.45; } .bad { color:var(--red); }
+	.addr { display:flex; gap:8px; padding:4px 0; }
+	.addr input { flex:1; }
 </style>

@@ -26,7 +26,7 @@
 	}
 </script>
 
-<div class="field">
+<div class="field" data-setting={label}>
 	<div class="header">
 		<span class="label">{label}</span>
 		<button type="button" class="add" onclick={addFolder}>

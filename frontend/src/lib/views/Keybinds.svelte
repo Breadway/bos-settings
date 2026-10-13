@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { useDraft } from "$lib/drafts.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
@@ -6,8 +7,9 @@
 	import Hint from "$lib/components/Hint.svelte";
 	import TextField from "$lib/components/TextField.svelte";
 	import SelectField from "$lib/components/SelectField.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 	import Switch from "$lib/components/Switch.svelte";
+	import { hyprFromKeyEvent } from "$lib/keycapture";
+	import { findConflict } from "$lib/bindConflicts";
 
 	// Mirrors src-tauri/src/commands/keybinds.rs's `Bind`  -  `action`/`key`/
 	// `mods` are the only fields every bind has; everything else (`command`,
@@ -98,9 +100,9 @@
 		move: "Move window to workspace",
 		move_dir: "Move window",
 		resize_dir: "Resize window",
-		layout: "Layout",
+		layout: "Change window layout",
 		drag: "Mouse drag",
-		exit: "Exit Hyprland",
+		exit: "Log out",
 	};
 
 	const KEY_LABELS: Record<string, string> = {
@@ -125,28 +127,14 @@
 		Print: "Print",
 	};
 
-	const CODE_TO_HYPR: Record<string, string> = {
-		Space: "SPACE",
-		Enter: "RETURN",
-		Escape: "ESCAPE",
-		Backspace: "BACKSPACE",
-		Tab: "TAB",
-		AudioVolumeUp: "XF86AudioRaiseVolume",
-		AudioVolumeDown: "XF86AudioLowerVolume",
-		AudioVolumeMute: "XF86AudioMute",
-		AudioMicMute: "XF86AudioMicMute",
-		BrightnessUp: "XF86MonBrightnessUp",
-		BrightnessDown: "XF86MonBrightnessDown",
-		MediaTrackNext: "XF86AudioNext",
-		MediaTrackPrevious: "XF86AudioPrev",
-		MediaPlayPause: "XF86AudioPlay",
-		PrintScreen: "Print",
-	};
-
 	function keyLabel(k: string): string {
 		return KEY_LABELS[k] ?? k;
 	}
 
+	let filter=$state("");
+	let filterGroup=$state("all");
+	function groupOf(row:EditRow) { const cmd=String(row.extraValue.command ?? "");return /wpctl|playerctl|brightnessctl/.test(cmd) ? "Media" : row.action === "exec" ? "Applications" : "Windows"; }
+	function matches(row:EditRow) { return (filterGroup === "all" || groupOf(row) === filterGroup) && `${bindTitle(row)} ${keyChips(row).join(" ")} ${JSON.stringify(row.extraValue)}`.toLowerCase().includes(filter.toLowerCase()); }
 	function bindTitle(row: EditRow): string {
 		if (row.action === "exec") {
 			const cmd = String(row.extraValue.command ?? "");
@@ -159,32 +147,36 @@
 			if (cmd.includes("playerctl next")) return "Next track";
 			if (cmd.includes("playerctl previous")) return "Previous track";
 			if (cmd.includes("playerctl play-pause")) return "Play/pause";
-			if (cmd) return cmd.split(/\s+/)[0].split("/").pop() ?? "Command";
+			const names:Record<string,string>={"zen-browser-single":"Open browser","zen-browser":"Open browser","kitty":"Open terminal","dolphin":"Open files","breadlock":"Lock screen","breadshot":"Take a screenshot","hyprshot":"Take a screenshot","breadbox":"Open launcher","breadsearch":"Search","breadclip":"Clipboard history","breadpad":"Open notes"};
+            if(cmd.includes("loginctl lock")) return "Lock screen";
+            // "bash -c breadbox" and "sh -c 'x ...'" launch x; name the program, not the shell.
+            const inner=cmd.replace(/^(?:\S*\/)?(?:ba)?sh\s+-c\s+/, "").replace(/^['"]|['"]$/g, "");
+            const app=inner.split(/\s+/)[0].split("/").pop() ?? "";
+            if(app==="hyprshot"||app==="breadshot"||app==="grimblast"){
+             const clip=/clipboard/.test(inner)?" to the clipboard":"";
+             if(/\bregion\b/.test(inner)) return `Screenshot a region${clip}`;
+             if(/\b(output|screen)\b/.test(inner)) return `Screenshot the screen${clip}`;
+             if(/\bwindow\b/.test(inner)) return `Screenshot a window${clip}`;
+            }
+            if(names[app]) return names[app];
+            const known:Record<string,string>={code:"VS Code",nautilus:"Files",steam:"Steam",firefox:"Firefox",obsidian:"Obsidian",spotify:"Spotify",discord:"Discord"};
+            if(app) return `Open ${known[app] ?? app.charAt(0).toUpperCase()+app.slice(1)}`;
+            if (cmd) return "Run a command";
 		}
+		const dir = String(row.extraValue.direction ?? "").toLowerCase();
+		const DIRS: Record<string, string> = { l: "left", left: "left", r: "right", right: "right", u: "up", up: "up", t: "up", d: "down", down: "down", b: "down" };
+		const LAYOUT_MSGS: Record<string, string> = { togglesplit: "Switch split direction", swapsplit: "Swap split sides", preselect: "Choose where the next window opens" };
+		if (row.action === "layout" && typeof row.extraValue.layout === "string") return LAYOUT_MSGS[row.extraValue.layout.split(" ")[0]] ?? `Window layout: ${row.extraValue.layout}`;
+		if (DIRS[dir] && /_dir$/.test(row.action)) return `${ACTION_LABELS[row.action] ?? row.action} ${DIRS[dir]}`;
 		return ACTION_LABELS[row.action] ?? row.action;
 	}
 
+	// A bind without its own `mods` uses the default modifier, so show it:
+	// "Super + B", not a bare "B" that reads as the B key alone.
 	function keyChips(row: EditRow): string[] {
-		const mods = textToMods(row.mods);
+		const mods = row.modsTouched ? textToMods(row.mods) : textToMods(defaultMods);
 		const key = row.key.trim();
 		return [...mods, key].filter(Boolean).map(keyLabel);
-	}
-
-	function hyprFromEvent(e: KeyboardEvent): { mods: string[]; key: string } | null {
-		if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return null;
-		const mods: string[] = [];
-		if (e.metaKey) mods.push("SUPER");
-		if (e.ctrlKey) mods.push("CTRL");
-		if (e.altKey) mods.push("ALT");
-		if (e.shiftKey) mods.push("SHIFT");
-		let key = CODE_TO_HYPR[e.code] ?? CODE_TO_HYPR[e.key];
-		if (!key) {
-			if (e.code.startsWith("Key") && e.code.length === 4) key = e.code.slice(3);
-			else if (e.code.startsWith("Digit")) key = e.code.slice(5);
-			else if (e.code.startsWith("F") && /^F\d+$/.test(e.code)) key = e.code;
-			else key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
-		}
-		return { mods, key };
 	}
 
 	function allRows(): EditRow[] {
@@ -321,17 +313,64 @@
 	let newLayoutName = $state("");
 	let loadError = $state("");
 
+	// A captured combo that another bind already uses is held here until the
+	// user chooses Replace (the other bind is removed) or Cancel.
+	let conflict = $state<{ row: EditRow; other: EditRow; mods: string[]; key: string } | null>(null);
+
+	function listsOf(): EditRow[][] {
+		return [globalsRows, commonRows, bindingsRows, ...Object.values(layoutRows)];
+	}
+
+	/** The binds that are live together with `row`: shortcuts only clash inside one of these sets. */
+	function scopeFor(row: EditRow): EditRow[] {
+		if (bindingsRows.includes(row)) return bindingsRows;
+		const inLayout = Object.entries(layoutRows).find(([, rows]) => rows.includes(row));
+		const layout = inLayout ? inLayout[1] : (layoutRows[activeLayout] ?? []);
+		return [...globalsRows, ...commonRows, ...layout];
+	}
+
+	function comboOf(r: EditRow) {
+		return { row: r, mods: r.modsTouched ? textToMods(r.mods) : undefined, key: r.key };
+	}
+
+	function setCombo(row: EditRow, mods: string[], key: string) {
+		row.mods = mods.join(", ");
+		row.modsTouched = true;
+		row.key = key;
+	}
+
+	function comboText(mods: string[], key: string): string {
+		return [...mods, key].map(keyLabel).join(" + ");
+	}
+
+	function replaceConflict() {
+		const c = conflict;
+		if (!c) return;
+		for (const list of listsOf()) {
+			const i = list.indexOf(c.other);
+			if (i >= 0) list.splice(i, 1);
+		}
+		setCombo(c.row, c.mods, c.key);
+		conflict = null;
+	}
+
 	onMount(() => {
 		const onKey = (e: KeyboardEvent) => {
 			const row = allRows().find((r) => r.capturing);
 			if (!row) return;
-			const mapped = hyprFromEvent(e);
+			const mapped = hyprFromKeyEvent(e);
 			if (!mapped) return;
 			e.preventDefault();
-			row.mods = mapped.mods.join(", ");
-			row.modsTouched = true;
-			row.key = mapped.key;
 			row.capturing = false;
+			const hit = findConflict(
+				scopeFor(row)
+					.filter((r) => r !== row)
+					.map(comboOf),
+				mapped,
+				textToMods(defaultMods),
+			);
+			if (hit) conflict = { row, other: hit.row, mods: mapped.mods, key: mapped.key };
+			else setCombo(row, mapped.mods, mapped.key);
 		};
 		window.addEventListener("keydown", onKey);
 		void loadKeybinds();
@@ -405,6 +444,7 @@
 		};
 		await invoke("save_keybinds", { file, kind });
 	}
+	useDraft(() => ({kind, activeLayout, defaultMods, globalsRows, commonRows, bindingsRows, layoutRows, layoutOrder}), save, () => loaded);
 </script>
 
 {#snippet extraFields(row: EditRow)}
@@ -505,6 +545,7 @@
 {#snippet section(rows: EditRow[], onAdd: () => void, onRemove: (i: number) => void)}
 	<div class="rows">
 		{#each rows as row, i (i)}
+		 {#if matches(row)}
 			<div class="bind-card">
 				<div class="bind-top">
 					<span class="what">{bindTitle(row)}</span>
@@ -522,9 +563,9 @@
 					</button>
 					<button type="button" class="remove" onclick={() => onRemove(i)}>Remove</button>
 				</div>
-				<div class="bind-bottom">
+				<details class="bind-bottom"><summary>Options</summary>
 					{@render extraFields(row)}
-				</div>
+				</details>
 				{#if row.advancedOpen && KNOWN_ACTIONS.includes(row.action as (typeof KNOWN_ACTIONS)[number]) && row.action !== "drag"}
 					<input
 						class="extra-wide"
@@ -536,12 +577,25 @@
 					/>
 				{/if}
 			</div>
+		 {/if}
 		{/each}
+		{#if !rows.some(matches)}<p class="empty">No matching shortcuts.</p>{/if}
 	</div>
 	<button type="button" class="add" onclick={onAdd}>Add bind</button>
 {/snippet}
 
-<ViewScaffold title="Keybinds">
+<ViewScaffold title="Shortcuts" lede="Choose an action, then press the keys you want to use.">
+ <Group title="Find a shortcut"><TextField label="Search shortcuts" bind:value={filter} placeholder="Action or key combination"/><SelectField label="Group" bind:value={filterGroup} options={['all','Applications','Windows','Media']} labels={{all:'All shortcuts'}}/></Group>
+	{#if conflict}
+		<div class="conflict" role="alertdialog" aria-label="Shortcut already in use">
+			<span class="msg">
+				<b>{comboText(conflict.mods, conflict.key)}</b> is already used by
+				<b>{bindTitle(conflict.other)}</b>. Replacing it removes that shortcut.
+			</span>
+			<button type="button" class="replace" onclick={replaceConflict}>Replace</button>
+			<button type="button" class="cancel" onclick={() => (conflict = null)}>Cancel</button>
+		</div>
+	{/if}
 	{#if loadError}
 		<Group title="Failed to load" wide>
 			<Hint text={loadError} />
@@ -557,9 +611,9 @@
 		{:else if kind === "flat"}
 			<Group
 				title="Defaults"
-				hint="Click a shortcut, then press the keys. Save when you are done."
+				hint="Click a shortcut, then press the keys you want."
 			>
-				<TextField label="Default mods" bind:value={defaultMods} placeholder="SUPER" />
+				<SelectField label="Main modifier key" hint="Used by every shortcut that doesn't name its own." bind:value={defaultMods} options={[...new Set([defaultMods, "SUPER", "ALT", "CTRL", "SUPER, SHIFT"])].filter(Boolean)} labels={{ SUPER: "Super", ALT: "Alt", CTRL: "Ctrl", "SUPER, SHIFT": "Super + Shift" }} />
 			</Group>
 
 			<Group title="Bindings" wide>
@@ -570,19 +624,18 @@
 				)}
 			</Group>
 
-			<SaveButton onSave={save} />
 		{:else}
 			<Group
 				title="Layout"
-				hint="Click a shortcut, then press the keys. Save when you are done."
+				hint="Click a shortcut, then press the keys you want."
 			>
 				{#if layoutOrder.length > 0}
 					<SelectField label="Active layout" bind:value={activeLayout} options={layoutOrder} />
 				{/if}
-				<TextField label="Default mods" bind:value={defaultMods} placeholder="SUPER" />
+				<SelectField label="Main modifier key" hint="Used by every shortcut that doesn't name its own." bind:value={defaultMods} options={[...new Set([defaultMods, "SUPER", "ALT", "CTRL", "SUPER, SHIFT"])].filter(Boolean)} labels={{ SUPER: "Super", ALT: "Alt", CTRL: "Ctrl", "SUPER, SHIFT": "Super + Shift" }} />
 			</Group>
 
-			<Group title="Media & function keys (globals)" wide>
+			<Group title="Media and function keys" wide>
 				{@render section(
 					globalsRows,
 					() => globalsRows.push(emptyRow()),
@@ -590,7 +643,7 @@
 				)}
 			</Group>
 
-			<Group title="Common (every layout)" wide>
+			<Group title="In every layout" wide>
 				{@render section(
 					commonRows,
 					() => commonRows.push(emptyRow()),
@@ -616,12 +669,40 @@
 				</div>
 			</Group>
 
-			<SaveButton onSave={save} />
 		{/if}
 	{/if}
 </ViewScaffold>
 
 <style>
+	.conflict {
+		display: flex;
+		align-items: center;
+		gap: var(--space-sm, 8px);
+		flex-wrap: wrap;
+		padding: 10px 14px;
+		border-radius: 12px;
+		background: color-mix(in srgb, var(--yellow) 14%, var(--surface));
+		border: 1px solid color-mix(in srgb, var(--yellow) 45%, transparent);
+		position: sticky;
+		top: 0;
+		z-index: 5;
+	}
+
+	.conflict .msg {
+		flex: 1;
+		min-width: 24ch;
+	}
+
+	.conflict .replace {
+		background-color: var(--accent);
+		color: var(--on-accent);
+	}
+
+	.conflict .cancel {
+		background-color: var(--bg);
+		color: var(--on-surface);
+	}
+
 	.rows {
 		display: flex;
 		flex-direction: column;
@@ -636,6 +717,9 @@
 		padding: 10px 2px;
 		border-top: 1px solid var(--line);
 	}
+
+	.bind-bottom > summary { cursor:pointer; color:var(--faint); font-size:11.5px; }
+	.bind-bottom > summary:hover, .bind-bottom[open] > summary { color:var(--muted); }
 
 	.bind-card:first-child {
 		border-top: none;
@@ -748,8 +832,9 @@
 	}
 
 	.remove {
-		background-color: var(--red);
-		color: var(--on-red);
+		background-color: transparent;
+		border: 1px solid color-mix(in oklab, var(--red) 45%, transparent);
+		color: var(--red);
 		flex-shrink: 0;
 	}
 
@@ -760,8 +845,9 @@
 	}
 
 	.remove-layout {
-		background-color: var(--red);
-		color: var(--on-red);
+		background-color: transparent;
+		border: 1px solid color-mix(in oklab, var(--red) 45%, transparent);
+		color: var(--red);
 		margin-bottom: var(--space-sm, 8px);
 		align-self: flex-start;
 	}

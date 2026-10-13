@@ -3,7 +3,8 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
-	import Row from "$lib/components/Row.svelte";
+	import Sheet from "$lib/components/Sheet.svelte";
+	import Plus from "@lucide/svelte/icons/plus";
 
 	interface Account {
 		username: string;
@@ -20,6 +21,13 @@
 	let newFullName = $state("");
 	let newPassword = $state("");
 	let addStatus = $state("");
+	let confirmInput = $state("");
+	let adding = $state(false);
+	let usernameTouched = false;
+	function suggestUsername() {
+		if (usernameTouched) return;
+		newUsername = newFullName.trim().split(/\s+/)[0]?.toLowerCase().replace(/[^a-z0-9]/g, "") ?? "";
+	}
 
 	async function refresh() {
 		const info = await invoke<{ accounts: Account[]; current_user: string }>("get_users_info");
@@ -31,14 +39,15 @@
 
 	async function applyPassword(username: string) {
 		if (!passwordInput) return;
-		rowStatus = { ...rowStatus, [username]: "Applying…" };
+		rowStatus = { ...rowStatus, [username]: "changing password…" };
 		try {
 			await invoke("change_password", { username, password: passwordInput });
-			rowStatus = { ...rowStatus, [username]: "Password changed" };
+			rowStatus = { ...rowStatus, [username]: "password changed" };
 			openPasswordFor = null;
 			passwordInput = "";
 		} catch {
-			rowStatus = { ...rowStatus, [username]: "Failed to change password" };
+			rowStatus = { ...rowStatus, [username]: "the password wasn't changed" };
+			openPasswordFor = null;
 		}
 	}
 
@@ -56,7 +65,9 @@
 		addStatus = "Adding…";
 		try {
 			await invoke("add_user", { username: newUsername.trim(), fullName: newFullName.trim(), password: newPassword });
-			addStatus = "User added.";
+			addStatus = "";
+			adding = false;
+			usernameTouched = false;
 			newUsername = "";
 			newFullName = "";
 			newPassword = "";
@@ -68,129 +79,53 @@
 	}
 </script>
 
-<ViewScaffold title="Users">
-	<Group title="Accounts" hint="Login accounts. You cannot delete yourself." wide>
-		<div class="list">
-			{#if accounts}
-				{#each accounts as acc (acc.username)}
-					<div class="card">
-						<div class="top">
-							<span class="name">{acc.username}{acc.full_name ? ` (${acc.full_name})` : ""}</span>
-							<button class="action" onclick={() => (openPasswordFor = openPasswordFor === acc.username ? null : acc.username)}>
-								Change password
-							</button>
-							<button class="remove" disabled={acc.username === currentUser} onclick={() => removeAccount(acc.username)}>Remove</button>
-						</div>
-						{#if openPasswordFor === acc.username}
-							<div class="pw-row">
-								<input type="password" bind:value={passwordInput} placeholder="New password" />
-								<button class="action" onclick={() => applyPassword(acc.username)}>Apply</button>
-							</div>
-						{/if}
-						{#if rowStatus[acc.username]}
-							<span class="status">{rowStatus[acc.username]}</span>
-						{/if}
-					</div>
-				{/each}
-			{/if}
-		</div>
-	</Group>
-
-	<Group title="Add user">
-		<Row label="Username">
-			<input type="text" bind:value={newUsername} placeholder="username" />
-		</Row>
-		<Row label="Full name">
-			<input type="text" bind:value={newFullName} placeholder="Full name (optional)" />
-		</Row>
-		<Row label="Password">
-			<input type="password" bind:value={newPassword} placeholder="password" />
-		</Row>
-		<button class="add" onclick={addUser}>Add user</button>
-		{#if addStatus}
-			<span class="status">{addStatus}</span>
+<ViewScaffold title="Users" lede="People who can log in to this computer.">
+	<Group title="People">
+		{#if accounts}
+			{#each accounts as acc (acc.username)}
+				<div class="ui-item">
+					<span class="ico av">{(acc.full_name || acc.username).charAt(0).toUpperCase()}</span>
+					<div class="lb"><b>{acc.full_name || acc.username}</b><small>{acc.username}{acc.username === currentUser ? " · you" : ""}{rowStatus[acc.username] ? ` · ${rowStatus[acc.username]}` : ""}</small></div>
+					<button class="btn small" onclick={() => { openPasswordFor = acc.username; passwordInput = ""; confirmInput = ""; }}>Change password</button>
+					{#if acc.username !== currentUser}<button class="btn small remove" onclick={() => removeAccount(acc.username)}>Remove</button>{/if}
+				</div>
+			{/each}
 		{/if}
+		<div class="foot"><button class="btn small" onclick={() => { adding = true; addStatus = ""; }}><Plus size={14} />Add a person</button></div>
 	</Group>
 </ViewScaffold>
 
+{#if openPasswordFor}
+	{@const who = openPasswordFor}
+	<Sheet title="New password for {who}" onClose={() => (openPasswordFor = null)}>
+		<label class="field"><span>New password</span><input class="ui-input" type="password" autocomplete="new-password" bind:value={passwordInput} /></label>
+		<label class="field"><span>Type it again</span><input class="ui-input" type="password" autocomplete="new-password" bind:value={confirmInput} /></label>
+		{#if confirmInput && confirmInput !== passwordInput}<p class="bad">The two passwords don't match.</p>{/if}
+		{#snippet actions()}
+			<button class="btn" onclick={() => (openPasswordFor = null)}>Cancel</button>
+			<button class="btn primary" disabled={!passwordInput || passwordInput !== confirmInput} onclick={() => applyPassword(who)}>Change password</button>
+		{/snippet}
+	</Sheet>
+{/if}
+
+{#if adding}
+	<Sheet title="Add a person" lede="They get their own home folder and settings." onClose={() => (adding = false)}>
+		<label class="field"><span>Name</span><input class="ui-input" bind:value={newFullName} oninput={suggestUsername} placeholder="Alex Smith" /></label>
+		<label class="field"><span>Username</span><input class="ui-input" bind:value={newUsername} oninput={() => (usernameTouched = true)} placeholder="alex" /><small>Lowercase letters and numbers. Used to log in.</small></label>
+		<label class="field"><span>Password</span><input class="ui-input" type="password" autocomplete="new-password" bind:value={newPassword} /></label>
+		{#if addStatus}<p class="bad">{addStatus}</p>{/if}
+		{#snippet actions()}
+			<button class="btn" onclick={() => (adding = false)}>Cancel</button>
+			<button class="btn primary" disabled={!newUsername.trim() || !newPassword} onclick={addUser}>Add</button>
+		{/snippet}
+	</Sheet>
+{/if}
+
 <style>
-	.list {
-		max-height: 320px;
-		overflow-y: auto;
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-xs, 4px);
-	}
-
-	.card {
-		background-color: var(--surface);
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-sm, 8px) var(--space-md, 12px);
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.top {
-		display: flex;
-		align-items: center;
-		gap: var(--space-sm, 8px);
-	}
-
-	.name {
-		flex: 1;
-	}
-
-	.pw-row {
-		display: flex;
-		gap: var(--space-sm, 8px);
-	}
-
-	input[type="text"],
-	input[type="password"] {
-		background-color: var(--bg);
-		color: var(--on-surface);
-		border: 1px solid transparent;
-		border-radius: var(--radius-secondary, 6px);
-		padding: var(--space-xs, 4px) var(--space-sm, 8px);
-	}
-
-	.pw-row input {
-		flex: 1;
-	}
-
-	button {
-		border: none;
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-xs, 4px) var(--space-md, 12px);
-		cursor: pointer;
-	}
-
-	.action {
-		background-color: var(--bg);
-		color: var(--on-surface);
-	}
-
-	.remove {
-		background-color: var(--red);
-		color: var(--on-red);
-	}
-
-	.remove:disabled {
-		opacity: 0.4;
-		cursor: default;
-	}
-
-	.add {
-		background-color: var(--accent);
-		color: var(--on-accent);
-		align-self: flex-start;
-		margin-top: var(--space-sm, 8px);
-		padding: var(--space-sm, 8px) var(--space-lg, 16px);
-	}
-
-	.status {
-		opacity: 0.6;
-		font-size: var(--font-size-secondary, 12px);
-	}
+	.av { font-weight:600; }
+	.foot { padding:6px 0 10px; }
+	.foot .btn { display:inline-flex; align-items:center; gap:6px; }
+	.field { display:flex; flex-direction:column; gap:6px; padding:8px 0; font-size:13px; }
+	.field small { color:var(--muted); font-size:12px; }
+	.bad { color:var(--red); font-size:12.5px; margin:4px 0; }
 </style>

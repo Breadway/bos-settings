@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { useDraft } from "$lib/drafts.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
@@ -11,7 +12,6 @@
 	import NumberField from "$lib/components/NumberField.svelte";
 	import TagsField from "$lib/components/TagsField.svelte";
 	import Row from "$lib/components/Row.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 
 	interface BreadpadConfig {
 		default_type: string;
@@ -72,52 +72,49 @@
 	async function save() {
 		await invoke("save_breadpad_config", { cfg });
 	}
+	useDraft(() => ({ cfg, confidenceText }), save, () => cfg !== null);
 </script>
 
 <ViewScaffold title="Notes">
 	{#if cfg}
-		<Group title="Capture">
-			<SelectField label="Default note type" bind:value={cfg.default_type} options={["note", "reminder", "task"]} />
-			<SwitchField label="Tag with active workspace" bind:value={cfg.workspace_tag} />
-			<TagsField label="Snooze options" bind:value={cfg.snooze_options} />
-			<NumberField label="Archive after (days)" bind:value={cfg.archive_after_days} min={0} max={3650} />
-		</Group>
-
-		<Group title="Classifier model" hint="Local model. No network.">
-			<FileField label="ONNX model" bind:value={cfg.model_path} placeholder="~/.local/share/breadpad/model/classifier.onnx" extensions={["onnx"]} />
-			<FileField label="Tokenizer" bind:value={cfg.tokenizer_path} placeholder="~/.local/share/breadpad/model/tokenizer.json" extensions={["json"]} />
-		</Group>
-
-		<Group title="Ollama (LLM classifier)" hint="Optional: ask a locally-running LLM (via Ollama) to classify notes instead of, or alongside, the ONNX model above.">
-			<SwitchField label="Use Ollama" bind:value={cfg.ollama_enabled} />
-			<TextField label="Endpoint" bind:value={cfg.ollama_endpoint} placeholder="http://localhost:11434" />
-			<TextField label="Model" bind:value={cfg.ollama_model} placeholder="e.g. fastflowlm" />
-			<Row label="Confidence threshold">
-				<input
-					type="number"
-					min="0"
-					max="1"
-					step="0.05"
-					value={confidenceText}
-					oninput={onConfidenceInput}
-					onblur={onConfidenceBlur}
-				/>
+		<Group title="Quick notes" hint="Super + N opens a note. BOS sorts it into a note, reminder or task.">
+			<Row label="New notes start as">
+				<div class="ui-seg">{#each [["note", "Note"], ["reminder", "Reminder"], ["task", "Task"]] as [v, l] (v)}<button class:on={cfg.default_type === v} onclick={() => (cfg!.default_type = v)}>{l}</button>{/each}</div>
 			</Row>
+			<SwitchField label="Remember the workspace" hint="Tags each note with the workspace you wrote it on." bind:value={cfg.workspace_tag} />
+			<Row label="Archive finished notes after">
+				<select class="ui-input" bind:value={cfg.archive_after_days}>
+					{#each [...new Set([0, 7, 14, 30, 90, cfg.archive_after_days])].sort((a, b) => a - b) as d (d)}<option value={d}>{d === 0 ? "Never" : `${d} days`}</option>{/each}
+				</select>
+			</Row>
+			<Row label="Morning reminders at" hint="For reminders like “tomorrow morning”.">
+				<input class="ui-input" style="width:90px" bind:value={cfg.reminders_default_morning} placeholder="7:00" />
+			</Row>
+			<TagsField label="Snooze choices" bind:value={cfg.snooze_options} />
+			<details class="ui-disclosure">
+				<summary>Missed reminders and smart sorting</summary>
+				<NumberField label="Still show a missed reminder for (minutes)" bind:value={cfg.reminders_missed_grace_minutes} min={0} max={1440} step={5} />
+				<FileField label="Sorting model" bind:value={cfg.model_path} placeholder="~/.local/share/breadpad/model/classifier.onnx" extensions={["onnx"]} />
+				<FileField label="Model tokenizer" bind:value={cfg.tokenizer_path} placeholder="~/.local/share/breadpad/model/tokenizer.json" extensions={["json"]} />
+				<SwitchField label="Ask a local AI model (Ollama)" hint="Runs on this computer; nothing leaves it." bind:value={cfg.ollama_enabled} />
+				{#if cfg.ollama_enabled}
+					<TextField label="Ollama address" bind:value={cfg.ollama_endpoint} placeholder="http://localhost:11434" />
+					<TextField label="Ollama model" bind:value={cfg.ollama_model} placeholder="e.g. fastflowlm" />
+					<Row label="Only trust it above" hint="How sure the model must be, from 0 to 1.">
+						<input type="number" min="0" max="1" step="0.05" value={confidenceText} oninput={onConfidenceInput} onblur={onConfidenceBlur} />
+					</Row>
+				{/if}
+			</details>
 		</Group>
 
-		<Group title="Reminders">
-			<TextField label="Default morning time" bind:value={cfg.reminders_default_morning} placeholder="7:00" />
-			<NumberField label="Missed grace (minutes)" bind:value={cfg.reminders_missed_grace_minutes} min={0} max={1440} step={5} />
+		<Group title="Calendar">
+			<SwitchField label="Add reminders to my calendar" hint="Any CalDAV calendar, like Nextcloud." bind:value={cfg.calendar_enabled} />
+			{#if cfg.calendar_enabled}
+				<TextField label="Calendar address" bind:value={cfg.calendar_url} placeholder="https://host/remote.php/dav/calendars/..." />
+				<TextField label="Username" bind:value={cfg.calendar_username} />
+				<PasswordField label="Password" bind:value={cfg.calendar_password} />
+			{/if}
 		</Group>
-
-		<Group title="Calendar (CalDAV)">
-			<SwitchField label="Sync to calendar" bind:value={cfg.calendar_enabled} />
-			<TextField label="CalDAV URL" bind:value={cfg.calendar_url} placeholder="https://host/remote.php/dav/calendars/..." />
-			<TextField label="Username" bind:value={cfg.calendar_username} />
-			<PasswordField label="Password" bind:value={cfg.calendar_password} />
-		</Group>
-
-		<SaveButton onSave={save} />
 	{/if}
 </ViewScaffold>
 

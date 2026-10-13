@@ -21,7 +21,7 @@
 	}
 </script>
 
-<div class="field">
+<div class="field" data-setting={label}>
 	<div class="header">
 		<span class="label">{label}</span>
 	</div>
@@ -46,81 +46,20 @@
 				<span class="empty-hint">{emptyOptionsHint}</span>
 			{/if}
 		{:else if available.length > 0}
-			<button type="button" class="chip add" onclick={() => (adding = true)}>+</button>
+			<button type="button" class="chip add" onclick={() => (adding = true)}>+ Add</button>
 		{/if}
 	</div>
 </div>
 
 <style>
-	.field {
-		background-color: var(--surface);
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-md, 12px) var(--space-lg, 16px);
-		margin-bottom: var(--space-sm, 8px);
-	}
-
-	.label {
-		display: block;
-		margin-bottom: var(--space-xs, 4px);
-	}
-
-	.chips {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 6px;
-	}
-
-	.chip {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		background-color: var(--overlay);
-		color: var(--on-overlay);
-		border-radius: 999px;
-		padding: 4px 6px 4px 12px;
-		font-size: var(--font-size-secondary, 12px);
-	}
-
-	.chip.add {
-		border: none;
-		cursor: pointer;
-		padding: 4px 10px;
-		font-weight: bold;
-		color: var(--on-surface);
-	}
-
-	.chip.add:hover {
-		background-color: var(--accent);
-		color: var(--on-accent);
-	}
-
-	.remove {
-		background: transparent;
-		border: none;
-		color: inherit;
-		opacity: 0.6;
-		cursor: pointer;
-		font-size: 14px;
-		line-height: 1;
-		padding: 0;
-	}
-
-	.remove:hover {
-		opacity: 1;
-	}
-
-	select {
-		background-color: var(--bg);
-		color: var(--on-surface);
-		border: 1px solid var(--accent);
-		border-radius: var(--radius-secondary, 6px);
-		padding: 4px var(--space-sm, 8px);
-		font-size: var(--font-size-secondary, 12px);
-	}
-
-	.empty-hint {
-		opacity: 0.5;
-		font-size: var(--font-size-secondary, 12px);
-	}
+	.field { padding: 10px 0; }
+	.label { display: block; margin-bottom: 8px; font-size: 13px; }
+	.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+	.chip { display: flex; align-items: center; gap: 6px; background: var(--accent-soft); color: var(--fg); border: 1px solid color-mix(in oklab, var(--accent) 45%, transparent); border-radius: 999px; padding: 4px 8px 4px 12px; font-size: 12.5px; }
+	.chip.add { background: transparent; border: 1px dashed var(--line); color: var(--muted); cursor: pointer; padding: 4px 12px; }
+	.chip.add:hover { color: var(--fg); border-color: var(--accent); }
+	.remove { background: transparent; border: none; color: inherit; opacity: 0.6; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; }
+	.remove:hover { opacity: 1; }
+	select { background: var(--bg); color: var(--fg); border: 1px solid var(--accent); border-radius: 8px; padding: 4px 8px; font-size: 12.5px; }
+	.empty-hint { color: var(--muted); font-size: 12px; }
 </style>

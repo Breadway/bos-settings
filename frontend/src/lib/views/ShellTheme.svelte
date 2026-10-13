@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import {recordChange} from "$lib/changes.svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
@@ -36,7 +37,7 @@
 		busy = true;
 		status = "Applying…";
 		try {
-			await invoke("set_active_shell_theme", { id });
+			await recordChange(`Shell style: ${themes.find(t=>t.id===id)?.name ?? id}`,()=>invoke<void>("set_active_shell_theme", { id }),async()=>{await invoke("set_active_shell_theme",{id:prev});active=prev;});
 			switched = true;
 			status = "Applied";
 			setTimeout(() => (status = ""), 3000);
@@ -81,37 +82,27 @@
 						disabled={busy}
 						onclick={() => select(t.id)}
 					>
-						<span class="dot" aria-hidden="true"></span>
+						<span class="preview" data-theme={t.id} class:light={/daylight/.test(t.id)} aria-hidden="true"><i class="mini-bar"></i><i class="mini-window"></i></span>
 						<span class="meta">
 							<span class="name">{t.name}</span>
 							<span class="sub">
-								<span class="id">{t.id}</span>{#if t.source !== "builtin"} · {t.source}{/if}
+								{#if t.source !== "builtin"}Custom theme{/if}
 							</span>
 						</span>
 					</button>
 				{/each}
 			</div>
 			<div class="foot">
-				<span class="status">{status}</span>
+				<span class="status">{status || (switched ? "The bar has switched. The launcher changes the next time you open it." : "")}</span>
+				<button class="btn small ghost" disabled={busy} onclick={restart} title="If something looks stuck after a change">Restart bar and launcher</button>
 			</div>
 		{/if}
 	</Group>
 
-	{#if loaded}
-		<Group title="Apply">
-			<Hint
-				text={switched
-					? "The bar restarts itself to pick up the new theme; the launcher applies it next time you open it."
-					: "The bar restarts itself on a theme change; the launcher applies it on its next open. Use the button below if something looks stuck."}
-			/>
-			<div class="foot">
-				<button class="btn" disabled={busy} onclick={restart}>Restart bar &amp; launcher</button>
-			</div>
-		</Group>
-	{/if}
 </ViewScaffold>
 
 <style>
+ .preview{position:relative;display:block;width:100%;height:72px;border-radius:8px;background:linear-gradient(140deg,var(--accent-soft),var(--bg));overflow:hidden}.preview .mini-bar{position:absolute;left:8px;right:8px;top:6px;height:8px;background:var(--accent);border-radius:5px} .preview[data-theme="spotlight"] .mini-bar{left:38%;right:38%;height:7px;background:#0a0c0ed9}.preview[data-theme="console"] .mini-bar{left:0;right:0;top:0;border-radius:0;background:#0b0d0b}.preview[data-theme="strata"] .mini-bar{left:0;right:auto;top:0;bottom:0;width:12px;height:auto;border-radius:0}.preview[data-theme="kuro"] .mini-bar{top:auto;bottom:0;left:0;right:0;border-radius:0;background:#000}.preview[data-theme="glass-workbench"] .mini-bar{background:#ffffff2e;border:1px solid #ffffff4d}.preview[data-theme="liquid-motion"] .mini-bar{top:auto;bottom:5px;left:20%;right:20%;height:10px;background:#ffffff33}.preview[data-theme="daylight"] .mini-bar{left:0;right:0;top:0;border-radius:0;background:#f2efe8}.preview[data-theme="loaf"] .mini-bar{left:30%;right:30%;background:#d9a066;border-radius:4px}.preview.light{background:linear-gradient(140deg,#e8dccb,#c9b8a0)}.mini-window{position:absolute;left:16px;right:16px;top:22px;bottom:16px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
 	.cards {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -120,7 +111,8 @@
 
 	.card {
 		display: flex;
-		align-items: center;
+		flex-direction: column;
+		align-items: stretch;
 		gap: 10px;
 		padding: 12px 14px;
 		border-radius: 10px;
@@ -140,17 +132,7 @@
 		border-color: var(--accent);
 	}
 
-	.dot {
-		width: 10px;
-		height: 10px;
-		border-radius: 999px;
-		flex-shrink: 0;
-		background: color-mix(in srgb, var(--fg) 25%, transparent);
-	}
 
-	.card.on .dot {
-		background: var(--accent);
-	}
 
 	.meta {
 		display: flex;
@@ -168,10 +150,6 @@
 		text-transform: capitalize;
 	}
 
-	.sub .id {
-		text-transform: none;
-		font-family: var(--font-mono, ui-monospace, monospace);
-	}
 
 	.foot {
 		display: flex;

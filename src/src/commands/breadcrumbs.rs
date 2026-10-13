@@ -127,11 +127,7 @@ fn networks_document(nets: &[Network]) -> DocumentMut {
 /// back to a leftover inline `[[networks]]` block in breadcrumbs.toml so a
 /// pre-split config still shows up until the next save migrates it.
 fn load_networks(settings_doc: &DocumentMut, net_path: &Path) -> Vec<Network> {
-    if net_path.exists() {
-        let doc = config::load_doc(net_path);
-        return read_networks(&doc);
-    }
-    read_networks(settings_doc)
+    read_networks(&networks_source_doc(settings_doc, net_path))
 }
 
 fn redact_passwords(nets: Vec<Network>) -> Vec<Network> {
@@ -190,8 +186,54 @@ fn write_secure(path: &Path, contents: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn save_networks(path: &Path, nets: &[Network]) -> Result<(), String> {
-    write_secure(path, &networks_document(nets).to_string())
+fn save_networks(path: &Path, nets: &[Network], previous: &DocumentMut) -> Result<(), String> {
+    let mut doc = networks_document(nets);
+    carry_unmanaged_network_keys(&mut doc, previous);
+    write_secure(path, &doc.to_string())
+}
+
+/// Keys this editor manages on a saved network. Everything else on the
+/// entry (`dns`, the 802.1x `eap`/`identity`/`ca_cert`/`phase2`/
+/// `client_cert`/`private_key`, and anything a newer breadcrumbs adds) is
+/// carried over from the file as it was, matched by SSID. Without this a
+/// save from this page silently deleted an enterprise network's login
+/// settings and every per-network DNS override.
+const MANAGED_NETWORK_KEYS: [&str; 3] = ["ssid", "password", "hidden"];
+
+fn carry_unmanaged_network_keys(doc: &mut DocumentMut, previous: &DocumentMut) {
+    let Some(old) = previous.get("networks").and_then(Item::as_array_of_tables) else {
+        return;
+    };
+    let Some(new) = doc
+        .get_mut("networks")
+        .and_then(Item::as_array_of_tables_mut)
+    else {
+        return;
+    };
+    for table in new.iter_mut() {
+        let ssid = table.get("ssid").and_then(Item::as_str).unwrap_or("");
+        let Some(prev) = old
+            .iter()
+            .find(|t| t.get("ssid").and_then(Item::as_str) == Some(ssid))
+        else {
+            continue;
+        };
+        for (key, item) in prev.iter() {
+            if !MANAGED_NETWORK_KEYS.contains(&key) && !table.contains_key(key) {
+                table.insert(key, item.clone());
+            }
+        }
+    }
+}
+
+/// The document saved networks are read from: `networks.toml` when it
+/// exists, otherwise a legacy inline block in breadcrumbs.toml.
+fn networks_source_doc(settings_doc: &DocumentMut, net_path: &Path) -> DocumentMut {
+    if net_path.exists() {
+        config::load_doc(net_path)
+    } else {
+        settings_doc.clone()
+    }
 }
 
 fn read_profiles(doc: &DocumentMut) -> Vec<Profile> {
@@ -234,7 +276,19 @@ fn read_profiles(doc: &DocumentMut) -> Vec<Profile> {
         .collect()
 }
 
+/// Profile keys this editor manages. Others (`learn`, and anything a newer
+/// breadcrumbs adds) are kept from the profile of the same name.
+const MANAGED_PROFILE_KEYS: [&str; 6] = [
+    "networks",
+    "tailscale",
+    "include_all_known",
+    "detect_ssids",
+    "bootstrap",
+    "exit_node",
+];
+
 fn write_profiles(doc: &mut DocumentMut, profiles: &[Profile]) {
+    let previous = doc.get("profiles").and_then(Item::as_table).cloned();
     let mut tbl = Table::new();
     let to_arr = |items: &[String]| {
         let mut a = Array::new();
@@ -259,6 +313,17 @@ fn write_profiles(doc: &mut DocumentMut, profiles: &[Profile]) {
         }
         if !p.exit_node.is_empty() {
             t.insert("exit_node", value(&p.exit_node));
+        }
+        if let Some(prev) = previous
+            .as_ref()
+            .and_then(|old| old.get(&p.name))
+            .and_then(Item::as_table)
+        {
+            for (key, item) in prev.iter() {
+                if !MANAGED_PROFILE_KEYS.contains(&key) {
+                    t.insert(key, item.clone());
+                }
+            }
         }
         tbl.insert(&p.name, Item::Table(t));
     }
@@ -316,7 +381,8 @@ fn save_to(
     input: SaveBreadcrumbsInput,
 ) -> Result<(), String> {
     let mut doc = config::load_doc(settings_path);
-    let existing = load_networks(&doc, net_path);
+    let previous_networks = networks_source_doc(&doc, net_path);
+    let existing = read_networks(&previous_networks);
     apply_settings(&mut doc, &input.settings);
     write_profiles(&mut doc, &input.profiles);
     // Completes the pre-split migration: leftover [[networks]] must not
@@ -325,7 +391,7 @@ fn save_to(
     config::save_doc(settings_path, &doc).map_err(|e| e.to_string())?;
 
     let merged = merge_network_passwords(input.networks, &existing);
-    save_networks(net_path, &merged)
+    save_networks(net_path, &merged, &previous_networks)
 }
 
 #[tauri::command]
@@ -343,6 +409,39 @@ pub struct SaveBreadcrumbsInput {
 #[tauri::command]
 pub fn save_breadcrumbs_config(input: SaveBreadcrumbsInput) -> Result<(), String> {
     save_to(&settings_path(), &networks_path(), input)
+}
+
+/// The place breadcrumbs is using now (`breadcrumbs profile get`), or
+/// `None` when breadcrumbs isn't installed.
+#[tauri::command]
+pub async fn get_current_place() -> Option<String> {
+    let out = tokio::process::Command::new("breadcrumbs")
+        .args(["profile", "get"])
+        .output()
+        .await
+        .ok()?;
+    let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (out.status.success() && !name.is_empty()).then_some(name)
+}
+
+/// Switches to a saved place and lets breadcrumbs join its networks
+/// (`breadcrumbs profile set <name>`).
+#[tauri::command]
+pub async fn set_current_place(name: String) -> Result<(), String> {
+    let cfg = get_breadcrumbs_config();
+    if !cfg.profiles.iter().any(|p| p.name == name) {
+        return Err(format!("There is no place called {name}"));
+    }
+    let out = tokio::process::Command::new("breadcrumbs")
+        .args(["profile", "set", &name])
+        .output()
+        .await
+        .map_err(|e| format!("Couldn't run breadcrumbs: {e}"))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(super::util::fail_output(&out, "Switching place"))
+    }
 }
 
 #[cfg(test)]
@@ -549,6 +648,46 @@ mod tests {
             .unwrap()
             .contains("hunter2"));
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_keeps_enterprise_and_dns_keys_and_profile_learn() {
+        let dir = tmp_dir("carry");
+        let settings = dir.join("breadcrumbs.toml");
+        let nets = dir.join("networks.toml");
+        std::fs::write(
+            &settings,
+            "[settings]\ndns = \"1.1.1.1\"\n\n[profiles.School]\nnetworks = [\"Uni\"]\ntailscale = false\ninclude_all_known = false\nlearn = true\n",
+        )
+        .unwrap();
+        std::fs::write(
+            &nets,
+            "[[networks]]\nssid = \"Uni\"\npassword = \"pw\"\neap = \"peap\"\nidentity = \"me@uni\"\ndns = \"9.9.9.9\"\nhidden = false\n",
+        )
+        .unwrap();
+        let cfg = load_from(&settings, &nets);
+        save_to(
+            &settings,
+            &nets,
+            SaveBreadcrumbsInput {
+                settings: sample_settings(),
+                networks: cfg.networks.clone(),
+                profiles: cfg.profiles.clone(),
+            },
+        )
+        .unwrap();
+        let nets_text = std::fs::read_to_string(&nets).unwrap();
+        for kept in [
+            "eap = \"peap\"",
+            "identity = \"me@uni\"",
+            "dns = \"9.9.9.9\"",
+            "pw",
+        ] {
+            assert!(nets_text.contains(kept), "lost {kept}: {nets_text}");
+        }
+        let settings_text = std::fs::read_to_string(&settings).unwrap();
+        assert!(settings_text.contains("learn = true"), "{settings_text}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
