@@ -133,38 +133,49 @@ fn json_vrr(v: &serde_json::Value) -> u32 {
     }
 }
 
-#[tauri::command]
-pub fn get_live_monitors() -> Vec<LiveMonitor> {
-    let Some(value) = bread_utils::proc::run_json(
-        "hyprctl",
-        &["monitors", "-j"],
-        std::time::Duration::from_secs(3),
-    ) else {
+/// Drop repeated entries but keep first-seen order. Hyprland lists some
+/// modes twice (the same size and refresh from two EDID timings), and the
+/// picker must never see the same mode twice.
+fn dedupe_keep_order(items: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    items
+        .into_iter()
+        .filter(|item| seen.insert(item.clone()))
+        .collect()
+}
+
+/// Turn the JSON of `hyprctl monitors [all] -j` into the panel's monitors.
+/// Entries without a name or size are skipped, and a repeated output name is
+/// kept only once.
+fn parse_monitors(value: &serde_json::Value) -> Vec<LiveMonitor> {
+    let Some(monitors) = value.as_array() else {
         return Vec::new();
     };
-    let Ok(monitors) = serde_json::from_value::<Vec<serde_json::Value>>(value) else {
-        return Vec::new();
-    };
+    let mut names = std::collections::HashSet::new();
     monitors
         .iter()
         .filter_map(|m| {
             let name = m.get("name")?.as_str()?.to_string();
             let width = json_u32(m, "width")?;
             let height = json_u32(m, "height")?;
+            if !names.insert(name.clone()) {
+                return None;
+            }
             let refresh = json_f64(m, "refreshRate").unwrap_or(60.0);
             let x = json_i32(m, "x").unwrap_or(0);
             let y = json_i32(m, "y").unwrap_or(0);
             let scale = json_f64(m, "scale").unwrap_or(1.0).max(0.1);
             let transform = json_u32(m, "transform").unwrap_or(0);
-            let available_modes = m
-                .get("availableModes")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|x| x.as_str().map(str::to_string))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
+            let available_modes = dedupe_keep_order(
+                m.get("availableModes")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|x| x.as_str().map(str::to_string))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default(),
+            );
             let mirror_of = m
                 .get("mirrorOf")
                 .and_then(|v| v.as_str())
@@ -187,6 +198,18 @@ pub fn get_live_monitors() -> Vec<LiveMonitor> {
             })
         })
         .collect()
+}
+
+#[tauri::command]
+pub fn get_live_monitors() -> Vec<LiveMonitor> {
+    let Some(value) = bread_utils::proc::run_json(
+        "hyprctl",
+        &["monitors", "-j"],
+        std::time::Duration::from_secs(3),
+    ) else {
+        return Vec::new();
+    };
+    parse_monitors(&value)
 }
 
 /// The rule objects exactly as they sit in `monitors.json`, or empty when
@@ -572,5 +595,44 @@ mod tests {
         let mut m = mon("eDP-1");
         m.mirror_of = "a\"b".into();
         assert!(lua_statement(&m).is_err());
+    }
+
+    const FIXTURE: &str = include_str!("testdata/hyprctl-monitors-all.json");
+
+    fn fixture_monitors() -> Vec<LiveMonitor> {
+        parse_monitors(&serde_json::from_str(FIXTURE).unwrap())
+    }
+
+    #[test]
+    fn duplicate_modes_are_removed_keeping_order() {
+        let monitors = fixture_monitors();
+        for name in ["DVI-I-1", "DVI-I-2"] {
+            let m = monitors.iter().find(|m| m.name == name).unwrap();
+            assert_eq!(m.available_modes.len(), 25, "{name}");
+            let unique: std::collections::HashSet<_> = m.available_modes.iter().collect();
+            assert_eq!(unique.len(), m.available_modes.len(), "{name}");
+            assert_eq!(m.available_modes[0], "1920x1080@60.00Hz");
+            assert_eq!(m.available_modes[1], "1920x1080@59.94Hz");
+            assert_eq!(m.available_modes.last().unwrap(), "720x400@70.08Hz");
+        }
+        let edp = monitors.iter().find(|m| m.name == "eDP-1").unwrap();
+        assert_eq!(edp.available_modes.len(), 11);
+    }
+
+    #[test]
+    fn dedupe_keeps_first_occurrence_order() {
+        let out = dedupe_keep_order(["b", "a", "b", "c", "a"].map(String::from));
+        assert_eq!(out, ["b", "a", "c"]);
+    }
+
+    #[test]
+    fn repeated_output_names_are_kept_once() {
+        let v = serde_json::json!([
+            {"name": "A", "width": 1, "height": 1},
+            {"name": "A", "width": 2, "height": 2}
+        ]);
+        let parsed = parse_monitors(&v);
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].width, 1);
     }
 }
