@@ -169,6 +169,8 @@ pub fn run() {
             commands::network::connect_wifi,
             commands::network::open_connection_editor,
             commands::bluetooth::get_adapter_powered,
+            commands::bluetooth::get_bluetooth_state,
+            commands::bluetooth::start_bluetooth_service,
             commands::bluetooth::set_adapter_powered,
             commands::bluetooth::get_paired_devices,
             commands::bluetooth::scan_bluetooth,
