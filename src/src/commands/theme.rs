@@ -281,6 +281,7 @@ mod tests {
             available_modes: Vec::new(),
             vrr: 0,
             mirror_of: String::new(),
+            disabled: false,
         }
     }
 
