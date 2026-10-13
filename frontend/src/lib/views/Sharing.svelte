@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from "$lib/confirm.svelte";
  import { onMount } from "svelte";
  import { invoke } from "@tauri-apps/api/core";
  import { go } from "$lib/nav.svelte";
@@ -28,7 +29,7 @@
  onMount(refresh);
  async function ssh(enabled:boolean) {
   if(busy) return;
-  if(enabled && !confirm("Enable remote login? Other computers can try to log in to this computer using SSH. Firewall rules still apply.")) return;
+  if(enabled && !(await confirmAction({title:"Enable remote login?",message:"Other computers can try to log in to this computer using SSH. Firewall rules still apply.",confirmLabel:"Enable"}))) return;
   busy = true; message = "";
   try { await invoke("set_remote_login", {enabled}); await refresh(); } catch(e) { message = String(e); } finally { busy = false; }
  }
