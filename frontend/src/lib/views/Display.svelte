@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
+	import { listen } from "@tauri-apps/api/event";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
 	import Hint from "$lib/components/Hint.svelte";
@@ -8,20 +9,23 @@
 	import SwitchField from "$lib/components/SwitchField.svelte";
 	import KeepSettings from "$lib/components/KeepSettings.svelte";
 	import { uniqueBy } from "$lib/uniqueBy";
+	import { pollWhileVisible } from "$lib/liveGate";
+	import {
+		type LiveMonitor,
+		boxH,
+		boxW,
+		clone,
+		groupMonitors,
+		groupOf,
+		mirrorChoices,
+		withMirror,
+		withMode,
+		withPosition,
+	} from "$lib/displayLayout";
 
-	interface LiveMonitor {
-		name: string;
-		mode: string;
-		x: number;
-		y: number;
-		width: number;
-		height: number;
-		refresh: number;
-		scale: number;
-		transform: number;
-		available_modes: string[];
-		vrr: number;
-		mirror_of: string;
+	interface GuardStatus {
+		pending: { id: number; seconds_left: number; seconds_total: number } | null;
+		last: { id: number; kind: string; message: string } | null;
 	}
 
 	const SCALES = [
@@ -47,24 +51,29 @@
 	let stageW = $state(640);
 	let message = $state("");
 	let applying = $state(false);
+	// The change waiting for Keep or Revert. The deadline itself lives in the
+	// backend; this only mirrors it so the countdown can be shown.
+	let pending = $state<{ id: number; seconds: number } | null>(null);
 
 	let live = $derived(monitors.find((m) => m.name === selected) ?? null);
+	let groups = $derived(groupMonitors(monitors));
+	let liveGroup = $derived(selected ? groupOf(monitors, selected) : null);
+	let liveMirrors = $derived(live ? monitors.filter((m) => m.mirror_of === live.name) : []);
+	let choices = $derived(live ? mirrorChoices(monitors, live.name) : []);
 	// Never key the picker by a mode string the compositor may repeat.
 	let modeChoices = $derived(uniqueBy(live?.available_modes ?? [], (mode) => mode));
 
 	let view = $derived.by(() => {
-		if (monitors.length === 0) return { minX: 0, minY: 0, scale: 0.1 };
+		if (groups.length === 0) return { minX: 0, minY: 0, scale: 0.1 };
 		let minX = Infinity;
 		let minY = Infinity;
 		let maxX = -Infinity;
 		let maxY = -Infinity;
-		for (const m of monitors) {
-			const w = boxW(m);
-			const h = boxH(m);
+		for (const { source: m } of groups) {
 			minX = Math.min(minX, m.x);
 			minY = Math.min(minY, m.y);
-			maxX = Math.max(maxX, m.x + w);
-			maxY = Math.max(maxY, m.y + h);
+			maxX = Math.max(maxX, m.x + boxW(m));
+			maxY = Math.max(maxY, m.y + boxH(m));
 		}
 		const bw = Math.max(maxX - minX, 1);
 		const bh = Math.max(maxY - minY, 1);
@@ -72,18 +81,8 @@
 		return { minX, minY, scale };
 	});
 
-	type Drag = { i: number; grabX: number; grabY: number; pointer: number };
+	type Drag = { name: string; grabX: number; grabY: number; pointer: number; start: LiveMonitor[] };
 	let drag = $state<Drag | null>(null);
-
-	function rotated(m: LiveMonitor): boolean {
-		return m.transform === 1 || m.transform === 3 || m.transform === 5 || m.transform === 7;
-	}
-	function boxW(m: LiveMonitor): number {
-		return rotated(m) ? m.height : m.width;
-	}
-	function boxH(m: LiveMonitor): number {
-		return rotated(m) ? m.width : m.height;
-	}
 
 	function screenX(m: LiveMonitor): number {
 		return PAD + (m.x - view.minX) * view.scale;
@@ -103,13 +102,44 @@
 	}
 
 	async function refresh() {
-		monitors = uniqueBy(await invoke<LiveMonitor[]>("get_live_monitors"), (m) => m.name);
+		try {
+			monitors = uniqueBy(await invoke<LiveMonitor[]>("get_live_monitors"), (m) => m.name);
+		} catch (err) {
+			message = `${err}`;
+			return;
+		}
 		if (!selected || !monitors.some((m) => m.name === selected)) {
 			selected = monitors[0]?.name ?? null;
 		}
 	}
 
-	onMount(refresh);
+	// A change can still be waiting if the page was left and opened again.
+	async function adoptPending() {
+		try {
+			const status = await invoke<GuardStatus>("display_guard_status");
+			if (status.pending) pending = { id: status.pending.id, seconds: Math.max(status.pending.seconds_left, 1) };
+		} catch {
+			// No guard state means nothing is waiting.
+		}
+	}
+
+	onMount(() => {
+		void refresh().then(adoptPending);
+		const stopPoll = pollWhileVisible(() => {
+			if (!drag && !applying && !pending) void refresh();
+		}, 4000);
+		const unlisten = listen<{ id: number; kind: string; message: string }>("display-guard-outcome", (e) => {
+			if (pending && pending.id === e.payload.id) {
+				pending = null;
+				message = e.payload.message;
+				void refresh();
+			}
+		});
+		return () => {
+			stopPoll();
+			void unlisten.then((off) => off());
+		};
+	});
 
 	$effect(() => {
 		const el = stageEl;
@@ -122,8 +152,8 @@
 		return () => ro.disconnect();
 	});
 
-	function snap(idx: number, x: number, y: number): { x: number; y: number } {
-		const moving = monitors[idx];
+	function snap(name: string, x: number, y: number): { x: number; y: number } {
+		const moving = monitors.find((m) => m.name === name);
 		if (!moving) return { x, y };
 		const mw = boxW(moving);
 		const mh = boxH(moving);
@@ -132,9 +162,8 @@
 		let bestY = y;
 		let bestXd = thresh + 1;
 		let bestYd = thresh + 1;
-		for (let i = 0; i < monitors.length; i++) {
-			if (i === idx) continue;
-			const o = monitors[i];
+		for (const { source: o } of groups) {
+			if (o.name === name) continue;
 			const ow = boxW(o);
 			const oh = boxH(o);
 			const xs = [x - o.x, x - (o.x + ow), x + mw - o.x, x + mw - (o.x + ow)];
@@ -157,14 +186,13 @@
 		return { x: Math.round(bestX), y: Math.round(bestY) };
 	}
 
-	function onDown(e: PointerEvent, i: number) {
-		const m = monitors[i];
-		if (!m || !stageEl) return;
+	function onDown(e: PointerEvent, m: LiveMonitor) {
+		if (!stageEl || pending || applying) return;
 		selected = m.name;
 		const rect = stageEl.getBoundingClientRect();
 		const px = e.clientX - rect.left;
 		const py = e.clientY - rect.top;
-		drag = { i, grabX: px - screenX(m), grabY: py - screenY(m), pointer: e.pointerId };
+		drag = { name: m.name, grabX: px - screenX(m), grabY: py - screenY(m), pointer: e.pointerId, start: clone(monitors) };
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 		e.preventDefault();
 	}
@@ -176,59 +204,39 @@
 		const py = e.clientY - rect.top - drag.grabY;
 		const wx = view.minX + (px - PAD) / view.scale;
 		const wy = view.minY + (py - PAD) / view.scale;
-		const snapped = snap(drag.i, wx, wy);
-		monitors[drag.i].x = snapped.x;
-		monitors[drag.i].y = snapped.y;
-		monitors = [...monitors];
+		const snapped = snap(drag.name, wx, wy);
+		monitors = withPosition(monitors, drag.name, snapped.x, snapped.y);
 	}
 
 	async function onUp(e: PointerEvent) {
 		if (!drag) return;
 		if (e.pointerId !== drag.pointer && e.type !== "pointerleave") return;
+		const { start, name } = drag;
 		drag = null;
-		await apply();
+		const moved = monitors.find((m) => m.name === name);
+		const was = start.find((m) => m.name === name);
+		if (!moved || !was || (moved.x === was.x && moved.y === was.y)) return;
+		await change(monitors, start);
 	}
 
-	// Layout moves (dragging a panel) are safe to apply and save at once; a
-	// failure puts the real state back instead of leaving the dragged position.
-	async function apply() {
-		if (monitors.length === 0 || pending) return;
+	// Every change goes through the backend guard: it snapshots the whole live
+	// layout (mirrors included), applies the new one temporarily, checks what
+	// the compositor really did, and reverts by itself unless it is kept. Only
+	// Keep writes to disk. On failure the backend has already restored.
+	async function change(next: LiveMonitor[], before: LiveMonitor[] = monitors) {
+		if (next.length === 0 || pending || applying) return;
 		applying = true;
 		message = "";
+		monitors = next;
 		try {
-			await invoke("apply_monitor_layout", { monitors });
-		} catch (err) {
-			message = `${err}`;
-		} finally {
-			applying = false;
-			await refresh();
-		}
-	}
-
-	function cloneMonitors(list: LiveMonitor[]): LiveMonitor[] {
-		return list.map((m) => ({ ...m, available_modes: [...m.available_modes] }));
-	}
-
-	// Changes that can leave a screen unreadable (scale, rotation, mode, adaptive
-	// sync) are applied live only, then kept or reverted from a countdown. The
-	// optimistic UI state is rolled back if Hyprland rejects the change.
-	let pending = $state<{ before: LiveMonitor[]; after: LiveMonitor[] } | null>(null);
-
-	async function applyRisky(mutate: (m: LiveMonitor) => void) {
-		if (!live || pending) return;
-		const before = cloneMonitors(monitors);
-		mutate(live);
-		monitors = [...monitors];
-		message = "";
-		applying = true;
-		try {
-			await invoke("apply_monitor_layout", { monitors, persist: false });
-			pending = { before, after: cloneMonitors(monitors) };
+			const status = await invoke<GuardStatus>("apply_display_layout", { monitors: next });
+			if (status.pending) pending = { id: status.pending.id, seconds: Math.max(status.pending.seconds_left, 1) };
 		} catch (err) {
 			monitors = before;
 			message = `${err}`;
 		} finally {
 			applying = false;
+			await refresh();
 		}
 	}
 
@@ -237,7 +245,7 @@
 		pending = null;
 		if (!p) return;
 		try {
-			await invoke("persist_monitor_layout", { monitors: p.after });
+			await invoke("keep_display_layout", { id: p.id });
 		} catch (err) {
 			message = `${err}`;
 		}
@@ -249,23 +257,42 @@
 		pending = null;
 		if (!p) return;
 		try {
-			await invoke("apply_monitor_layout", { monitors: p.before, persist: false });
+			const out = await invoke<{ message: string }>("revert_display_layout", { id: p.id });
+			message = out.message;
 		} catch (err) {
 			message = `${err}`;
 		}
 		await refresh();
 	}
 
+	function mutate(fn: (m: LiveMonitor) => void) {
+		if (!live) return;
+		const next = clone(monitors);
+		const m = next.find((o) => o.name === live!.name);
+		if (!m) return;
+		fn(m);
+		return change(next);
+	}
+
 	async function setScale(value: number) {
-		await applyRisky((m) => (m.scale = value));
+		await mutate((m) => (m.scale = value));
 	}
 
 	async function setTransform(value: number) {
-		await applyRisky((m) => (m.transform = value));
+		await mutate((m) => (m.transform = value));
 	}
 
 	async function setVrr(on: boolean) {
-		await applyRisky((m) => (m.vrr = on ? 1 : 0));
+		await mutate((m) => (m.vrr = on ? 1 : 0));
+	}
+
+	async function setMirror(source: string) {
+		if (!live) return;
+		await change(withMirror(monitors, live.name, source));
+	}
+
+	async function stopMirror(name: string) {
+		await change(withMirror(monitors, name, ""));
 	}
 
 	// "1920x1200@60.00Hz" -> "1920 × 1200 · 60 Hz"; Hyprland lists the native mode first.
@@ -277,25 +304,14 @@
 	}
 
 	async function setMode(modeStr: string) {
-		const cleaned = modeStr.replace(/Hz$/i, "");
-		const [res, hz] = cleaned.split("@");
-		const [w, h] = (res ?? "").split("x");
-		const width = Number(w);
-		const height = Number(h);
-		const rate = Number(hz);
-		if (!width || !height) return;
-		await applyRisky((m) => {
-			m.width = width;
-			m.height = height;
-			if (rate) m.refresh = rate;
-			m.mode = `${width}x${height} @ ${Math.round(m.refresh)}Hz`;
-		});
+		if (!live) return;
+		await change(withMode(monitors, live.name, modeStr));
 	}
 </script>
 
-<ViewScaffold title="Displays" lede="Drag to arrange. Edges snap. Changes apply now.">
+<ViewScaffold title="Displays" lede="Drag to arrange. Every change can be kept or reverted.">
 	<Group title="Arrangement" wide>
-		{#if monitors.length === 0}
+		{#if groups.length === 0}
 			<Hint text="No monitors detected." />
 		{:else}
 			<div
@@ -307,29 +323,50 @@
 				onpointerup={onUp}
 				onpointercancel={onUp}
 			>
-				{#each monitors as m, i (m.name)}
+				{#each groups as g (g.source.name)}
+					{@const m = g.source}
 					<button
 						type="button"
 						class="mon"
-						class:sel={selected === m.name}
-						class:dragging={drag?.i === i}
+						class:sel={liveGroup?.source.name === m.name}
+						class:dragging={drag?.name === m.name}
+						class:mirrored={g.mirrors.length > 0}
 						style="left:{screenX(m)}px; top:{screenY(m)}px; width:{screenW(m)}px; height:{screenH(m)}px;"
-						onpointerdown={(e) => onDown(e, i)}
+						onpointerdown={(e) => onDown(e, m)}
 					>
 						<div class="screen"></div>
-						<div class="chin">{m.name}</div>
+						<div class="chin">{[m.name, ...g.mirrors.map((x) => x.name)].join(" + ")}</div>
+						{#if g.mirrors.length > 0}<div class="badge">Mirrored</div>{/if}
 					</button>
 				{/each}
 			</div>
-			<Hint text={applying ? "Applying…" : "Drag a panel. It sticks when you let go."} />
+			{#if monitors.length > groups.length}
+				<Hint text="Mirrored displays show the same picture, so they are drawn as one screen." />
+			{/if}
+			<Hint text={applying ? "Applying…" : "Drag a panel. You can keep or revert the change afterwards."} />
 		{/if}
 	</Group>
 
 	{#if live}
 		<Group title={live.name}>
+			{#if monitors.length > 1}
+				<Row label="Display">
+					<div class="ui-seg">
+						{#each monitors as m (m.name)}
+							<button type="button" class:on={selected === m.name} onclick={() => (selected = m.name)}>
+								{m.name}
+							</button>
+						{/each}
+					</div>
+				</Row>
+			{/if}
 			<Row label="Resolution">
 				{#if modeChoices.length > 0}
-					<select value={`${live.width}x${live.height}@${live.refresh.toFixed(2)}Hz`} onchange={(e) => setMode(e.currentTarget.value)}>
+					<select
+						value={`${live.width}x${live.height}@${live.refresh.toFixed(2)}Hz`}
+						disabled={applying || !!pending}
+						onchange={(e) => setMode(e.currentTarget.value)}
+					>
 						{#each modeChoices as mode, i (mode)}
 							<option value={mode}>{modeLabel(mode)}{i === 0 ? " (recommended)" : ""}</option>
 						{/each}
@@ -341,7 +378,12 @@
 			<Row label="Scale">
 				<div class="ui-seg">
 					{#each SCALES as s (s.value)}
-						<button type="button" class:on={nearestScale(live.scale) === s.value} onclick={() => setScale(s.value)}>
+						<button
+							type="button"
+							class:on={nearestScale(live.scale) === s.value}
+							disabled={applying || !!pending}
+							onclick={() => setScale(s.value)}
+						>
 							{s.label}
 						</button>
 					{/each}
@@ -350,7 +392,12 @@
 			<Row label="Rotation">
 				<div class="ui-seg">
 					{#each TURNS as t (t.value)}
-						<button type="button" class:on={live.transform % 4 === t.value} onclick={() => setTransform(t.value)}>
+						<button
+							type="button"
+							class:on={live.transform % 4 === t.value}
+							disabled={applying || !!pending}
+							onclick={() => setTransform(t.value)}
+						>
 							{t.label}
 						</button>
 					{/each}
@@ -361,16 +408,49 @@
 				hint="Smoother games and video on screens that support it."
 				bind:value={() => (live?.vrr ?? 0) > 0, (v) => setVrr(v)}
 			/>
-			{#if monitors.length>1}<Row label="Mirror another display"><select aria-label="Mirror another display" value={live.mirror_of} disabled={applying||!!pending} onchange={e=>applyRisky(m=>{m.mirror_of=e.currentTarget.value;})}><option value="">Use as a separate display</option>{#each monitors.filter(m=>m.name!==live!.name && !m.mirror_of) as monitor}<option value={monitor.name}>{monitor.name}</option>{/each}</select></Row>{/if}
+			{#if monitors.length > 1}
+				{#if liveMirrors.length > 0}
+					<Row label="Mirrored by" hint="These displays show the same picture as {live.name}.">
+						<div class="ui-seg">
+							{#each liveMirrors as m (m.name)}
+								<button type="button" disabled={applying || !!pending} onclick={() => stopMirror(m.name)}>
+									Stop mirroring {m.name}
+								</button>
+							{/each}
+						</div>
+					</Row>
+				{:else}
+					<Row
+						label={live.mirror_of ? "Mirroring" : "Mirror another display"}
+						hint={live.mirror_of ? `Showing the same picture as ${live.mirror_of}.` : undefined}
+					>
+						<select
+							aria-label="Mirror another display"
+							value={live.mirror_of}
+							disabled={applying || !!pending}
+							onchange={(e) => setMirror(e.currentTarget.value)}
+						>
+							<option value="">Use as a separate display</option>
+							{#each choices as name (name)}
+								<option value={name}>Mirror {name}</option>
+							{/each}
+						</select>
+					</Row>
+				{/if}
+			{/if}
 			{#if message}
 				<Hint text={message} />
 			{/if}
 		</Group>
+	{:else if message}
+		<Hint text={message} />
 	{/if}
 </ViewScaffold>
 
 {#if pending}
-	<KeepSettings onKeep={keepChanges} onRevert={revertChanges} />
+	{#key pending.id}
+		<KeepSettings seconds={pending.seconds} onKeep={keepChanges} onRevert={revertChanges} />
+	{/key}
 {/if}
 
 <style>
@@ -396,6 +476,22 @@
 		padding: 0;
 		color: inherit;
 		overflow: hidden;
+	}
+
+	.mon.mirrored {
+		border-style: dashed;
+	}
+
+	.badge {
+		position: absolute;
+		top: 8px;
+		left: 8px;
+		padding: 2px 8px;
+		border-radius: 999px;
+		font-size: 10.5px;
+		background: var(--accent);
+		color: var(--bg);
+		pointer-events: none;
 	}
 
 	.mon.sel {
