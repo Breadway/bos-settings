@@ -59,6 +59,7 @@ pub fn run() {
                     let _ = handle.emit("display-guard-outcome", outcome);
                 },
             ));
+            commands::display_guard::revert_on_signal(app.handle().clone());
             commands::theme::watch_and_emit(app.handle());
             if let Some(req) = screenshot_req {
                 screenshot::dispatch(req, app.handle().clone());
