@@ -19,6 +19,19 @@ pub struct BtDevice {
     name: String,
     connected: bool,
     battery: Option<u32>,
+    /// BlueZ device class icon ("audio-headset", "input-gaming", ...), for a type icon.
+    #[serde(default)]
+    icon: String,
+    /// False when the device only broadcasts its address: BlueZ then uses
+    /// the address itself ("7D-70-3F-22-2D-62") as the name. These are
+    /// mostly beacons and phones nearby, not something you'd pair.
+    named: bool,
+}
+
+/// Whether `name` is a real name rather than BlueZ's address stand-in.
+fn has_real_name(name: &str, address: &str) -> bool {
+    let stand_in = name.replace('-', ":");
+    !name.is_empty() && !stand_in.eq_ignore_ascii_case(address)
 }
 
 #[tauri::command]
@@ -57,11 +70,14 @@ fn parse_device_lines(text: &str) -> Vec<BtDevice> {
         .filter_map(|l| {
             let rest = l.strip_prefix("Device ")?;
             let (addr, name) = rest.split_once(' ')?;
+            let (addr, name) = (addr.trim(), name.trim());
             Some(BtDevice {
-                address: addr.trim().to_string(),
-                name: name.trim().to_string(),
+                address: addr.to_string(),
+                name: name.to_string(),
                 connected: false,
                 battery: None,
+                icon: String::new(),
+                named: has_real_name(name, addr),
             })
         })
         .collect()
@@ -88,25 +104,32 @@ pub async fn get_paired_devices() -> Vec<BtDevice> {
         .collect();
     for d in &mut devices {
         d.connected = connected.contains(&d.address);
-        if d.connected {
-            if let Ok(out) = Command::new("bluetoothctl")
-                .args(["info", &d.address])
-                .output()
-                .await
-            {
-                d.battery = String::from_utf8_lossy(&out.stdout)
-                    .lines()
-                    .find_map(|line| {
-                        line.trim()
-                            .strip_prefix("Battery Percentage:")
-                            .and_then(|v| v.split_once('('))
-                            .and_then(|(_, v)| v.trim_end_matches(')').parse::<u32>().ok())
-                            .filter(|v| *v <= 100)
-                    });
+        if let Ok(out) = Command::new("bluetoothctl")
+            .args(["info", &d.address])
+            .output()
+            .await
+        {
+            let info = String::from_utf8_lossy(&out.stdout);
+            d.icon = info_field(&info, "Icon:").unwrap_or_default();
+            if d.connected {
+                d.battery = info_field(&info, "Battery Percentage:")
+                    .and_then(|v| {
+                        v.split_once('(')
+                            .map(|(_, v)| v.trim_end_matches(')').to_string())
+                    })
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .filter(|v| *v <= 100);
             }
         }
     }
     devices
+}
+
+fn info_field(info: &str, key: &str) -> Option<String> {
+    info.lines()
+        .find_map(|line| line.trim().strip_prefix(key))
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
 }
 
 /// Scans for a few seconds and returns every device BlueZ has seen that
@@ -122,11 +145,24 @@ pub async fn scan_bluetooth() -> Vec<BtDevice> {
         .into_iter()
         .map(|d| d.address)
         .collect();
-    run_devices(None)
+    let mut found: Vec<BtDevice> = run_devices(None)
         .await
         .into_iter()
         .filter(|d| !paired.contains(&d.address))
-        .collect()
+        .collect();
+    // Type icons for the named ones only: there are usually a handful,
+    // while unnamed beacons can number in the dozens.
+    for d in found.iter_mut().filter(|d| d.named) {
+        if let Ok(out) = Command::new("bluetoothctl")
+            .args(["info", &d.address])
+            .output()
+            .await
+        {
+            d.icon = info_field(&String::from_utf8_lossy(&out.stdout), "Icon:").unwrap_or_default();
+        }
+    }
+    found.sort_by_key(|d| !d.named);
+    found
 }
 
 #[tauri::command]
@@ -188,5 +224,32 @@ pub async fn bt_pair(address: String) -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn info_fields_parse() {
+        let info =
+            "Device AA\n\tName: Buds\n\tIcon: audio-headset\n\tBattery Percentage: 0x50 (80)\n";
+        assert_eq!(info_field(info, "Icon:").as_deref(), Some("audio-headset"));
+        assert_eq!(
+            info_field(info, "Battery Percentage:").as_deref(),
+            Some("0x50 (80)")
+        );
+        assert_eq!(info_field(info, "Alias:"), None);
+    }
+
+    #[test]
+    fn address_stand_in_is_not_a_name() {
+        let devs = parse_device_lines(
+            "Device 7D:70:3F:22:2D:62 7D-70-3F-22-2D-62\nDevice E8:C9:13:88:AE:3F Galaxy Buds3\n",
+        );
+        assert!(!devs[0].named);
+        assert!(devs[1].named);
+        assert!(!has_real_name("7d-70-3f-22-2d-62", "7D:70:3F:22:2D:62"));
     }
 }

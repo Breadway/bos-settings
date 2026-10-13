@@ -93,23 +93,12 @@
 				{/each}
 			</div>
 			<div class="foot">
-				<span class="status">{status}</span>
+				<span class="status">{status || (switched ? "The bar has switched. The launcher changes the next time you open it." : "")}</span>
+				<button class="btn small ghost" disabled={busy} onclick={restart} title="If something looks stuck after a change">Restart bar and launcher</button>
 			</div>
 		{/if}
 	</Group>
 
-	{#if loaded}
-		<Group title="Apply">
-			<Hint
-				text={switched
-					? "The bar restarts itself to pick up the new theme; the launcher applies it next time you open it."
-					: "The bar restarts itself on a theme change; the launcher applies it on its next open. Use the button below if something looks stuck."}
-			/>
-			<div class="foot">
-				<button class="btn" disabled={busy} onclick={restart}>Restart bar &amp; launcher</button>
-			</div>
-		</Group>
-	{/if}
 </ViewScaffold>
 
 <style>

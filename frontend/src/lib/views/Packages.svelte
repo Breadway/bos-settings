@@ -99,7 +99,7 @@
 
 <style>
 	.list {
-		max-height: 320px;
+		max-height: 60vh;
 		overflow-y: auto;
 		display: flex;
 		flex-direction: column;

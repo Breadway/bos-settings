@@ -407,9 +407,12 @@ fn clear_legacy_fragment() {
     let _ = util::remove_hypr_source(LEGACY_FRAGMENT);
 }
 
+/// Liveness probe. `hyprctl hyprsunset gamma` takes a percentage (default
+/// 100), so the value must be 100 here: `1.0` means 1% brightness and blacks
+/// out the display.
 async fn hyprsunset_running() -> bool {
     Command::new("hyprctl")
-        .args(["hyprsunset", "gamma", "1.0"])
+        .args(["hyprsunset", "gamma", "100"])
         .output()
         .await
         .map(|o| o.status.success())
@@ -444,13 +447,18 @@ async fn restart_daemon(args: &[String]) -> Result<(), String> {
         return Err("hyprsunset is not installed".into());
     }
     stop_daemon().await;
-    std::process::Command::new("hyprsunset")
+    let mut child = std::process::Command::new("hyprsunset")
         .args(args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
         .map_err(|e| format!("couldn't start hyprsunset: {e}"))?;
+    // Reap it when it exits (turning night light off stops it); otherwise
+    // every toggle left a <defunct> hyprsunset behind until the app quit.
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
     for _ in 0..15 {
         tokio::time::sleep(std::time::Duration::from_millis(150)).await;
         if hyprsunset_running().await {

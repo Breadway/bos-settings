@@ -4,13 +4,10 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
-	import Hint from "$lib/components/Hint.svelte";
-	import InfoRow from "$lib/components/InfoRow.svelte";
-	import FileField from "$lib/components/FileField.svelte";
-	import TextField from "$lib/components/TextField.svelte";
-	import NumberField from "$lib/components/NumberField.svelte";
+	import Row from "$lib/components/Row.svelte";
+	import { open } from "@tauri-apps/plugin-dialog";
+	import { go } from "$lib/nav.svelte";
 	import SwitchField from "$lib/components/SwitchField.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 
 	interface ShotBind {
 		shortcut: string;
@@ -36,45 +33,45 @@
 		await invoke("save_breadshot_config", { cfg });
 	}
 	useDraft(() => (cfg), save, () => cfg !== null);
+
+	async function pickFolder() {
+		const picked = await open({ directory: true });
+		if (typeof picked === "string") cfg!.save_dir = picked;
+	}
+	// A real example name instead of the raw strftime pattern.
+	function example(fmt: string): string {
+		const d = new Date();
+		const p = (n: number) => String(n).padStart(2, "0");
+		const map: Record<string, string> = { Y: String(d.getFullYear()), m: p(d.getMonth() + 1), d: p(d.getDate()), H: p(d.getHours()), M: p(d.getMinutes()), S: p(d.getSeconds()), "%": "%" };
+		return `${(fmt || "%Y-%m-%d-%H%M%S").replace(/%(.)/g, (_, c) => map[c] ?? `%${c}`)}_breadshot.png`;
+	}
 </script>
 
 <ViewScaffold title="Screenshots">
-	<Group
-		title="Keybinds"
-		hint="Change shortcuts under Keyboard."
-	>
-		{#if binds && binds.length > 0}
-			{#each binds as b (`${b.shortcut}:${b.command}`)}
-				<InfoRow label={b.shortcut} value={b.command} />
-			{/each}
-		{:else}
-			<Hint text="No breadshot binds found." />
-		{/if}
-		<button class="primary" onclick={() => invoke("breadshot_region_clipboard")}>Capture region to clipboard</button>
-	</Group>
-
 	{#if cfg}
-		<Group title="Capture">
-			<FileField label="Save directory" bind:value={cfg.save_dir} placeholder="~/Pictures/Screenshots" mode="folder" />
-			<SwitchField label="Silent (no notifications)" bind:value={cfg.silent} />
-			<SwitchField label="Freeze screen during select" bind:value={cfg.freeze} />
-			<Hint text="Freeze needs hyprpicker. Filenames are <date_format>_breadshot.png." />
-			<NumberField label="Notification timeout (ms)" bind:value={cfg.notif_timeout} min={0} max={60000} />
-			<TextField label="Filename date format" bind:value={cfg.date_format} placeholder="%Y-%m-%d-%H%M%S" />
-			<SaveButton onSave={save} />
+		<Group title="Screenshots">
+			<Row label="Save to" hint={cfg.save_dir || "~/Pictures/Screenshots"}>
+				<button class="btn small" onclick={pickFolder}>Change</button>
+			</Row>
+			<SwitchField label="Show a notification" hint="With a preview after each screenshot." bind:value={() => !cfg!.silent, (v) => (cfg!.silent = !v)} />
+			<SwitchField label="Freeze the screen while selecting" hint="Handy for menus and videos that would change." bind:value={cfg.freeze} />
+			<Row label="Shortcuts" hint={binds?.length ? `${binds.length} set up. Change them in Keyboard.` : "Change them in Keyboard."}>
+				<button class="btn small ghost" onclick={() => go("keyboard")}>Open</button>
+				<button class="btn small" onclick={() => invoke("breadshot_region_clipboard")}>Take one now</button>
+			</Row>
+			<details class="ui-disclosure">
+				<summary>Advanced</summary>
+				{#if !cfg.silent}
+					<Row label="Notification stays for">
+						<select class="ui-input" bind:value={cfg.notif_timeout}>
+							{#each [...new Set([2000, 3000, 5000, 10000, cfg.notif_timeout])].sort((a, b) => a - b) as ms (ms)}<option value={ms}>{ms / 1000} seconds</option>{/each}
+						</select>
+					</Row>
+				{/if}
+				<Row label="File name" hint={`Looks like ${example(cfg.date_format)}`}>
+					<input class="ui-input" bind:value={cfg.date_format} placeholder="%Y-%m-%d-%H%M%S" />
+				</Row>
+			</details>
 		</Group>
 	{/if}
 </ViewScaffold>
-
-<style>
-	.primary {
-		align-self: flex-start;
-		margin-top: var(--space-sm, 8px);
-		background-color: var(--accent);
-		color: var(--on-accent);
-		border: none;
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-sm, 8px) var(--space-lg, 16px);
-		cursor: pointer;
-	}
-</style>

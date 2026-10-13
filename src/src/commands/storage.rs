@@ -7,6 +7,10 @@ use tokio::process::Command;
 #[derive(Serialize)]
 pub struct DiskUsage {
     path: String,
+    /// Backing device; `/` and `/home` on one Btrfs volume share it and are
+    /// shown once instead of as two identical bars.
+    #[serde(skip)]
+    source: String,
     total: u64,
     used: u64,
     available: u64,
@@ -46,14 +50,15 @@ fn parse_df(text: &str, path: &Path) -> Option<DiskUsage> {
     let fields: Vec<_> = text.lines().nth(1)?.split_whitespace().collect();
     Some(DiskUsage {
         path: path.display().to_string(),
-        total: fields.first()?.parse().ok()?,
-        used: fields.get(1)?.parse().ok()?,
-        available: fields.get(2)?.parse().ok()?,
+        source: fields.first()?.to_string(),
+        total: fields.get(1)?.parse().ok()?,
+        used: fields.get(2)?.parse().ok()?,
+        available: fields.get(3)?.parse().ok()?,
     })
 }
 async fn disk(path: &Path) -> Result<DiskUsage, String> {
     let out = Command::new("df")
-        .args(["-B1", "--output=size,used,avail", "--"])
+        .args(["-B1", "--output=source,size,used,avail", "--"])
         .arg(path)
         .output()
         .await
@@ -74,14 +79,15 @@ async fn size(path: &Path) -> Result<u64, String> {
         .output()
         .await
         .map_err(|e| e.to_string())?;
-    if !out.status.success() {
-        return Err(util::fail_output(&out, "Measuring storage"));
-    }
+    // du exits 1 when any folder inside can't be read (container overlays,
+    // root-only parts of /etc and /var) but still prints the total of what it
+    // could read. Use that: slightly low beats "Unavailable" and a wall of
+    // permission errors.
     String::from_utf8_lossy(&out.stdout)
         .split_whitespace()
         .next()
         .and_then(|n| n.parse().ok())
-        .ok_or_else(|| "Could not measure storage".into())
+        .ok_or_else(|| util::fail_output(&out, "Measuring storage"))
 }
 #[tauri::command]
 pub async fn get_storage_info() -> Result<StorageInfo, String> {
@@ -99,6 +105,7 @@ pub async fn get_storage_info() -> Result<StorageInfo, String> {
     let mut disks = Vec::new();
     for result in [root, home_disk] {
         match result {
+            Ok(v) if disks.iter().any(|d: &DiskUsage| d.source == v.source) => {}
             Ok(v) => disks.push(v),
             Err(e) => errors.push(e),
         }
@@ -134,7 +141,8 @@ pub async fn get_cache_entries() -> Result<Vec<CacheEntry>, String> {
         .output()
         .await
         .map_err(|e| e.to_string())?;
-    if !out.status.success() {
+    // As in size(): unreadable folders make du exit 1 but the rest is fine.
+    if out.stdout.is_empty() && !out.status.success() {
         return Err(util::fail_output(&out, "Reading app caches"));
     }
     let mut entries = Vec::new();
@@ -227,7 +235,11 @@ mod tests {
     use super::*;
     #[test]
     fn parse_capacity_and_available_without_confusing_them() {
-        let disk = parse_df("1B-blocks Used Avail\n1000 600 350\n", Path::new("/")).unwrap();
+        let disk = parse_df(
+            "Filesystem 1B-blocks Used Avail\n/dev/sda1 1000 600 350\n",
+            Path::new("/"),
+        )
+        .unwrap();
         assert_eq!((disk.total, disk.used, disk.available), (1000, 600, 350));
         assert!(parse_df("header\nbad data\n", Path::new("/")).is_none());
     }

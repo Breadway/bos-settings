@@ -73,8 +73,8 @@
 
 <ViewScaffold title="Optional software">
 	<Group
-		title="Curated extras"
-		hint="Not an AUR browser. breadcast is bakery-only and is not on the ISO. Pacman items use the allowlisted installer."
+		title="Recommended"
+		hint="Popular extras that aren't installed by default."
 		wide
 	>
 		{#if !st}
@@ -85,7 +85,7 @@
 					<div class="meta">
 						<strong>{item.title}</strong>
 						<p>{item.detail}</p>
-						<span class="via">{item.via}{item.installed ? " · installed" : ""}</span>
+
 					</div>
 					{#if item.installed}
 						<span class="done">Installed</span>
@@ -122,7 +122,6 @@
 		font-size: var(--font-size-secondary, 12px);
 	}
 
-	.via,
 	.done {
 		opacity: 0.65;
 		font-size: var(--font-size-secondary, 12px);

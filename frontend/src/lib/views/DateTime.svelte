@@ -1,14 +1,13 @@
 <script lang="ts">
 	import {useDraft} from "$lib/drafts.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 	import SelectField from "$lib/components/SelectField.svelte";
+	import { localeLabels } from "$lib/localeNames";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
-	import InfoRow from "$lib/components/InfoRow.svelte";
+	import SwitchField from "$lib/components/SwitchField.svelte";
 	import Group from "$lib/components/Group.svelte";
 	import Row from "$lib/components/Row.svelte";
-	import Hint from "$lib/components/Hint.svelte";
 
 	interface DateTimeInfo {
 		current_time: string;
@@ -44,92 +43,50 @@
 		}
 	}
 
+	// "en_AU.UTF-8" -> "9/10/2026 · 1,234.56": how dates and numbers will look.
+	function sample(region: string): string {
+		const tag = region.split(".")[0].replace("_", "-");
+		try {
+			return `${new Date().toLocaleDateString(tag)} · ${(1234.56).toLocaleString(tag)}`;
+		} catch {
+			return "Dates, numbers, currency and measurements.";
+		}
+	}
+
 	async function toggleNtp(enabled: boolean) {
 		try {await invoke("set_ntp_enabled", { enabled });ntpEnabled=enabled;}catch(e){tzStatus=String(e);}
 	}
 </script>
 
 <ViewScaffold title="Date & language" lede="Time, region and language.">
- {#if locale}<Group title="Language and region" hint="Applies at your next login. The list contains the locales already installed on this computer.">
- <SelectField label="Clock format" bind:value={clock} options={["12","24"]} labels={{"12":"12-hour","24":"24-hour"}}/>
- <SelectField label="Language" bind:value={locale.language} options={Array.from(new Set([...locale.locales,locale.language]))}/>
- <SelectField label="Region" hint="Dates, numbers, currency and measurements." bind:value={locale.region} options={Array.from(new Set([...locale.locales,locale.region]))}/>
- </Group><SaveButton onSave={saveLocale}/>{/if}{#if localeError}<p role="alert">{localeError}</p>{/if}
-	{#if info}
-		<Group title="Current time">
-			<InfoRow label="Right now" value={info.current_time} />
-		</Group>
-
-		<Group title="Timezone">
-			{#if info.timezones.length === 0}
-				<Hint text="Couldn't list timezones (is timedatectl available?)." />
-			{:else}
-				<Row label="Timezone">
-					<select value={info.current_tz} onchange={(e) => applyTimezone(e.currentTarget.value)}>
-						{#each info.timezones as tz (tz)}
-							<option value={tz}>{tz}</option>
-						{/each}
+	<Group title="Time">
+		{#if info}
+			<SwitchField label="Set the time automatically" hint={ntpEnabled ? (info.ntp_synced ? `Synced · now ${info.current_time}` : "Waiting for the network to sync") : `Now ${info.current_time}`} bind:value={() => ntpEnabled, (v) => toggleNtp(v)} />
+			{#if info.timezones.length}
+				<Row label="Time zone" hint={tzStatus || undefined}>
+					<select class="ui-input" value={info.current_tz} onchange={(e) => applyTimezone(e.currentTarget.value)}>
+						{#each info.timezones as tz (tz)}<option value={tz}>{tz.replaceAll("_", " ")}</option>{/each}
 					</select>
 				</Row>
-				{#if tzStatus}
-					<span class="status">{tzStatus}</span>
-				{/if}
+			{:else}
+				<p class="muted">Time zones couldn't be listed on this system.</p>
 			{/if}
-		</Group>
-
-		<Group title="Network time" hint={info.ntp_synced ? "Synchronized." : "Not synchronized yet (needs network)."}>
-			<Row label="Synchronize automatically">
-				<button
-					class="switch"
-					class:on={ntpEnabled}
-					role="switch"
-					aria-checked={ntpEnabled}
-					aria-label="Synchronize automatically"
-					onclick={() => toggleNtp(!ntpEnabled)}
-				>
-					<span class="knob"></span>
-				</button>
+		{/if}
+		{#if clockReady}
+			<Row label="Clock">
+				<div class="ui-seg"><button class:on={clock === "24"} onclick={() => (clock = "24")}>24-hour</button><button class:on={clock === "12"} onclick={() => (clock = "12")}>12-hour</button></div>
 			</Row>
+		{/if}
+	</Group>
+	{#if locale}
+		<Group title="Language and region" hint="Changes here apply the next time you log in.">
+			<SelectField label="Language" bind:value={locale.language} options={Array.from(new Set([...locale.locales, locale.language]))} labels={localeLabels([...locale.locales, locale.language])} />
+			<SelectField label="Formats" hint={sample(locale.region)} bind:value={locale.region} options={Array.from(new Set([...locale.locales, locale.region]))} labels={localeLabels([...locale.locales, locale.region])} />
 		</Group>
 	{/if}
+	{#if localeError}<p class="muted bad" role="alert">{localeError}</p>{/if}
 </ViewScaffold>
 
 <style>
-	select {
-		background-color: var(--bg);
-		color: var(--on-surface);
-		border: 1px solid transparent;
-		border-radius: var(--radius-secondary, 6px);
-		padding: var(--space-xs, 4px) var(--space-sm, 8px);
-	}
-
-	.status {
-		opacity: 0.6;
-		font-size: var(--font-size-secondary, 12px);
-	}
-
-	.switch {
-		width: 40px;
-		height: 22px;
-		border-radius: 999px;
-		border: none;
-		background-color: var(--overlay);
-		padding: 2px;
-		cursor: pointer;
-		display: flex;
-		align-items: center;
-	}
-
-	.switch.on {
-		background-color: var(--accent);
-		justify-content: flex-end;
-	}
-
-	.knob {
-		width: 18px;
-		height: 18px;
-		border-radius: 50%;
-		background-color: var(--on-surface);
-		display: block;
-	}
+	.muted { color:var(--muted); font-size:12.5px; margin:4px 2px 8px; } .bad { color:var(--red); }
 </style>

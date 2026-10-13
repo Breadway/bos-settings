@@ -172,13 +172,14 @@
 
 		{/if}
 		{#if scope !== "windows"}
-		<Group title={scope === "keyboard" ? "Keyboard layout" : "Mouse & touchpad"}>
+		<Group title={scope === "keyboard" ? "Keyboard layout" : scope === "mouse" ? "Windows" : "Mouse & touchpad"}>
 			{#if scope === "all" || scope === "keyboard"}
 			<SelectField label="Keyboard layout" bind:value={cfg.kb_layout} options={kbLayoutOptions} labels={KB_LABELS} />
 			{/if}
 			{#if scope === "all" || scope === "mouse"}
 			<SelectField
 				label="Focus"
+				hint="Which window gets your typing."
 				bind:value={followMouse}
 				options={FOLLOW_MOUSE_MODES.map((m) => m.value)}
 				labels={Object.fromEntries(FOLLOW_MOUSE_MODES.map((m) => [m.value, m.label]))}
@@ -188,12 +189,13 @@
 		</Group>
 
 		{/if}
-		<Hint text="Applies as you change it." />
+		{#if scope === "all"}<Hint text="Applies as you change it." />{/if}
         {#if status}<p role="alert">{status}</p><button class="btn" onclick={()=>saveNow().catch(e=>status=String(e))}>Retry saving</button>{/if}
 	{/if}
 </ViewScaffold>
 
 <style>
-.window-preview{height:118px;display:grid;grid-template-columns:1.3fr 1fr;grid-template-rows:1fr 1fr;gap:var(--gi);padding:var(--go);background:var(--bg);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-.window-preview i{background:var(--surface-2);border:var(--bw) solid var(--accent);border-radius:var(--r);min-height:0}.window-preview i:first-child{grid-row:span 2}
+/* Seams stay visible at 0 gaps and no border, or the preview is one blank box. */
+.window-preview{height:118px;display:grid;grid-template-columns:1.3fr 1fr;grid-template-rows:1fr 1fr;gap:max(var(--gi),2px);padding:var(--go);background:var(--bg);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.window-preview i{background:var(--surface-2);border:var(--bw) solid var(--accent);border-radius:var(--r);min-height:0;box-shadow:0 0 0 1px color-mix(in srgb,var(--fg) 14%,transparent)}.window-preview i:nth-child(2){background:color-mix(in srgb,var(--surface-2) 70%,var(--bg))}.window-preview i:first-child{grid-row:span 2}
 </style>
