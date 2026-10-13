@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from "$lib/confirm.svelte";
 	import { isSystemStartup } from "$lib/systemStartup";
 	import Switch from "$lib/components/Switch.svelte";
 	import Sheet from "$lib/components/Sheet.svelte";
@@ -48,7 +49,7 @@
 	async function save() {
 		const system = JSON.stringify(entries?.filter(e => isSystemStartup(e.command)));
 		const changed = system !== originalSystem;
-		if (changed && !confirm("Change core desktop services? Disabling or removing them can stop locking, screenshots, wallpaper or other desktop features.")) throw new Error("System service changes were not saved.");
+		if (changed && !(await confirmAction({ title: "Change core desktop services?", message: "Disabling or removing them can stop locking, screenshots, wallpaper or other desktop features.", confirmLabel: "Save changes" }))) throw new Error("System service changes were not saved.");
 		await invoke("save_autostart_entries", { entries, allowSystemChanges: changed });
 		originalSystem = system;
 	}
@@ -89,7 +90,7 @@
 					{/if}
 				{/each}
 				{#if !editSystem}
-					<div class="foot"><button class="btn small ghost" onclick={() => { if (confirm("Change desktop services? Turning one off can stop locking, screenshots, the wallpaper or other parts of the desktop.")) editSystem = true; }}>Change these…</button></div>
+					<div class="foot"><button class="btn small ghost" onclick={async () => { if (await confirmAction({ title: "Change desktop services?", message: "Turning one off can stop locking, screenshots, the wallpaper or other parts of the desktop.", confirmLabel: "Change them" })) editSystem = true; }}>Change these…</button></div>
 				{/if}
 			</details>
 		</Group>
