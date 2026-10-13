@@ -668,6 +668,36 @@ pub fn display_guard_status(guard: tauri::State<'_, DisplayGuard>) -> GuardStatu
     guard.status()
 }
 
+/// SIGTERM (logout, `pkill`, systemd stop), SIGINT and SIGHUP skip
+/// `RunEvent::Exit`, so a pending change would otherwise outlive the app.
+/// Revert first, then let Tauri exit normally. SIGKILL cannot be caught.
+pub fn revert_on_signal(app: tauri::AppHandle) {
+    use tauri::Manager;
+    use tokio::signal::unix::{signal, SignalKind};
+    tauri::async_runtime::spawn(async move {
+        let (Ok(mut term), Ok(mut int), Ok(mut hup)) = (
+            signal(SignalKind::terminate()),
+            signal(SignalKind::interrupt()),
+            signal(SignalKind::hangup()),
+        ) else {
+            eprintln!(
+                "bos-settings: cannot watch exit signals; a pending display change survives them"
+            );
+            return;
+        };
+        tokio::select! {
+            _ = term.recv() => {}
+            _ = int.recv() => {}
+            _ = hup.recv() => {}
+        }
+        if let Some(guard) = app.try_state::<DisplayGuard>() {
+            let g = guard.inner().clone();
+            let _ = tauri::async_runtime::spawn_blocking(move || g.revert_on_exit()).await;
+        }
+        app.exit(0);
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
