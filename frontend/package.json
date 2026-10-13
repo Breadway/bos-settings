@@ -10,7 +10,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri",
-    "test": "node --experimental-strip-types src/lib/keycapture.test.mjs && node --experimental-strip-types src/lib/nightlight.test.mjs && node --experimental-strip-types src/lib/liveGate.test.mjs && node --experimental-strip-types src/lib/snapshotRestore.test.mjs && node --experimental-strip-types src/lib/snapshotLabel.test.mjs && node --experimental-strip-types src/lib/uniqueBy.test.mjs && node src/lib/v2.test.mjs && node --conditions=browser src/lib/drafts.test.mjs"
+    "test": "node --experimental-strip-types src/lib/keycapture.test.mjs && node --experimental-strip-types src/lib/nightlight.test.mjs && node --experimental-strip-types src/lib/liveGate.test.mjs && node --experimental-strip-types src/lib/snapshotRestore.test.mjs && node --experimental-strip-types src/lib/snapshotLabel.test.mjs && node --experimental-strip-types src/lib/uniqueBy.test.mjs && node --experimental-strip-types src/lib/displayLayout.test.mjs && node src/lib/v2.test.mjs && node --conditions=browser src/lib/drafts.test.mjs"
   },
   "license": "MIT",
   "dependencies": {
