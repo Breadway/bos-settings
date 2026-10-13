@@ -1,8 +1,16 @@
 :root {
-	--bg-2: color-mix(in oklab, var(--bg) 82%, var(--surface));
-	--surface-2: color-mix(in oklab, var(--surface) 72%, var(--overlay));
-	--muted: color-mix(in oklab, var(--fg) 58%, transparent);
-	--faint: color-mix(in oklab, var(--fg) 38%, transparent);
+	--bg: #0e0f11;
+	--surface: #17191c;
+	--overlay: #272b30;
+	--fg: #e9ecef;
+	--on-surface: #e9ecef;
+	--accent: #2fa3a8;
+	--on-accent: #04191a;
+	--red: #e0736a;
+	--bg-2: #111316;
+	--surface-2: #1f2226;
+	--muted: #8b9198;
+	--faint: #5d636a;
 	--line: color-mix(in srgb, var(--fg) 8%, transparent);
 	--accent-soft: color-mix(in oklab, var(--accent) 18%, transparent);
 	--radius: 14px;
@@ -22,8 +30,8 @@ body {
 	color-scheme: dark;
 	background-color: var(--bg, #12161c);
 	color: var(--fg);
-	font-family: var(--font-family, sans-serif);
-	font-size: var(--font-size-base, 14px);
+	font-family: var(--font-family, 'Varela Round', 'Outfit', sans-serif);
+	font-size: var(--font-size-base, 13.5px);
 }
 
 #svelte {
@@ -119,3 +127,58 @@ input[type="range"] {
 	border-color: transparent;
 	font-weight: 600;
 }
+
+/* Narrow tiles must keep controls reachable, including older config editors. */
+kbd { border:1px solid var(--line); background:var(--surface); border-radius:5px; padding:3px 5px; color:var(--muted); }
+.content { scrollbar-width:thin; scrollbar-color:var(--surface-2) transparent; }
+.content input:not([type=range]):not([type=checkbox]), .content textarea, .content select { max-width:100%; min-width:0; }
+.content pre { max-width:100%; overflow-x:auto; }
+.content .btn-row { flex-wrap:wrap; }
+.search-highlight { border-radius:8px; background:var(--accent-soft); outline:2px solid var(--accent); outline-offset:2px; }
+@media(max-width:560px) { .content .row { flex-wrap:wrap; } .content .version { overflow-wrap:anywhere; } }
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
+
+/* Shared pieces from the v2 proposal: hero card, chips, list items, device
+   cards, segmented picks, tags and the yellow notice box. */
+.hero-card { display:flex; align-items:center; gap:16px; padding:18px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); min-width:0; }
+.hero-card .big { width:54px; height:54px; border-radius:16px; background:var(--accent-soft); color:var(--accent); display:grid; place-items:center; flex:none; }
+.hero-card h3 { margin:0; font:500 18px/1.2 var(--font-display, 'Outfit', 'Varela Round', sans-serif); overflow-wrap:anywhere; }
+.hero-card p { margin:3px 0 0; color:var(--muted); font-size:12.5px; }
+.hero-card .acts { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+.ui-chips { display:flex; gap:6px; flex-wrap:wrap; padding:4px 2px 10px; }
+.ui-chip { padding:6px 11px; border-radius:99px; border:1px solid var(--line); background:transparent; font-size:12.5px; color:var(--fg); display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
+.ui-chip:hover { background:color-mix(in srgb, var(--fg) 5%, transparent); }
+.ui-chip.on { background:var(--accent-soft); border-color:color-mix(in oklab, var(--accent) 55%, transparent); }
+.ui-chip:disabled { opacity:.6; cursor:default; }
+.ui-item { display:flex; align-items:center; gap:12px; padding:11px 2px; min-height:24px; }
+.ui-item + .ui-item { border-top:1px solid var(--line); }
+.ui-item .lb { flex:1; min-width:0; }
+.ui-item .lb b { display:block; font-weight:400; overflow-wrap:anywhere; }
+.ui-item .lb small { display:block; color:var(--muted); font-size:12px; margin-top:2px; line-height:1.4; }
+.ui-item .ico { width:34px; height:34px; border-radius:10px; background:var(--surface-2); display:grid; place-items:center; color:var(--accent); flex:none; }
+.ui-item .acts { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+.devgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:10px; }
+.dev-card { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:14px; display:flex; flex-direction:column; gap:10px; min-width:0; }
+.dev-card.on { border-color:color-mix(in oklab, var(--accent) 55%, transparent); }
+.dev-card .t { display:flex; align-items:center; gap:10px; min-width:0; }
+.dev-card .t > div { min-width:0; }
+.dev-card .t b { display:block; font-weight:400; overflow-wrap:anywhere; }
+.dev-card .t small { color:var(--muted); font-size:12px; }
+.dev-card .ico { width:36px; height:36px; border-radius:11px; background:var(--surface-2); display:grid; place-items:center; color:var(--accent); flex:none; }
+.dev-card .acts { display:flex; gap:6px; flex-wrap:wrap; margin-top:auto; }
+.ui-seg { display:inline-flex; background:var(--surface-2); border-radius:10px; padding:3px; gap:2px; flex-wrap:wrap; }
+.ui-seg button { padding:6px 11px; border-radius:8px; border:0; background:none; color:var(--muted); font-size:12.5px; white-space:nowrap; cursor:pointer; }
+.ui-seg button:hover { color:var(--fg); }
+.ui-seg button.on { background:var(--accent-soft); color:var(--fg); box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--accent) 45%, transparent); }
+.ui-tag { font-size:10.5px; padding:3px 6px; border-radius:5px; background:var(--surface-2); color:var(--muted); white-space:nowrap; }
+.ui-tag.ok { background:var(--accent-soft); color:var(--accent); }
+.warnbox { margin:4px 0 10px; padding:10px 12px; border-radius:10px; background:rgba(214,178,94,.10); border:1px solid rgba(214,178,94,.35); color:#ead6a2; font-size:12.5px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.warnbox > span { flex:1 1 220px; }
+.btn.ghost { background:transparent; }
+.btn.remove { background:transparent; color:var(--red); border-color:color-mix(in oklab, var(--red) 40%, transparent); }
+.btn.small { padding:5px 10px; font-size:12.5px; }
+.ui-input { background:var(--bg); border:1px solid var(--line); border-radius:9px; padding:8px 10px; font-size:13px; min-width:0; color:var(--fg); }
+.ui-input:focus { outline:none; border-color:var(--accent); }
+.ui-disclosure > summary { cursor:pointer; color:var(--muted); font-size:13px; padding:10px 2px; list-style-position:inside; }
+.ui-disclosure > summary:hover { color:var(--fg); }
+@media(max-width:560px) { .hero-card { flex-wrap:wrap; } .hero-card .acts { margin-left:0; } .ui-item { flex-wrap:wrap; } .ui-item .lb { flex-basis:60%; } }

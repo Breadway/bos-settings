@@ -53,31 +53,29 @@ pub fn get_optional_software() -> OptionalStatus {
         items: vec![
             OptionalItem {
                 id: "breadcast".into(),
-                title: "breadcast".into(),
-                detail:
-                    "Optional bread-ecosystem app. Installed through bakery; it is not on the ISO."
-                        .into(),
+                title: "Breadcast".into(),
+                detail: "A bread app that isn't installed by default.".into(),
                 installed: breadcast,
                 via: "bakery".into(),
             },
             OptionalItem {
                 id: "flatpak".into(),
-                title: "Flatpak + Flathub".into(),
-                detail: "Enables the Flatpak runtime and the Flathub user remote.".into(),
+                title: "Flathub apps".into(),
+                detail: "Lets you install apps from Flathub, the biggest Linux app store.".into(),
                 installed: flatpak && flathub_enabled(),
                 via: "pacman".into(),
             },
             OptionalItem {
                 id: "office".into(),
-                title: "LibreOffice + PDF".into(),
-                detail: "libreoffice-fresh and papers (GNOME document viewer).".into(),
+                title: "Office and PDF".into(),
+                detail: "LibreOffice for documents and spreadsheets, and a PDF viewer.".into(),
                 installed: office,
                 via: "pacman".into(),
             },
             OptionalItem {
                 id: "steam".into(),
                 title: "Steam".into(),
-                detail: "Valve Steam from the multilib repo.".into(),
+                detail: "Games from the Steam store.".into(),
                 installed: steam,
                 via: "pacman".into(),
             },

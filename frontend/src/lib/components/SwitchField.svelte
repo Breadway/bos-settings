@@ -6,9 +6,10 @@
 		label,
 		hint,
 		value = $bindable(),
-	}: { label: string; hint?: string; value: boolean } = $props();
+        disabled = false,
+	}: { label: string; hint?: string; value: boolean; disabled?: boolean } = $props();
 </script>
 
 <Row {label} {hint}>
-	<Switch bind:value ariaLabel={label} />
+	<Switch {disabled} bind:value ariaLabel={label} />
 </Row>

@@ -97,6 +97,13 @@ fn valid_firewall_rule(rule: &str) -> bool {
     } else {
         (rule, None)
     };
+    // A range ("1714:1764") needs a protocol: ufw refuses a bare range.
+    if let Some((lo, hi)) = port.split_once(':') {
+        let (Ok(lo), Ok(hi)) = (lo.parse::<u16>(), hi.parse::<u16>()) else {
+            return false;
+        };
+        return lo > 0 && lo < hi && matches!(proto, Some("tcp") | Some("udp"));
+    }
     let Ok(n) = port.parse::<u16>() else {
         return false;
     };
@@ -135,6 +142,26 @@ pub async fn add_firewall_rule(rule: String) -> Result<(), String> {
     }
 }
 
+/// Removes an allow rule by what it allows ("22/tcp"), which clears the
+/// IPv4 and IPv6 copies in one authentication instead of one per number.
+#[tauri::command]
+pub async fn remove_firewall_allow(rule: String) -> Result<(), String> {
+    let rule = rule.trim();
+    if !valid_firewall_rule(rule) {
+        return Err("invalid firewall rule".into());
+    }
+    let output = Command::new("pkexec")
+        .args(["ufw", "--force", "delete", "allow", rule])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
 #[tauri::command]
 pub async fn remove_firewall_rule(number: String) -> Result<(), String> {
     if !valid_rule_number(&number) {
@@ -163,6 +190,12 @@ mod tests {
         assert!(valid_firewall_rule("53/udp"));
         assert!(valid_firewall_rule("80 tcp"));
         assert!(!valid_firewall_rule("OpenSSH"));
+        assert!(valid_firewall_rule("1714:1764/tcp"));
+        assert!(
+            !valid_firewall_rule("1714:1764"),
+            "a range needs a protocol"
+        );
+        assert!(!valid_firewall_rule("1764:1714/udp"));
         assert!(!valid_firewall_rule("-f"));
         assert!(!valid_firewall_rule("22;id"));
         assert!(!valid_firewall_rule("22/tcp\nallow 23"));

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { useDraft } from "$lib/drafts.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
@@ -9,7 +10,6 @@
 	import NumberField from "$lib/components/NumberField.svelte";
 	import PathListField from "$lib/components/PathListField.svelte";
 	import TagsField from "$lib/components/TagsField.svelte";
-	import SaveButton from "$lib/components/SaveButton.svelte";
 
 	const BACKEND_LABELS: Record<string, string> = {
 		cpu: "CPU",
@@ -40,46 +40,34 @@
 	async function save() {
 		await invoke("save_breadsearch_config", { cfg });
 	}
+	useDraft(() => (cfg), save, () => cfg !== null);
 </script>
 
-<ViewScaffold title="File Search">
-	<ServiceControl unit="breadmill.service" hasConfig />
-
+<ViewScaffold title="File search">
 	{#if cfg}
-		<Group
-			title="Power"
-			hint="Indexing is heavy. Pause it on battery if you want."
-		>
-			<SwitchField label="Enabled" bind:value={cfg.power_enabled} />
-			<SwitchField label="Index while on battery" bind:value={cfg.run_on_battery} />
+		<Group title="File search" hint="Lets the launcher find files by what's inside them, not only by name.">
+			<SwitchField label="Add new and changed files" hint={cfg.power_enabled ? "Reads files in the folders below so their contents can be found." : "Paused. Search still finds what was already read."} bind:value={cfg.power_enabled} />
+			{#if cfg.power_enabled}
+				<SwitchField label="Keep going on battery" hint="Reading files uses a lot of power, so it waits for the charger by default." bind:value={cfg.run_on_battery} />
+			{/if}
+			<PathListField label="Folders to search" bind:value={cfg.index_roots} />
+			<details class="ui-disclosure">
+				<summary>More</summary>
+				<PathListField label="Skip these folders" bind:value={cfg.index_excludes} hint="Even when they are inside a folder above." />
+				<TagsField label="File types" bind:value={cfg.index_extensions} />
+				<Row label="Speed up with" hint="Which chip does the indexing work.">
+					<select bind:value={cfg.backend}>
+						{#each Object.entries(BACKEND_LABELS) as [code, label] (code)}
+							<option value={code}>{label}</option>
+						{/each}
+					</select>
+				</Row>
+				<NumberField label="Skip files bigger than (MB)" bind:value={cfg.max_file_mb} min={0.1} max={500} step={0.5} />
+				<NumberField label="Results to show" bind:value={cfg.search_limit} min={1} max={100} />
+				<NumberField label="Preview length (characters)" bind:value={cfg.snippet_len} min={20} max={2000} step={20} />
+				<ServiceControl unit="breadmill.service" name="Search indexer" bare hasConfig />
+			</details>
 		</Group>
-
-		<Group
-			title="Model"
-			hint="Hardware used for indexing."
-		>
-			<Row label="Search acceleration">
-				<select bind:value={cfg.backend}>
-					{#each Object.entries(BACKEND_LABELS) as [code, label] (code)}
-						<option value={code}>{label}</option>
-					{/each}
-				</select>
-			</Row>
-			<NumberField label="Max file size (MB)" bind:value={cfg.max_file_mb} min={0.1} max={500} step={0.5} />
-		</Group>
-
-		<Group title="Search">
-			<NumberField label="Result limit" bind:value={cfg.search_limit} min={1} max={100} />
-			<NumberField label="Snippet length" bind:value={cfg.snippet_len} min={20} max={2000} step={20} />
-		</Group>
-
-		<Group title="Index" wide>
-			<PathListField label="Folders to index" bind:value={cfg.index_roots} />
-			<PathListField label="Excluded folders" bind:value={cfg.index_excludes} hint="Skipped even if inside an indexed folder above." />
-			<TagsField label="File extensions" bind:value={cfg.index_extensions} />
-		</Group>
-
-		<SaveButton onSave={save} />
 	{/if}
 </ViewScaffold>
 

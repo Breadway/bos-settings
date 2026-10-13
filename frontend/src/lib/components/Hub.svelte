@@ -1,51 +1,27 @@
 <script lang="ts">
-	import type { Component } from "svelte";
-	import ViewScaffold from "./ViewScaffold.svelte";
-	import Subnav from "./Subnav.svelte";
-	import Embed from "./Embed.svelte";
-	import { nav } from "$lib/nav.svelte";
-
-	interface Tab {
-		id: string;
-		label: string;
-		component: Component;
-	}
-
-	let { title, lede, tabs }: { title: string; lede: string; tabs: Tab[] } = $props();
-
-	function takeTab(): string {
-		const wanted = nav.tab;
-		nav.tab = null;
-		if (wanted && tabs.some((t) => t.id === wanted)) return wanted;
-		return tabs[0]?.id ?? "";
-	}
-
-	let tab = $state(takeTab());
-
-	$effect(() => {
-		const wanted = nav.tab;
-		if (wanted === null) return;
-		if (wanted === "") {
-			tab = tabs[0]?.id ?? "";
-			nav.tab = null;
-		} else if (tabs.some((t) => t.id === wanted)) {
-			tab = wanted;
-			nav.tab = null;
-		}
-	});
-
-	let Active = $derived(tabs.find((t) => t.id === tab)?.component);
+ import {tick} from 'svelte';
+ import type {Component} from 'svelte';
+ import ViewScaffold from './ViewScaffold.svelte';
+ import Embed from './Embed.svelte';
+ import {nav} from '$lib/nav.svelte';
+ interface Tab{id:string;label:string;component:Component}
+ let {title,lede,tabs}:{title:string;lede:string;tabs:Tab[]}=$props();
+ let target=$state(nav.tab);
+ nav.tab=null;
+ let root=$state<HTMLDivElement>();
+ $effect(()=>{
+  const wanted=nav.tab;
+  if(wanted!==null){target=wanted;nav.tab=null;}
+ });
+ $effect(()=>{
+  const id=target;
+  if(!id || !root)return;
+  void tick().then(()=>{const section=root?.querySelector<HTMLElement>(`[data-tab="${CSS.escape(id)}"]`);section?.scrollIntoView({block:'start'});});
+ });
 </script>
-
 <ViewScaffold {title} {lede}>
-	{#if tabs.length > 1}
-		<Subnav items={tabs.map(({ id, label }) => ({ id, label }))} bind:value={tab} />
-	{/if}
-	<Embed>
-		{#key tab}
-			{#if Active}
-				<Active />
-			{/if}
-		{/key}
-	</Embed>
+ <div class="sections" bind:this={root}>
+ {#each tabs as tab (tab.id)}<section data-tab={tab.id} aria-label={tab.label}><Embed><tab.component/></Embed></section>{/each}
+ </div>
 </ViewScaffold>
+<style>.sections{display:flex;flex-direction:column;gap:14px;min-width:0}section{scroll-margin-top:20px;min-width:0}</style>

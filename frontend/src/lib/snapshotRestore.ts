@@ -1,5 +1,5 @@
 export function snapshotRestoreConfirmation(number: string): string {
-	return `Make snapshot #${number} the permanent @ root? The current @ root will be preserved as a backup. The system will reboot automatically after the restore.`;
+	return `Your computer restarts into the system as it was at snapshot #${number}. The current system is kept as a backup, so this can be undone. Your files in Home are not changed.`;
 }
 
 export async function confirmAndRestoreSnapshot(

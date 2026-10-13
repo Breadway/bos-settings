@@ -10,6 +10,7 @@ use tokio::process::Command;
 #[derive(Serialize)]
 pub struct SystemInfo {
     os: String,
+    version: Option<String>,
     kernel: String,
     cpu: String,
     gpu: String,
@@ -31,7 +32,7 @@ fn os_pretty_name() -> String {
         .unwrap_or_else(|| "BOS".to_string())
 }
 
-fn hostname() -> String {
+pub(crate) fn hostname() -> String {
     fs::read_to_string("/etc/hostname")
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|_| "unknown".to_string())
@@ -134,6 +135,12 @@ async fn uptime() -> String {
 pub async fn get_system_info() -> SystemInfo {
     SystemInfo {
         os: os_pretty_name(),
+        version: fs::read_to_string("/etc/os-release").ok().and_then(|s| {
+            s.lines().find_map(|line| {
+                line.strip_prefix("VERSION_ID=")
+                    .map(|v| v.trim_matches('"').to_string())
+            })
+        }),
         kernel: kernel().await,
         cpu: cpu(),
         gpu: gpu().await,
@@ -205,4 +212,38 @@ mod tests {
         assert!(!valid_hostname("--help"));
         assert!(!valid_hostname(&"a".repeat(65)));
     }
+}
+
+#[derive(Serialize)]
+pub struct HealthCheck {
+    name: String,
+    ok: bool,
+    output: String,
+}
+#[tauri::command]
+pub async fn run_health_checks() -> Vec<HealthCheck> {
+    let mut checks = Vec::new();
+    for (name, program, arg) in [
+        ("Bread daemon and desktop", "bread", "doctor"),
+        ("Packages", "bakery", "doctor"),
+    ] {
+        let check = match Command::new(program).arg(arg).output().await {
+            Ok(out) => HealthCheck {
+                name: name.into(),
+                ok: out.status.success(),
+                output: format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&out.stdout),
+                    String::from_utf8_lossy(&out.stderr)
+                ),
+            },
+            Err(e) => HealthCheck {
+                name: name.into(),
+                ok: false,
+                output: e.to_string(),
+            },
+        };
+        checks.push(check);
+    }
+    checks
 }

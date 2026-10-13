@@ -1,11 +1,16 @@
 <script lang="ts">
+	import type {DesktopPreferences} from "$lib/desktopPreferences";
+	import {useDraft} from "$lib/drafts.svelte";
+	import SwitchField from "$lib/components/SwitchField.svelte";
+	import {refreshTheme} from "$lib/theme";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { runStreamed } from "$lib/streaming";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
-	import Hint from "$lib/components/Hint.svelte";
-	import NumberField from "$lib/components/NumberField.svelte";
+	import Row from "$lib/components/Row.svelte";
+	import SliderField from "$lib/components/SliderField.svelte";
+	import { debounce } from "$lib/debounce";
 	import LogView from "$lib/components/LogView.svelte";
 
 	interface A11yStatus {
@@ -20,6 +25,7 @@
 
 	let st = $state<A11yStatus | null>(null);
 	let zoom = $state(1);
+	let lastZoom = $state(2);
 	let log = $state<string[]>([]);
 	let busy = $state(false);
 	let message = $state("");
@@ -29,7 +35,10 @@
 		zoom = st.zoom_factor;
 	}
 
-	onMount(refresh);
+	let prefs=$state<DesktopPreferences|null>(null);
+	onMount(async()=>{await refresh();prefs=await invoke("get_desktop_preferences")});
+	async function savePreferences(){await invoke("save_desktop_preferences",{preferences:prefs});await refreshTheme();}
+	useDraft(()=>prefs,savePreferences,()=>prefs!==null);
 
 	async function install(packages: string[]) {
 		log = [];
@@ -43,6 +52,10 @@
 
 	async function toggleOrca(running: boolean) {
 		message = "";
+		if (running && !st?.orca_installed) {
+			await install(["orca"]);
+			if (!st?.orca_installed) { message = "Orca couldn't be installed. Open Details to see why."; return; }
+		}
 		try {
 			await invoke("set_orca_running", { running });
 			await refresh();
@@ -51,14 +64,24 @@
 		}
 	}
 
-	async function applyZoom() {
-		message = "";
-		try {
-			zoom = await invoke<number>("set_cursor_zoom", { factor: zoom });
-		} catch (e) {
-			message = `${e}`;
-		}
-	}
+
+ let zoomTask = Promise.resolve();
+ const liveZoom = debounce(() => { void applyZoom(); }, 180);
+ function applyZoom() {
+  const requested = zoom;
+  zoomTask = zoomTask.then(async () => {
+   message = "";
+   try {
+    const applied = await invoke<number>("set_cursor_zoom", {factor:requested});
+    if(st) st.zoom_factor = applied;
+    if(zoom === requested) zoom = applied;
+   } catch(e) {
+    message = String(e);
+    if(zoom === requested && st) zoom = st.zoom_factor;
+   }
+  });
+  return zoomTask;
+ }
 
 	async function openKmag() {
 		message = "";
@@ -70,128 +93,50 @@
 	}
 </script>
 
-<ViewScaffold title="Accessibility">
-	<Group title="Screen reader" hint="Orca. Works on Wayland; start/stop is process-level, not a compositor setting.">
-		{#if !st}
-			<Hint text="Loading…" />
-		{:else if !st.orca_installed}
-			<Hint text="orca is not installed." />
-			<button class="primary" disabled={busy} onclick={() => install(["orca"])}>Install orca</button>
-		{:else}
-			<div class="row-switch">
-				<span>Orca</span>
-				<button
-					class="switch"
-					class:on={st.orca_running}
-					role="switch"
-					aria-checked={st.orca_running}
-					aria-label="Orca"
-					onclick={() => toggleOrca(!st!.orca_running)}
-				>
-					<span class="knob"></span>
-				</button>
-			</div>
-		{/if}
-	</Group>
-
-	<Group title="Magnifier" hint="Zooms around the cursor. This session only.">
+<ViewScaffold title="Accessibility" lede="Make BOS easier to see, hear and use.">
+	<Group title="Seeing">
 		{#if st}
-			<NumberField label="Zoom factor" bind:value={zoom} min={1} max={8} step={0.25} />
-			<button class="primary" onclick={applyZoom}>Apply zoom</button>
-			<Hint text="1.0 is off. Values above 1 enlarge around the cursor." />
-			{#if !st.kmag_installed}
-				<Hint text="kmag is a separate KDE magnifier and is not wired into Hyprland. Optional install only." />
-				<button disabled={busy} onclick={() => install(["kmag"])}>Install kmag</button>
-			{:else}
-				<button onclick={openKmag}>Open kmag</button>
+			<SwitchField label="Zoom" hint="Enlarges everything around the pointer." bind:value={() => zoom > 1, (v) => { zoom = v ? Math.max(lastZoom, 1.5) : 1; liveZoom(); }} />
+			{#if zoom > 1}
+				<SliderField label="Zoom level" bind:value={zoom} min={1.25} max={8} step={0.25} format={(v) => `${Math.round(v * 100)}%`} onChange={() => { lastZoom = zoom; liveZoom(); }} />
 			{/if}
 		{/if}
-	</Group>
-
-	<Group title="Sticky keys / Slow keys">
-		{#if st}
-			<div class="row-switch disabled">
-				<span>Sticky keys</span>
-				<button class="switch" disabled role="switch" aria-checked="false" aria-label="Sticky keys">
-					<span class="knob"></span>
-				</button>
-			</div>
-			<div class="row-switch disabled">
-				<span>Slow keys</span>
-				<button class="switch" disabled role="switch" aria-checked="false" aria-label="Slow keys">
-					<span class="knob"></span>
-				</button>
-			</div>
-			<Hint text={st.note} />
+		{#if prefs}
+			<Row label="Text size">
+				<div class="ui-seg">{#each [[14, "Default"], [16, "Large"], [18, "Larger"]] as [v, l] (v)}<button class:on={prefs.text_size === v} onclick={() => (prefs!.text_size = Number(v))}>{l}</button>{/each}</div>
+			</Row>
+			<Row label="Cursor size">
+				<div class="ui-seg">{#each [[24, "Default"], [32, "Large"], [48, "Larger"]] as [v, l] (v)}<button class:on={prefs.cursor_size === v} onclick={() => (prefs!.cursor_size = Number(v))}>{l}</button>{/each}</div>
+			</Row>
+			<SwitchField label="Stronger window borders" bind:value={prefs.stronger_borders} />
 		{/if}
 	</Group>
-	{#if message}<Hint text={message} />{/if}
-	<LogView lines={log} />
+	{#if prefs}
+		<Group title="Motion"><SwitchField label="Reduce motion" hint="Turns off window and workspace animations." bind:value={prefs.reduce_motion} /></Group>
+	{/if}
+	<Group title="Hearing and reading">
+		{#if st}
+			<SwitchField
+				label="Read the screen aloud"
+				hint={st.orca_installed ? "Uses the Orca screen reader." : "Uses the Orca screen reader. Installs it the first time, which needs your password."}
+				disabled={busy}
+				bind:value={() => st!.orca_running, (v) => toggleOrca(v)}
+			/>
+		{/if}
+	</Group>
+	{#if st}
+		<details class="ui-disclosure">
+			<summary>Other tools</summary>
+			<div class="ui-item">
+				<div class="lb"><b>Magnifier window</b><small>KMag shows a zoomed copy of part of the screen in its own window.</small></div>
+				{#if st.kmag_installed}<button class="btn small" onclick={openKmag}>Open</button>{:else}<button class="btn small" disabled={busy} onclick={() => install(["kmag"])}>Install</button>{/if}
+			</div>
+		</details>
+	{/if}
+	{#if message}<p class="err" role="alert">{message}</p>{/if}
+	{#if log.length}<details class="ui-disclosure"><summary>Details</summary><LogView lines={log} /></details>{/if}
 </ViewScaffold>
 
 <style>
-	.row-switch {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		background-color: var(--surface);
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-md, 12px) var(--space-lg, 16px);
-		margin-bottom: var(--space-sm, 8px);
-	}
-
-	.row-switch.disabled {
-		opacity: 0.55;
-	}
-
-	.switch {
-		width: 40px;
-		height: 22px;
-		flex-shrink: 0;
-		border-radius: 999px;
-		border: none;
-		background-color: var(--overlay);
-		padding: 2px;
-		cursor: pointer;
-		display: flex;
-		align-items: center;
-	}
-
-	.switch.on {
-		background-color: var(--accent);
-		justify-content: flex-end;
-	}
-
-	.switch:disabled {
-		cursor: not-allowed;
-	}
-
-	.knob {
-		width: 18px;
-		height: 18px;
-		border-radius: 50%;
-		background-color: var(--on-surface);
-		display: block;
-	}
-
-	button {
-		background-color: var(--surface);
-		color: var(--on-surface);
-		border: none;
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-xs, 4px) var(--space-md, 12px);
-		cursor: pointer;
-		align-self: flex-start;
-		margin-top: var(--space-xs, 4px);
-	}
-
-	button.primary {
-		background-color: var(--accent);
-		color: var(--on-accent);
-	}
-
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
+	.err { color:var(--red); font-size:12.5px; margin:0 2px; }
 </style>

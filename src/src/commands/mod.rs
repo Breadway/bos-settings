@@ -34,12 +34,26 @@ pub mod packages;
 pub mod power;
 pub mod printing;
 pub mod service;
+pub mod sharing;
 pub mod shell_theme;
 pub mod snapshots;
 pub mod sound;
+pub mod storage;
 pub mod streaming;
 pub mod theme;
 pub mod updates;
 pub mod users;
 pub mod util;
 pub mod vpn;
+
+pub mod desktop_preferences;
+
+pub mod app_store;
+
+pub mod power_settings;
+
+pub mod notification_settings;
+
+pub mod dashboard;
+
+pub mod locale_settings;

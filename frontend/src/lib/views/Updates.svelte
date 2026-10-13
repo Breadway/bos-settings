@@ -1,15 +1,15 @@
 <script lang="ts">
+	import { updateRun } from "$lib/updateRun.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { runStreamed } from "$lib/streaming";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
-	import Hint from "$lib/components/Hint.svelte";
-	import EmptyState from "$lib/components/EmptyState.svelte";
 	import LogView from "$lib/components/LogView.svelte";
 	import { go } from "$lib/nav.svelte";
 	import Download from "@lucide/svelte/icons/download";
 	import Cpu from "@lucide/svelte/icons/cpu";
+	import Check from "@lucide/svelte/icons/check";
 
 	interface PendingUpdate {
 		name: string;
@@ -19,6 +19,7 @@
 	interface FwDevice {
 		name: string;
 		version: string;
+		security_database?: boolean;
 	}
 	interface NvidiaOffer {
 		gpu: string;
@@ -36,8 +37,25 @@
 	}
 
 	let status = $state<UpdatesStatus | null>(null);
-	let log = $state<string[]>([]);
-	let busy = $state(false);
+	let total = $derived(status ? status.pacman.length + status.bakery.length : 0);
+	let summary = $derived.by(() => {
+		if (!status) return "";
+		const parts: string[] = [];
+		if (status.pacman.length) parts.push(`${status.pacman.length} system ${status.pacman.length === 1 ? "package" : "packages"}`);
+		if (status.bakery.length) parts.push(`${status.bakery.length} bread ${status.bakery.length === 1 ? "app" : "apps"}`);
+		const kernel = status.pacman.some((p) => p.name === "linux" || p.name.startsWith("linux-")) ? " · includes a new kernel, restart after" : "";
+		return `${parts.join(" and ")} · a safety snapshot is taken first${kernel}`;
+	});
+	// "0.9.1-dev.20261002094801+63126c4" -> "0.9.1 (dev build)".
+	function short(v: string): string {
+		const m = v.match(/^([\d.]+)(?:-(dev|beta|rc)[.\d]*)?/);
+		return m ? `Version ${m[1]}${m[2] ? ` (${m[2]} build)` : ""}` : v;
+	}
+	async function recheck() {
+		status = null;
+		await refresh();
+	}
+
 
 	async function refresh() {
 		status = await invoke<UpdatesStatus>("get_updates_status");
@@ -46,205 +64,139 @@
 	onMount(refresh);
 
 	function appendLine(line: string) {
-		log = [...log, line];
+		updateRun.log = [...updateRun.log, line];
 	}
 
 	async function run(command: string, args: Record<string, unknown> = {}) {
-		log = [];
-		busy = true;
-		await runStreamed(command, args, appendLine);
-		busy = false;
-		await refresh();
+		if (updateRun.busy) return;
+		updateRun.log = [];
+		updateRun.steps = [];
+		updateRun.message = "";
+		updateRun.busy = true;
+		try { if (!await runStreamed(command, args, appendLine)) updateRun.message = "The operation did not finish. See the log for details."; await refresh(); } catch(e) { updateRun.message = String(e); } finally { updateRun.busy = false; }
 	}
+
+ async function updateEverything() {
+  if (updateRun.busy || !status) return;
+  const jobs = [{label:"System packages", command:"pacman_system_update"},{label:"Bread apps",command:"bakery_update_all"},{label:"Firmware",command:"fwupd_update"}];
+  updateRun.log = []; updateRun.message = ""; updateRun.busy = true;
+  updateRun.steps = [{label:"Taking a safety snapshot",state:"running"}, ...jobs.map(j => ({label:j.label,state:"waiting" as const}))];
+  let index = 0;
+  try {
+   const snapshot = await invoke<string|null>("create_update_snapshot");
+   if(!snapshot && !confirm("No root snapshot configuration was found. Continue updating without a system snapshot?")) { updateRun.message = "Update cancelled."; updateRun.steps[0].state = "failed"; return; }
+   updateRun.log.push(snapshot ? `Created system snapshot ${snapshot}` : "Continuing without a system snapshot");
+   updateRun.steps[0].state = "done";
+   for (const [i,job] of jobs.entries()) {
+    index = i + 1; updateRun.steps[index].state = "running";
+    if (!await runStreamed(job.command, {}, appendLine)) throw new Error(`${job.label} did not finish. Review the log before retrying.`);
+    updateRun.steps[index].state = "done";
+   }
+   updateRun.message = "Updates complete. Firmware may require a restart.";
+   await refresh();
+  } catch(e) { updateRun.steps[index].state = "failed"; updateRun.message = String(e); }
+  finally { updateRun.busy = false; }
+ }
 </script>
 
 <ViewScaffold title="Updates">
+	<div class="hero-card">
+		<span class="big">{#if total === 0 && status && !updateRun.busy}<Check size={26} />{:else}<Download size={26} />{/if}</span>
+		<div>
+			{#if updateRun.busy}
+				<h3>Updating…</h3><p>You can keep working. Don't turn the computer off.</p>
+			{:else if !status}
+				<h3>Checking for updates…</h3><p>This takes a few seconds.</p>
+			{:else if total === 0}
+				<h3>You're up to date</h3><p>{updateRun.message || "System and bread apps are current."}</p>
+			{:else}
+				<h3>{total} {total === 1 ? "update" : "updates"} ready</h3><p>{summary}</p>
+			{/if}
+		</div>
+		<div class="acts">
+			{#if status && total > 0}<button class="btn primary" disabled={updateRun.busy} onclick={updateEverything}>{updateRun.busy ? "Updating…" : "Update everything"}</button>{/if}
+			{#if status && !updateRun.busy}<button class="btn ghost small" onclick={recheck}>Check again</button>{/if}
+		</div>
+	</div>
+	{#if updateRun.steps.length}
+		<Group title="Progress">
+			<ol class="steps" aria-live="polite">
+				{#each updateRun.steps as step (step.label)}<li class={step.state}>{step.label}</li>{/each}
+			</ol>
+			{#if updateRun.message}<p class="msg" class:bad={updateRun.steps.some((st) => st.state === "failed")} role="status">{updateRun.message}</p>{/if}
+		</Group>
+	{:else if updateRun.message && total > 0}
+		<p class="msg" role="status">{updateRun.message}</p>
+	{/if}
+
 	{#if status?.nvidia}
-		<Group title="NVIDIA driver" wide>
-			<div class="offer">
-				<Cpu size={20} />
-				<div class="offer-text">
-					<strong>{status.nvidia.gpu}</strong>
-					<p>{status.nvidia.reason}</p>
-					{#if status.nvidia.installed}
-						<Hint text="Driver and Hyprland env drop-in are in place. Reboot to start a working session." />
-					{:else}
-						<Hint text="Installs nvidia + nvidia-utils (not cuda) and writes ~/.config/hypr/nvidia.lua. hyprland.lua loads that file only if it exists. Reboot after." />
-					{/if}
-				</div>
-				<button
-					class="primary"
-					disabled={busy}
-					onclick={() => run("nvidia_setup")}
-				>
-					{status.nvidia.installed ? "Re-run setup" : "Install driver"}
-				</button>
+		<Group title="Graphics driver">
+			<div class="ui-item">
+				<span class="ico"><Cpu size={18} /></span>
+				<div class="lb"><b>{status.nvidia.gpu}</b><small>{status.nvidia.installed ? "The NVIDIA driver is installed. Restart to use it." : `${status.nvidia.reason} Installs the NVIDIA driver; restart afterwards.`}</small></div>
+				<button class="btn small" class:primary={!status.nvidia.installed} disabled={updateRun.busy} onclick={() => run("nvidia_setup")}>{status.nvidia.installed ? "Set up again" : "Install driver"}</button>
 			</div>
 		</Group>
 	{/if}
 
-	<Group
-		title="System packages (pacman)"
-		hint="The same set Packages covers with pacman -Syu. Needs your password (polkit)."
-		wide
-	>
-		{#if !status}
-			<Hint text="Loading…" />
-		{:else if status.pacman_error}
-			<Hint text={status.pacman_error} />
-		{:else if status.pacman.length === 0}
-			<EmptyState icon={Download} title="Pacman is up to date" hint="No pending official-repo upgrades." />
-		{:else}
-			<div class="list">
-				{#each status.pacman as pkg (pkg.name)}
-					<div class="row">
-						<span class="name">{pkg.name}</span>
-						<span class="version">{pkg.current} → {pkg.latest}</span>
+	{#if status && (status.pacman.length || status.bakery.length || status.pacman_error || status.bakery_error)}
+		<Group title="What will update">
+			{#if status.pacman_error}<p class="msg bad">Couldn't check system updates: {status.pacman_error}</p>{/if}
+			{#if status.bakery_error}<p class="msg bad">Couldn't check bread app updates: {status.bakery_error}</p>{/if}
+			{#if status.bakery.length}
+				<details class="ui-disclosure" open={status.bakery.length <= 6}>
+					<summary>Bread apps ({status.bakery.length})</summary>
+					{#each status.bakery as pkg (pkg.name)}
+						<div class="ui-item">
+							<div class="lb"><b>{pkg.name}</b><small>{short(pkg.latest)}</small></div>
+							<button class="btn small ghost" disabled={updateRun.busy} onclick={() => run("bakery_update", { name: pkg.name })}>Update</button>
+						</div>
+					{/each}
+				</details>
+			{/if}
+			{#if status.pacman.length}
+				<details class="ui-disclosure">
+					<summary>System packages ({status.pacman.length}){status.pacman.some((p) => p.name === "linux" || p.name.startsWith("linux-")) ? ", including a new kernel" : ""}</summary>
+					<div class="pkgs">
+						{#each status.pacman as pkg (pkg.name)}
+							<div class="pkg"><span>{pkg.name}</span><small>{pkg.latest}</small></div>
+						{/each}
 					</div>
-				{/each}
-			</div>
-		{/if}
-		<div class="btn-row">
-			<button disabled={busy} class="primary" onclick={() => run("pacman_system_update")}>Update system</button>
-			<button disabled={busy} onclick={refresh}>Refresh</button>
+				</details>
+			{/if}
+			<details class="ui-disclosure">
+				<summary>Update one part only</summary>
+				<div class="foot">
+					<button class="btn small" disabled={updateRun.busy || !status.pacman.length} onclick={() => run("pacman_system_update")}>System packages</button>
+					<button class="btn small" disabled={updateRun.busy || !status.bakery.length} onclick={() => run("bakery_update_all")}>Bread apps</button>
+				</div>
+			</details>
+		</Group>
+	{/if}
+
+	<Group title="If an update breaks something">
+		<div class="ui-item">
+			<div class="lb"><b>Go back to before the update</b><small>Every update takes a snapshot first. Restart and pick it from the boot menu, or choose it in Backup & restore.</small></div>
+			<button class="btn small" onclick={() => go("restore")}>Open</button>
 		</div>
 	</Group>
 
-	<Group
-		title="Bread ecosystem (bakery)"
-		hint="Bakery packages waiting to update."
-		wide
-	>
-		{#if !status}
-			<Hint text="Loading…" />
-		{:else if status.bakery_error}
-			<Hint text={status.bakery_error} />
-		{:else if status.bakery.length === 0}
-			<EmptyState icon={Download} title="Bakery packages are current" hint="Nothing on this track wants an update." />
-		{:else}
-			<div class="list">
-				{#each status.bakery as pkg (pkg.name)}
-					<div class="row">
-						<span class="name">{pkg.name}</span>
-						<span class="version">{pkg.current ? `${pkg.current} → ` : ""}{pkg.latest}</span>
-						<button disabled={busy} onclick={() => run("bakery_update", { name: pkg.name })}>Update</button>
-					</div>
-				{/each}
-			</div>
-		{/if}
-		<div class="btn-row">
-			<button disabled={busy} class="primary" onclick={() => run("bakery_update_all")}>Update all bakery</button>
-		</div>
-	</Group>
-
-	<Group title="Firmware (fwupd)" hint="Same list as the Firmware page. fwupd-refresh.timer already refreshes metadata in the background." wide>
-		{#if !status}
-			<Hint text="Loading…" />
-		{:else if status.firmware.length === 0}
-			<EmptyState icon={Download} title="No updatable firmware" hint="Not every device speaks fwupd." />
-		{:else}
-			<div class="list">
-				{#each status.firmware as dev (dev.name)}
-					<div class="row">
-						<span class="name">{dev.name}</span>
-						<span class="version">{dev.version}</span>
-					</div>
-				{/each}
-			</div>
-		{/if}
-		<div class="btn-row">
-			<button disabled={busy} onclick={() => run("fwupd_refresh")}>Check for updates</button>
-			<button disabled={busy} class="primary" onclick={() => run("fwupd_update")}>Update firmware</button>
-		</div>
-	</Group>
-
-	<Group
-		title="Rollback"
-		hint="Boot a snapshot from GRUB (BOS snapshots)."
-	>
-		<Hint text="Pick the snapshot in GRUB. bakery rollback undoes one package." />
-		<div class="btn-row">
-			<button onclick={() => go("snapshots")}>Open Snapshots</button>
-		</div>
-	</Group>
-
-	<LogView lines={log} />
+	{#if updateRun.log.length}
+		<details class="ui-disclosure"><summary>Details</summary><LogView lines={updateRun.log} /></details>
+	{/if}
 </ViewScaffold>
 
 <style>
-	.offer {
-		display: flex;
-		align-items: flex-start;
-		gap: var(--space-md, 12px);
-		background-color: var(--surface);
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-md, 12px);
-	}
-
-	.offer-text {
-		flex: 1;
-		min-width: 0;
-	}
-
-	.offer-text p {
-		margin: 4px 0;
-		opacity: 0.8;
-	}
-
-	.list {
-		max-height: 240px;
-		overflow-y: auto;
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.row {
-		display: flex;
-		align-items: center;
-		gap: var(--space-md, 12px);
-		background-color: var(--surface);
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-sm, 8px) var(--space-md, 12px);
-		min-width: 0;
-	}
-
-	.name {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.version {
-		opacity: 0.75;
-		font-size: var(--font-size-secondary, 12px);
-		flex-shrink: 0;
-	}
-
-	.btn-row {
-		display: flex;
-		gap: var(--space-sm, 8px);
-		margin-top: var(--space-sm, 8px);
-	}
-
-	button {
-		background-color: var(--surface);
-		color: var(--on-surface);
-		border: none;
-		border-radius: var(--radius-primary, 8px);
-		padding: var(--space-xs, 4px) var(--space-md, 12px);
-		cursor: pointer;
-	}
-
-	button.primary {
-		background-color: var(--accent);
-		color: var(--on-accent);
-	}
-
-	button:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
+	.steps { list-style:none; margin:4px 0 10px; padding:0; display:flex; flex-direction:column; gap:8px; font-size:13px; }
+	.steps li { display:flex; align-items:center; gap:10px; color:var(--muted); }
+	.steps li::before { content:""; width:10px; height:10px; border-radius:50%; border:2px solid var(--line); flex:none; }
+	.steps li.running { color:var(--fg); } .steps li.running::before { border-color:var(--accent); border-top-color:transparent; animation:spin 0.9s linear infinite; }
+	.steps li.done::before { background:var(--accent); border-color:var(--accent); }
+	.steps li.failed { color:var(--red); } .steps li.failed::before { border-color:var(--red); }
+	@keyframes spin { to { transform:rotate(360deg); } }
+	.msg { margin:4px 2px 10px; font-size:12.5px; color:var(--muted); } .msg.bad { color:var(--red); }
+	.pkgs { columns:2 220px; column-gap:16px; padding:2px 2px 10px; max-height:50vh; overflow:auto; }
+	.pkg { break-inside:avoid; display:flex; justify-content:space-between; gap:8px; font-size:12.5px; padding:3px 0; }
+	.pkg small { color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+	.foot { display:flex; gap:8px; flex-wrap:wrap; padding:2px 0 10px; }
 </style>

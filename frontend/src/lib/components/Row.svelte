@@ -4,7 +4,7 @@
 	let { label, hint, children }: { label: string; hint?: string; children: Snippet } = $props();
 </script>
 
-<div class="field-row">
+<div class="field-row" data-setting={label}>
 	<div class="meta">
 		<span class="label">{label}</span>
 		{#if hint}<span class="hint">{hint}</span>{/if}
@@ -46,6 +46,10 @@
 	.control {
 		display: flex;
 		align-items: center;
-		flex-shrink: 0;
+		flex-shrink: 1;
+		min-width: 0;
+		max-width: 60%;
+		gap: 8px;
 	}
+	@media (max-width: 560px) { .field-row { flex-wrap: wrap; } .control { max-width: 100%; flex-wrap: wrap; } .meta { flex-basis: 150px; } }
 </style>

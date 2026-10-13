@@ -25,7 +25,7 @@
 		background: var(--surface);
 		border: 1px solid var(--line, color-mix(in srgb, var(--fg) 8%, transparent));
 		border-radius: var(--radius, 14px);
-		padding: 16px 18px;
+		padding: 13px 16px 5px;
 	}
 
 	.group.wide {
@@ -33,12 +33,12 @@
 	}
 
 	.title {
-		font-weight: 600;
-		font-size: 13px;
-		letter-spacing: 0.04em;
+		font-weight: 500;
+		font-size: 11px;
+		letter-spacing: 0.1em;
 		text-transform: uppercase;
 		color: var(--muted, color-mix(in oklab, var(--fg) 58%, transparent));
-		margin: 0 0 12px;
+		margin: 0 0 5px;
 	}
 
 	.hint {

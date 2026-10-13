@@ -1,8 +1,5 @@
 //! Battery/power status (upower), brightness (brightnessctl), and TLP's
-//! current profile. Deliberately no AC/Battery/Performance *switcher*: TLP
-//! automatically picks a profile by power source, so this only exposes
-//! controls for things that are actually user choices: brightness, and
-//! charge thresholds where the hardware supports them.
+//! current profile. Power profiles and idle policy live in power_settings.
 
 use serde::Serialize;
 use tokio::process::Command;
@@ -35,18 +32,26 @@ async fn battery_summary() -> Vec<(String, String)> {
         return vec![("Battery".to_string(), "No battery detected".to_string())];
     };
     let mut rows = Vec::new();
-    if let Some(state) = upower_field(&bat, "state").await {
-        rows.push(("Status".to_string(), state));
+    let state = upower_field(&bat, "state").await.unwrap_or_default();
+    if !state.is_empty() {
+        rows.push((
+            "Status".to_string(),
+            battery_state_label(&state).to_string(),
+        ));
+    }
+    if let Some(rate) = upower_field(&bat, "energy-rate").await {
+        rows.push(("Power draw".into(), rate));
     }
     if let Some(pct) = upower_field(&bat, "percentage").await {
         rows.push(("Charge".to_string(), pct));
     }
-    let t = match upower_field(&bat, "time to empty").await {
-        Some(t) => Some(t),
-        None => upower_field(&bat, "time to full").await,
-    };
-    if let Some(t) = t {
-        rows.push(("Time remaining".to_string(), t));
+    // upower keeps estimating "time to empty" while on AC (even fully charged),
+    // which Home showed as "about 48.8 hours left". Only report the estimate
+    // that matches what the battery is actually doing.
+    if let Some((field, label)) = battery_time_field(&state) {
+        if let Some(t) = upower_field(&bat, field).await {
+            rows.push((label.to_string(), t));
+        }
     }
     let full: Option<f64> = upower_field(&bat, "energy-full")
         .await
@@ -63,6 +68,29 @@ async fn battery_summary() -> Vec<(String, String)> {
         }
     }
     rows
+}
+
+/// Human wording for upower's battery `state` values.
+fn battery_state_label(state: &str) -> &str {
+    match state {
+        "charging" => "Charging",
+        "discharging" => "On battery",
+        "fully-charged" => "Fully charged",
+        "pending-charge" => "Plugged in, not charging",
+        "pending-discharge" => "About to discharge",
+        "empty" => "Empty",
+        other => other,
+    }
+}
+
+/// Which upower time estimate applies to a battery state, and the row label
+/// to show it under. `None` means no estimate is meaningful (full, idle on AC).
+fn battery_time_field(state: &str) -> Option<(&'static str, &'static str)> {
+    match state {
+        "discharging" | "pending-discharge" => Some(("time to empty", "Time remaining")),
+        "charging" => Some(("time to full", "Time until full")),
+        _ => None,
+    }
 }
 
 async fn power_source() -> String {
@@ -126,6 +154,220 @@ fn read_threshold(path: &std::path::Path) -> i64 {
         .unwrap_or(100)
 }
 
+// --- "Protect battery" -------------------------------------------------------
+//
+// Laptops expose battery protection three different ways. One switch hides
+// them, preferring the most capable mechanism the hardware has:
+//
+// 1. `charge_control_{start,end}_threshold` (ThinkPad, ASUS, Framework, ...):
+//    real limits; protect = stop at 80% and resume at 75%.
+// 2. `charge_types` listing `Long_Life` (ideapad_laptop on kernel 6.x, some
+//    ASUS/Huawei): a fixed protection mode, usually about 80%.
+// 3. `conservation_mode` (older ideapad_laptop, Lenovo IdeaPad/Yoga): a 0/1
+//    switch for the same fixed mode.
+//
+// Writes need root, so they go through the `pkexec tee <path>` pattern used by
+// `set_charge_threshold`. The path is never taken from the webview: it is
+// found here under /sys and re-validated by [`valid_protect_path`] right
+// before the write, and the value is chosen by [`protect_writes`].
+
+const PROTECT_STOP_PCT: i64 = 80;
+const PROTECT_RESUME_PCT: i64 = 75;
+const IDEAPAD_DRIVER_DIR: &str = "/sys/bus/platform/drivers/ideapad_acpi";
+
+#[derive(Clone, Debug, PartialEq)]
+enum Protection {
+    Thresholds {
+        start: std::path::PathBuf,
+        end: std::path::PathBuf,
+    },
+    ChargeTypes(std::path::PathBuf),
+    Conservation(std::path::PathBuf),
+}
+
+/// `charge_types` reads like `Standard [Long_Life]` (the active type is
+/// bracketed) and lists every type the battery supports.
+fn parse_charge_types(text: &str) -> (Option<String>, Vec<String>) {
+    let mut active = None;
+    let mut all = Vec::new();
+    for tok in text.split_whitespace() {
+        if let Some(inner) = tok.strip_prefix('[').and_then(|t| t.strip_suffix(']')) {
+            active = Some(inner.to_string());
+            all.push(inner.to_string());
+        } else {
+            all.push(tok.to_string());
+        }
+    }
+    (active, all)
+}
+
+fn detect_protection_in(
+    power_supply: &std::path::Path,
+    ideapad_dir: &std::path::Path,
+) -> Option<Protection> {
+    let mut batteries: Vec<std::path::PathBuf> = std::fs::read_dir(power_supply)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    batteries.sort();
+    for dir in &batteries {
+        let start = dir.join("charge_control_start_threshold");
+        let end = dir.join("charge_control_end_threshold");
+        if end.exists() {
+            // Some drivers only have an end threshold; start is optional.
+            return Some(Protection::Thresholds { start, end });
+        }
+    }
+    for dir in &batteries {
+        let types = dir.join("charge_types");
+        if let Ok(text) = std::fs::read_to_string(&types) {
+            let (_, all) = parse_charge_types(&text);
+            if all.iter().any(|t| t == "Long_Life") {
+                return Some(Protection::ChargeTypes(types));
+            }
+        }
+    }
+    if let Ok(entries) = std::fs::read_dir(ideapad_dir) {
+        let mut found: Vec<_> = entries
+            .flatten()
+            .map(|e| e.path().join("conservation_mode"))
+            .filter(|p| p.is_file())
+            .collect();
+        found.sort();
+        if let Some(p) = found.into_iter().next() {
+            return Some(Protection::Conservation(p));
+        }
+    }
+    None
+}
+
+fn detect_protection() -> Option<Protection> {
+    detect_protection_in(
+        std::path::Path::new("/sys/class/power_supply"),
+        std::path::Path::new(IDEAPAD_DRIVER_DIR),
+    )
+}
+
+/// Only these sysfs files may ever be written through pkexec.
+fn valid_protect_path(path: &std::path::Path) -> bool {
+    let s = path.to_string_lossy();
+    if s.contains("..") || s.contains('\n') || s.contains('\0') || s.contains(' ') {
+        return false;
+    }
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let under_ps = s.starts_with("/sys/class/power_supply/");
+    let under_ideapad = s.starts_with(&format!("{IDEAPAD_DRIVER_DIR}/"));
+    match name {
+        "charge_control_start_threshold" | "charge_control_end_threshold" | "charge_types" => {
+            under_ps
+        }
+        "conservation_mode" => under_ideapad,
+        _ => false,
+    }
+}
+
+fn read_trimmed(path: &std::path::Path) -> Option<String> {
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|s| s.trim().to_string())
+}
+
+fn protection_enabled(p: &Protection) -> bool {
+    match p {
+        Protection::Thresholds { end, .. } => read_threshold(end) < 100,
+        Protection::ChargeTypes(path) => read_trimmed(path)
+            .map(|t| parse_charge_types(&t).0.as_deref() == Some("Long_Life"))
+            .unwrap_or(false),
+        Protection::Conservation(path) => read_trimmed(path).as_deref() == Some("1"),
+    }
+}
+
+/// The ordered (path, value) writes that turn protection on or off. Order
+/// matters for thresholds: never leave start above end.
+fn protect_writes(p: &Protection, enable: bool) -> Vec<(std::path::PathBuf, String)> {
+    match p {
+        Protection::Thresholds { start, end } => {
+            let (s, e) = if enable {
+                (PROTECT_RESUME_PCT, PROTECT_STOP_PCT)
+            } else {
+                (0, 100)
+            };
+            let mut v = Vec::new();
+            if enable {
+                v.push((end.clone(), format!("{e}\n")));
+                if start.exists() {
+                    v.push((start.clone(), format!("{s}\n")));
+                }
+            } else {
+                if start.exists() {
+                    v.push((start.clone(), format!("{s}\n")));
+                }
+                v.push((end.clone(), format!("{e}\n")));
+            }
+            v
+        }
+        Protection::ChargeTypes(path) => vec![(
+            path.clone(),
+            if enable { "Long_Life\n" } else { "Standard\n" }.to_string(),
+        )],
+        Protection::Conservation(path) => {
+            vec![(path.clone(), if enable { "1\n" } else { "0\n" }.to_string())]
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct BatteryProtection {
+    /// `thresholds`, `charge_types` or `conservation`.
+    kind: &'static str,
+    enabled: bool,
+    /// Where charging stops when protected, when the hardware says so.
+    limit_pct: Option<i64>,
+}
+
+fn protection_info() -> Option<BatteryProtection> {
+    let p = detect_protection()?;
+    let enabled = protection_enabled(&p);
+    Some(match &p {
+        Protection::Thresholds { end, .. } => BatteryProtection {
+            kind: "thresholds",
+            enabled,
+            limit_pct: Some(read_threshold(end)),
+        },
+        Protection::ChargeTypes(_) => BatteryProtection {
+            kind: "charge_types",
+            enabled,
+            limit_pct: None,
+        },
+        Protection::Conservation(_) => BatteryProtection {
+            kind: "conservation",
+            enabled,
+            limit_pct: None,
+        },
+    })
+}
+
+#[tauri::command]
+pub async fn set_battery_protection(enabled: bool) -> Result<BatteryProtection, String> {
+    let Some(p) = detect_protection() else {
+        return Err("This battery has no protection mode to switch.".into());
+    };
+    for (path, value) in protect_writes(&p, enabled) {
+        if !valid_protect_path(&path) {
+            return Err("Refusing to write to an unexpected battery path.".into());
+        }
+        let ok =
+            util::run_with_stdin(&["pkexec", "tee", &path.display().to_string()], &value).await;
+        if !ok {
+            return Err(
+                "Couldn't change battery protection (authentication cancelled or refused).".into(),
+            );
+        }
+    }
+    protection_info().ok_or_else(|| "Battery protection disappeared.".to_string())
+}
+
 #[derive(Serialize)]
 pub struct PowerInfo {
     battery: Vec<(String, String)>,
@@ -134,6 +376,7 @@ pub struct PowerInfo {
     charge_start: Option<i64>,
     charge_end: Option<i64>,
     tlp_profile: Option<String>,
+    protection: Option<BatteryProtection>,
 }
 
 #[tauri::command]
@@ -146,6 +389,7 @@ pub async fn get_power_info() -> PowerInfo {
         charge_start: charge.as_ref().map(|(s, _)| read_threshold(s)),
         charge_end: charge.as_ref().map(|(_, e)| read_threshold(e)),
         tlp_profile: tlp_profile().await,
+        protection: protection_info(),
     }
 }
 
@@ -185,6 +429,9 @@ pub async fn set_charge_threshold(which: String, percent: i64) -> Result<(), Str
         return Err("No charge threshold support on this hardware".into());
     };
     let path = if which == "start" { start } else { end };
+    if !valid_protect_path(&path) {
+        return Err("Refusing to write to an unexpected battery path.".into());
+    }
     // GNU tee writes stdin to its path operands; the percent must be piped,
     // not passed as a second path argument.
     let input = format!("{percent}\n");
@@ -198,6 +445,27 @@ pub async fn set_charge_threshold(which: String, percent: i64) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn time_estimate_only_matches_the_battery_state() {
+        assert_eq!(
+            battery_time_field("discharging"),
+            Some(("time to empty", "Time remaining"))
+        );
+        assert_eq!(
+            battery_time_field("charging"),
+            Some(("time to full", "Time until full"))
+        );
+        assert_eq!(battery_time_field("fully-charged"), None);
+        assert_eq!(battery_time_field("pending-charge"), None);
+    }
+
+    #[test]
+    fn battery_states_read_as_words() {
+        assert_eq!(battery_state_label("fully-charged"), "Fully charged");
+        assert_eq!(battery_state_label("discharging"), "On battery");
+        assert_eq!(battery_state_label("something-new"), "something-new");
+    }
 
     #[test]
     fn charge_threshold_clamps_and_restricts_which() {
@@ -215,5 +483,197 @@ mod tests {
         );
         assert!(charge_threshold_write("both", 50).is_err());
         assert!(charge_threshold_write("-start", 50).is_err());
+    }
+
+    use std::path::{Path, PathBuf};
+
+    fn fake_sysfs(tag: &str) -> (PathBuf, PathBuf, PathBuf) {
+        let root =
+            std::env::temp_dir().join(format!("bos-settings-power-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let ps = root.join("power_supply");
+        let ideapad = root.join("ideapad_acpi");
+        std::fs::create_dir_all(ps.join("BAT1")).unwrap();
+        std::fs::create_dir_all(&ideapad).unwrap();
+        (root, ps, ideapad)
+    }
+
+    #[test]
+    fn charge_types_parsing_finds_active_and_supported() {
+        let (active, all) = parse_charge_types("[Standard] Long_Life\n");
+        assert_eq!(active.as_deref(), Some("Standard"));
+        assert_eq!(all, vec!["Standard", "Long_Life"]);
+        let (active, _) = parse_charge_types("Standard [Long_Life]");
+        assert_eq!(active.as_deref(), Some("Long_Life"));
+        assert_eq!(parse_charge_types("").0, None);
+    }
+
+    #[test]
+    fn detection_prefers_thresholds_then_charge_types_then_conservation() {
+        let (root, ps, ideapad) = fake_sysfs("detect");
+        std::fs::create_dir_all(ideapad.join("VPC2004:00")).unwrap();
+        std::fs::write(ideapad.join("VPC2004:00/conservation_mode"), "0\n").unwrap();
+        assert!(matches!(
+            detect_protection_in(&ps, &ideapad),
+            Some(Protection::Conservation(_))
+        ));
+        std::fs::write(ps.join("BAT1/charge_types"), "[Standard] Long_Life\n").unwrap();
+        assert!(matches!(
+            detect_protection_in(&ps, &ideapad),
+            Some(Protection::ChargeTypes(_))
+        ));
+        std::fs::write(ps.join("BAT1/charge_control_end_threshold"), "100\n").unwrap();
+        assert!(matches!(
+            detect_protection_in(&ps, &ideapad),
+            Some(Protection::Thresholds { .. })
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn charge_types_without_long_life_is_not_protection() {
+        let (root, ps, ideapad) = fake_sysfs("nolife");
+        std::fs::write(ps.join("BAT1/charge_types"), "[Fast] Standard\n").unwrap();
+        assert_eq!(detect_protection_in(&ps, &ideapad), None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn nothing_detected_means_no_switch() {
+        let (root, ps, ideapad) = fake_sysfs("none");
+        assert_eq!(detect_protection_in(&ps, &ideapad), None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn threshold_writes_never_leave_start_above_end() {
+        let (root, ps, _) = fake_sysfs("order");
+        let start = ps.join("BAT1/charge_control_start_threshold");
+        let end = ps.join("BAT1/charge_control_end_threshold");
+        std::fs::write(&start, "0\n").unwrap();
+        std::fs::write(&end, "100\n").unwrap();
+        let p = Protection::Thresholds {
+            start: start.clone(),
+            end: end.clone(),
+        };
+        let on = protect_writes(&p, true);
+        assert_eq!(
+            on,
+            vec![(end.clone(), "80\n".into()), (start.clone(), "75\n".into())]
+        );
+        let off = protect_writes(&p, false);
+        assert_eq!(off, vec![(start, "0\n".into()), (end, "100\n".into())]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn fixed_mode_writes_are_exact_values() {
+        let ct =
+            Protection::ChargeTypes(PathBuf::from("/sys/class/power_supply/BAT1/charge_types"));
+        assert_eq!(protect_writes(&ct, true)[0].1, "Long_Life\n");
+        assert_eq!(protect_writes(&ct, false)[0].1, "Standard\n");
+        let cm = Protection::Conservation(PathBuf::from(
+            "/sys/bus/platform/drivers/ideapad_acpi/VPC2004:00/conservation_mode",
+        ));
+        assert_eq!(protect_writes(&cm, true)[0].1, "1\n");
+        assert_eq!(protect_writes(&cm, false)[0].1, "0\n");
+    }
+
+    #[test]
+    fn only_known_sysfs_files_may_be_written() {
+        assert!(valid_protect_path(Path::new(
+            "/sys/class/power_supply/BAT1/charge_types"
+        )));
+        assert!(valid_protect_path(Path::new(
+            "/sys/class/power_supply/BAT0/charge_control_end_threshold"
+        )));
+        assert!(valid_protect_path(Path::new(
+            "/sys/bus/platform/drivers/ideapad_acpi/VPC2004:00/conservation_mode"
+        )));
+        // wrong directory for the file name, traversal, other files, whitespace
+        assert!(!valid_protect_path(Path::new(
+            "/sys/bus/platform/drivers/ideapad_acpi/VPC2004:00/charge_types"
+        )));
+        assert!(!valid_protect_path(Path::new(
+            "/sys/class/power_supply/../../etc/passwd"
+        )));
+        assert!(!valid_protect_path(Path::new(
+            "/sys/class/power_supply/BAT1/status"
+        )));
+        assert!(!valid_protect_path(Path::new("/etc/shadow")));
+        assert!(!valid_protect_path(Path::new(
+            "/sys/class/power_supply/BAT1/charge_types x"
+        )));
+        assert!(!valid_protect_path(Path::new("charge_types")));
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct BatterySample {
+    pub time: u32,
+    pub percentage: f64,
+}
+fn parse_history(value: &serde_json::Value) -> Result<Vec<BatterySample>, String> {
+    let rows = value
+        .get("data")
+        .and_then(|v| v.get(0))
+        .and_then(|v| v.as_array())
+        .ok_or("Invalid battery history response")?;
+    let mut result = Vec::new();
+    for row in rows {
+        let Some(time) = row
+            .get(0)
+            .and_then(|v| v.as_u64())
+            .and_then(|v| u32::try_from(v).ok())
+        else {
+            continue;
+        };
+        let Some(percentage) = row.get(1).and_then(|v| v.as_f64()) else {
+            continue;
+        };
+        if percentage.is_finite() && (0.0..=100.0).contains(&percentage) {
+            result.push(BatterySample { time, percentage });
+        }
+    }
+    result.sort_by_key(|s| s.time);
+    Ok(result)
+}
+#[tauri::command]
+pub async fn get_battery_history() -> Result<Vec<BatterySample>, String> {
+    let device = upower_device("battery")
+        .await
+        .ok_or("No battery detected")?;
+    let out = Command::new("busctl")
+        .args([
+            "--system",
+            "--json=short",
+            "call",
+            "org.freedesktop.UPower",
+            &device,
+            "org.freedesktop.UPower.Device",
+            "GetHistory",
+            "suu",
+            "charge",
+            "86400",
+            "100",
+        ])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(util::fail_output(&out, "Reading battery history"));
+    }
+    parse_history(&serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?)
+}
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+    #[test]
+    fn excludes_invalid_readings_and_sorts_history() {
+        let v = serde_json::json!({"data":[[[200,50.0,2],[100,60.0,2],[150,999.0,0]]]});
+        let rows = parse_history(&v).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].time, 100);
+        assert!(parse_history(&serde_json::json!({})).is_err());
     }
 }
