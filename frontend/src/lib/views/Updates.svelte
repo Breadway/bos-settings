@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from "$lib/confirm.svelte";
 	import { updateRun } from "$lib/updateRun.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
@@ -87,7 +88,7 @@
   let index = 0;
   try {
    const snapshot = await invoke<string|null>("create_update_snapshot");
-   if(!snapshot && !confirm("No root snapshot configuration was found. Continue updating without a system snapshot?")) { updateRun.message = "Update cancelled."; updateRun.steps[0].state = "failed"; return; }
+   if(!snapshot && !(await confirmAction({title:"Update without a snapshot?",message:"No root snapshot configuration was found. Continue updating without a system snapshot?",confirmLabel:"Update anyway"}))) { updateRun.message = "Update cancelled."; updateRun.steps[0].state = "failed"; return; }
    updateRun.log.push(snapshot ? `Created system snapshot ${snapshot}` : "Continuing without a system snapshot");
    updateRun.steps[0].state = "done";
    for (const [i,job] of jobs.entries()) {
