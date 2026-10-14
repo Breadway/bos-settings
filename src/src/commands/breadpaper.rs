@@ -6,7 +6,19 @@
 
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use tauri::Manager;
 use tokio::process::Command;
+
+/// The webview previews wallpapers through the asset protocol, whose static
+/// scope only covers the library and the system wallpaper folders. A current
+/// wallpaper anywhere else (BSET-70) is allowed here as that single file, and
+/// only when it really is an image file that exists.
+fn allow_preview(app: &tauri::AppHandle, path: &str) {
+    let p = Path::new(path);
+    if p.is_absolute() && is_wallpaper_file(p) && p.is_file() {
+        let _ = app.asset_protocol_scope().allow_file(p);
+    }
+}
 
 /// Extensions breadpaper's own `validate()` accepts.
 const WALLPAPER_EXTS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif", "bmp"];
@@ -57,7 +69,7 @@ fn scan_wallpapers(dir: &Path) -> Vec<PathBuf> {
 }
 
 #[tauri::command]
-pub async fn get_current_wallpaper() -> Option<String> {
+pub async fn get_current_wallpaper(app: tauri::AppHandle) -> Option<String> {
     let out = Command::new("breadpaper").arg("get").output().await.ok()?;
     if !out.status.success() {
         return None;
@@ -66,6 +78,7 @@ pub async fn get_current_wallpaper() -> Option<String> {
     if s.is_empty() {
         None
     } else {
+        allow_preview(&app, &s);
         Some(s)
     }
 }
@@ -103,7 +116,7 @@ fn current_json_path() -> PathBuf {
 /// per monitor; it's the same file breadpaper's `get_on` reads, and a
 /// settings window can have several monitors to report.
 #[tauri::command]
-pub fn get_wallpapers_by_output() -> Vec<OutputWallpaper> {
+pub fn get_wallpapers_by_output(app: tauri::AppHandle) -> Vec<OutputWallpaper> {
     let Ok(text) = std::fs::read_to_string(current_json_path()) else {
         return Vec::new();
     };
@@ -116,9 +129,11 @@ pub fn get_wallpapers_by_output() -> Vec<OutputWallpaper> {
     outputs
         .iter()
         .filter_map(|(output, path)| {
+            let path = path.as_str()?.to_string();
+            allow_preview(&app, &path);
             Some(OutputWallpaper {
                 output: output.clone(),
-                path: path.as_str()?.to_string(),
+                path,
             })
         })
         .collect()
