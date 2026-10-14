@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from "$lib/confirm.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import Group from "./Group.svelte";
@@ -39,8 +40,8 @@
 		}
 	}
 
-	function toggle() {
-		if (active && critical && !confirm(`Stop ${name ?? unit}? Other bread apps may stall until it is started again.`)) return;
+	async function toggle() {
+		if (active && critical && !(await confirmAction({ title: `Stop ${name ?? unit}?`, message: "Other bread apps may stall until it is started again.", confirmLabel: "Stop" }))) return;
 		run(active ? "Stop" : "Start");
 	}
 

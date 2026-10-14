@@ -3,6 +3,7 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import { listen } from "@tauri-apps/api/event";
 	import ChangeToast from "$lib/components/ChangeToast.svelte";
+	import ConfirmHost from "$lib/components/ConfirmHost.svelte";
 	import SearchPalette from "$lib/components/SearchPalette.svelte";
 	import DraftNotice from "$lib/components/DraftNotice.svelte";
 	import { drafts } from "$lib/drafts.svelte";
@@ -103,6 +104,7 @@
 	<SearchPalette bind:open={searchOpen} />
 	<DraftNotice />
 	<ChangeToast />
+	<ConfirmHost />
 </div>
 
 <style>

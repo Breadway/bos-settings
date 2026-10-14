@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from "$lib/confirm.svelte";
  import {runStreamed} from "$lib/streaming";
  import LogView from "$lib/components/LogView.svelte";
  import { onMount } from "svelte";
@@ -16,7 +17,7 @@
  let caches = $state<Cache[]|null>(null);
  let busy = $state(false);let unused=$state<string[]|null>(null);let selected=$state<string[]>([]);let logs=$state<string[]>([]);
  async function reviewUnused(){busy=true;try{unused=await invoke('get_unused_dependencies');selected=[]}catch(e){message=String(e)}finally{busy=false}}
- async function removeUnused(){if(busy||!selected.length||!confirm(`Remove these unused dependencies?\n${selected.join(', ')}\nOnly the selected packages will be removed.`))return;busy=true;logs=[];try{const ok=await runStreamed('remove_unused_dependencies',{packages:selected},line=>logs=[...logs,line]);message=ok?'Selected dependencies removed.':'Removal failed. Review the log.';await reviewUnused()}catch(e){message=String(e)}finally{busy=false}}
+ async function removeUnused(){if(busy||!selected.length||!(await confirmAction({title:'Remove these unused dependencies?',message:`${selected.join(', ')}. Only the selected packages will be removed.`,confirmLabel:'Remove'})))return;busy=true;logs=[];try{const ok=await runStreamed('remove_unused_dependencies',{packages:selected},line=>logs=[...logs,line]);message=ok?'Selected dependencies removed.':'Removal failed. Review the log.';await reviewUnused()}catch(e){message=String(e)}finally{busy=false}}
 
  let message = $state("");
  const size = (bytes: number|null) => bytes === null ? "Unavailable" : bytes < 1024 ** 3 ? `${(bytes / 1024 ** 2).toFixed(0)} MiB` : `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
@@ -24,7 +25,7 @@
  onMount(refresh);
  async function review() { busy = true; try { caches = await invoke<Cache[]>("get_cache_entries"); } catch(e) { message = String(e); } finally { busy = false; } }
  async function clean(target: {kind:string; name?:string}, label:string) {
-  if (!confirm(`${label}? This permanently deletes these files and cannot be undone.${target.kind === "app_cache" ? " Close the app first. It will rebuild its cache when needed." : ""}`)) return;
+  if (!(await confirmAction({ title: `${label}?`, message: `This permanently deletes these files and cannot be undone.${target.kind === "app_cache" ? " Close the app first. It will rebuild its cache when needed." : ""}`, confirmLabel: label }))) return;
   busy = true; message = "";
   try { await invoke("clean_storage", {target}); message = "Cleanup complete."; await refresh(); if(caches) caches = await invoke<Cache[]>("get_cache_entries"); }
   catch(e) { message = String(e); } finally { busy = false; }
