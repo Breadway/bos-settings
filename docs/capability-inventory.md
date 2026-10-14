@@ -219,9 +219,9 @@ Commands: .
 
 ### Display
 
-Controls: Displays, Arrangement, Monitor arrangement canvas. Drag to reorder monitors., Resolution, Scale, Rotation, Adaptive sync, Position.
+Controls: Displays, Arrangement, Monitor arrangement canvas. Drag to reorder monitors., Display, Resolution, Scale, Rotation, Adaptive sync, Position, Mirror another display, Mirrored by, Stop mirroring.
 
-Commands: `get_live_monitors`, `apply_monitor_layout`, `persist_monitor_layout`.
+Commands: `get_live_monitors`, `apply_display_layout`, `keep_display_layout`, `revert_display_layout`, `display_guard_status` (these replace `apply_monitor_layout` and `persist_monitor_layout`).
 
 ### DisplaysHub
 

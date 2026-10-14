@@ -21,6 +21,7 @@ pub mod channel;
 pub mod config;
 pub mod datetime;
 pub mod defaults;
+pub mod display_guard;
 pub mod firewall;
 pub mod firmware;
 pub mod hyprland;
