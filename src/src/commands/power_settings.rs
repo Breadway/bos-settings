@@ -119,9 +119,17 @@ const DPMS_ON: &str = "hyprctl eval \"hl.dispatch(hl.dsp.dpms({ action = 'on' })
 fn migrate_dpms(text: &str) -> String {
     text.replace("hyprctl dispatch dpms off", DPMS_OFF)
         .replace("hyprctl dispatch dpms on", DPMS_ON)
+        .replace(LEGACY_DIM, DIM)
+        .replace(LEGACY_UNDIM, UNDIM)
 }
+/// Plain `brightnessctl` acts on the first device it finds, a keyboard LED
+/// on machines without a backlight (BSET-73), so dimming names the class.
+const DIM: &str = "brightnessctl -c backlight -s set 10%";
+const UNDIM: &str = "brightnessctl -c backlight -r";
+const LEGACY_DIM: &str = "brightnessctl -s set 10%";
+const LEGACY_UNDIM: &str = "brightnessctl -r";
 const ACTIONS: [(&str, &str); 4] = [
-    ("dim", "brightnessctl -s set 10%"),
+    ("dim", DIM),
     ("screen_off", DPMS_OFF),
     ("lock", "loginctl lock-session"),
     ("sleep", "systemctl suspend"),
@@ -196,7 +204,7 @@ fn render_idle(text: &str, p: &PowerSettings) -> String {
         if !found && seconds > 0 {
             let resume = match *action {
                 a if a == DPMS_OFF => format!("\n on-resume = {DPMS_ON}"),
-                "brightnessctl -s set 10%" => "\n on-resume = brightnessctl -r".into(),
+                a if a == DIM => format!("\n on-resume = {UNDIM}"),
                 _ => String::new(),
             };
             let action = if *action == "systemctl suspend" && p.sleep_on_battery {
@@ -366,13 +374,30 @@ mod tests {
         assert_eq!(timeout_of(&result, "loginctl lock-session"), Some(120));
     }
     #[test]
+    fn dim_targets_the_backlight_and_migrates_old_lines() {
+        let old = "listener {\n timeout = 300\n on-timeout = brightnessctl -s set 10%\n on-resume = brightnessctl -r\n}\n";
+        assert_eq!(timeout_of(old, DIM), Some(300));
+        let p = PowerSettings {
+            dim: 120,
+            ..Default::default()
+        };
+        let out = render_idle(old, &p);
+        assert!(out.contains("on-timeout = brightnessctl -c backlight -s set 10%"));
+        assert!(out.contains("on-resume = brightnessctl -c backlight -r"));
+        assert!(!out.contains("on-timeout = brightnessctl -s set"));
+        assert_eq!(timeout_of(&out, DIM), Some(120));
+        assert_eq!(render_idle(&out, &p), out, "migration is idempotent");
+        let fresh = render_idle("", &p);
+        assert!(fresh.contains("on-resume = brightnessctl -c backlight -r"));
+    }
+    #[test]
     fn never_removes_managed_listener() {
         let p = PowerSettings {
             dim: 0,
             ..Default::default()
         };
         let result = render_idle(&render_idle("", &PowerSettings::default()), &p);
-        assert!(!result.contains("brightnessctl -s set"));
+        assert!(!result.contains("brightnessctl -c backlight -s set"));
         assert!(validate(&PowerSettings {
             lid: ";reboot".into(),
             ..Default::default()
