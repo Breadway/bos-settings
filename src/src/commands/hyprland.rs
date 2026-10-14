@@ -415,18 +415,24 @@ pub(crate) fn hyprctl_eval(lua: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The login include, in the same order the live apply uses: mirror
+/// sources before the outputs that mirror them (BSET-68).
+fn overrides_lua(monitors: &[LiveMonitor]) -> Result<String, String> {
+    let stmts = super::display_guard::plan_statements(monitors)?;
+    Ok(format!(
+        "-- Managed by BOS Settings.\n{}\n",
+        stmts.join("\n")
+    ))
+}
+
 pub(crate) fn persist_layout(monitors: &[LiveMonitor]) -> Result<(), String> {
     for m in monitors {
         lua_ident(&m.name)?;
     }
     let merged = merge_rules(read_rule_objects(), monitors);
-    let stmts = monitors
-        .iter()
-        .map(lua_statement)
-        .collect::<Result<Vec<_>, _>>()?;
     super::desktop_preferences::install_lua_include(
         "bos-settings-display-overrides.lua",
-        &format!("-- Managed by BOS Settings.\n{}\n", stmts.join("\n")),
+        &overrides_lua(monitors)?,
     )?;
     write_rule_objects(&merged)
 }
@@ -647,5 +653,19 @@ mod tests {
         let parsed = parse_monitors(&v);
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].width, 1);
+    }
+
+    #[test]
+    fn login_include_puts_mirror_sources_first() {
+        let mut monitors = fixture_monitors();
+        // Hand the mirror in first, as a reordered layout or drag could.
+        let i = monitors.iter().position(|m| m.name == "DVI-I-1").unwrap();
+        let mirror = monitors.remove(i);
+        assert_eq!(mirror.mirror_of, "eDP-1");
+        monitors.insert(0, mirror);
+        let lua = overrides_lua(&monitors).unwrap();
+        let pos = |name: &str| lua.find(&format!("output = \"{name}\"")).unwrap();
+        assert!(pos("eDP-1") < pos("DVI-I-1"), "{lua}");
+        assert!(lua.starts_with("-- Managed by BOS Settings.\n"));
     }
 }
