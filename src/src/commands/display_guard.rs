@@ -111,9 +111,19 @@ struct State {
 
 type Notify = Arc<dyn Fn(&GuardOutcome) + Send + Sync>;
 
+/// Where the guard leaves a crash-recovery record and how it starts the
+/// out-of-process watchdog (see display_rescue). None in tests.
+pub struct Rescue {
+    pub path: std::path::PathBuf,
+    pub spawn: fn(u64) -> Result<(), String>,
+    /// Whether the process that wrote a record is still a running BOS Settings.
+    pub alive: fn(u32) -> bool,
+}
+
 struct Inner {
     comp: Arc<dyn Compositor>,
     timing: Timing,
+    rescue: Option<Rescue>,
     notify: Notify,
     /// Serialises apply / keep / revert / timeout so two of them can never
     /// drive the compositor at once. Always taken before `state`.
@@ -306,9 +316,15 @@ impl DisplayGuard {
             inner: Arc::new(Inner {
                 comp,
                 timing,
+                rescue: None,
                 notify: Arc::new(notify),
                 op: Mutex::new(()),
-                state: Mutex::new(State::default()),
+                // Seeded from the clock, so ids from separate runs never meet
+                // in the crash-recovery record (BSET-67 review).
+                state: Mutex::new(State {
+                    next_id: super::display_rescue::now_ms().saturating_mul(1000),
+                    ..State::default()
+                }),
                 wake: Condvar::new(),
             }),
         }
@@ -318,7 +334,22 @@ impl DisplayGuard {
     where
         F: Fn(&GuardOutcome) + Send + Sync + 'static,
     {
-        Self::new(Arc::new(HyprCompositor), Timing::default(), notify)
+        let mut g = Self::new(Arc::new(HyprCompositor), Timing::default(), notify);
+        if let Some(path) = super::display_rescue::record_path() {
+            g.set_rescue(Rescue {
+                path,
+                spawn: super::display_rescue::spawn_watchdog,
+                alive: super::display_rescue::owner_alive,
+            });
+        }
+        g
+    }
+
+    /// Only valid before the guard is shared.
+    pub fn set_rescue(&mut self, rescue: Rescue) {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.rescue = Some(rescue);
+        }
     }
 
     pub fn status(&self) -> GuardStatus {
@@ -400,6 +431,58 @@ impl Inner {
         Err(last)
     }
 
+    fn arm_rescue(&self, id: u64, before: &[LiveMonitor], window: Duration) -> Result<(), String> {
+        let Some(r) = &self.rescue else { return Ok(()) };
+        let rec = super::display_rescue::Record {
+            id,
+            pid: std::process::id(),
+            deadline_ms: super::display_rescue::now_ms() + window.as_millis() as u64,
+            before: before.to_vec(),
+        };
+        super::display_rescue::write_record(&r.path, &rec).map_err(|e| {
+            format!("The safety record could not be written ({e}), so nothing was changed.")
+        })?;
+        if let Err(e) = (r.spawn)(id) {
+            super::display_rescue::clear_record(&r.path, id);
+            return Err(format!(
+                "The safety watchdog could not start ({e}), so nothing was changed."
+            ));
+        }
+        Ok(())
+    }
+
+    /// A record from another run must never be overwritten: its `before` is
+    /// the only copy of the layout that run promised to restore. If that run
+    /// is gone, put its layout back now (its own watchdog then finds the
+    /// record cleared and exits); if it is still running, refuse.
+    fn settle_foreign_record(&self) -> Result<(), String> {
+        use super::display_rescue as dr;
+        let Some(r) = &self.rescue else { return Ok(()) };
+        let Some(rec) = dr::read_record(&r.path) else {
+            return Ok(());
+        };
+        if rec.pid == std::process::id() {
+            return Ok(());
+        }
+        if (r.alive)(rec.pid) {
+            return Err(
+                "Another BOS Settings window is waiting for an answer about a display change. Keep or revert it there first."
+                    .into(),
+            );
+        }
+        dr::restore(&*self.comp, &rec).map_err(|e| {
+            format!("An earlier display change that was never confirmed could not be undone ({e}), so nothing was changed.")
+        })?;
+        dr::clear_record(&r.path, rec.id);
+        Ok(())
+    }
+
+    fn disarm_rescue(&self, id: u64) {
+        if let Some(r) = &self.rescue {
+            super::display_rescue::clear_record(&r.path, id);
+        }
+    }
+
     /// Put `before` back and check the compositor took it.
     fn restore(&self, before: &[LiveMonitor]) -> Result<(), String> {
         let stmts = plan_statements(before)?;
@@ -417,6 +500,7 @@ impl Inner {
         if lock(&self.state).pending.is_some() {
             return Err("Another display change is still waiting to be kept or reverted.".into());
         }
+        self.settle_foreign_record()?;
         let before = self.comp.read().map_err(|e| {
             format!("The current display layout could not be read, so nothing was changed. {e}")
         })?;
@@ -429,20 +513,28 @@ impl Inner {
             }
         }
         let stmts = plan_statements(&target)?;
+        let id = {
+            let mut st = lock(&self.state);
+            st.next_id += 1;
+            st.next_id
+        };
+        // Before anything changes: if this process dies during the countdown,
+        // the watchdog still puts `before` back (BSET-67).
+        self.arm_rescue(id, &before, window)?;
         let applied = self.comp.eval(&stmts.join("; ")).and_then(|()| {
             self.confirm(&target, false)
                 .map_err(|why| format!("Hyprland did not end up with the requested layout: {why}."))
         });
         if let Err(problem) = applied {
-            return Err(match self.restore(&before) {
+            let restored = self.restore(&before);
+            self.disarm_rescue(id);
+            return Err(match restored {
                 Ok(()) => format!("{problem} The previous layout was restored."),
                 Err(e) => format!("{problem} Restoring the previous layout also failed: {e}"),
             });
         }
-        let id = {
+        {
             let mut st = lock(&self.state);
-            st.next_id += 1;
-            let id = st.next_id;
             st.pending = Some(Pending {
                 id,
                 before,
@@ -450,8 +542,7 @@ impl Inner {
                 deadline: Instant::now() + window,
                 total: window,
             });
-            id
-        };
+        }
         let me = Arc::clone(self);
         let spawned = std::thread::Builder::new()
             .name("display-guard".into())
@@ -462,6 +553,7 @@ impl Inner {
             if let Some(p) = pending {
                 let _ = self.restore(&p.before);
             }
+            self.disarm_rescue(id);
             return Err(format!(
                 "The safety timer could not start ({e}). The change was undone."
             ));
@@ -531,7 +623,10 @@ impl Inner {
     }
 
     fn finish_revert(&self, p: Pending, kind: OutcomeKind, lead: String) -> GuardOutcome {
-        let outcome = match self.restore(&p.before) {
+        let restored = self.restore(&p.before);
+        // Whatever happened, the out-of-process watchdog must not redo it.
+        self.disarm_rescue(p.id);
+        let outcome = match restored {
             Ok(()) => GuardOutcome {
                 id: p.id,
                 kind,
@@ -567,6 +662,8 @@ impl Inner {
         let _op = lock(&self.op);
         let p = self.take_pending(id)?;
         self.wake.notify_all();
+        // Kept: the watchdog must not revert it, even if saving fails below.
+        self.disarm_rescue(id);
         let layout: Vec<LiveMonitor> = p.after.iter().filter(|m| !m.disabled).cloned().collect();
         match self.comp.persist(&layout) {
             Ok(()) => Ok(self.record(GuardOutcome {
@@ -1225,5 +1322,171 @@ mod tests {
             .find(|m| m.name == "DVI-I-1")
             .unwrap();
         assert_eq!(d1.mirror_of, "eDP-1");
+    }
+
+    fn rescued(mock: &Arc<Mock>, tag: &str) -> (DisplayGuard, std::path::PathBuf) {
+        static SPAWNED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        fn spawn(id: u64) -> Result<(), String> {
+            SPAWNED.store(id, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+        let dir = std::env::temp_dir().join(format!("bset67-g-{tag}-{}", std::process::id()));
+        let path = dir.join("display-pending.json");
+        let (mut g, _) = guard(mock);
+        g.set_rescue(Rescue {
+            path: path.clone(),
+            spawn,
+            alive: |_| false,
+        });
+        (g, path)
+    }
+
+    #[test]
+    fn rescue_record_lives_exactly_while_a_change_is_pending() {
+        use super::super::display_rescue::read_record;
+        for end in ["keep", "revert", "timeout", "exit"] {
+            let mock = Mock::new(fixture());
+            let (g, path) = rescued(&mock, end);
+            let window = if end == "timeout" {
+                Duration::from_millis(60)
+            } else {
+                Duration::from_secs(30)
+            };
+            let id = g.apply_for(rescaled(), window).unwrap().pending.unwrap().id;
+            let rec = read_record(&path).expect("record written before the change");
+            assert_eq!(rec.id, id);
+            assert_eq!(rec.pid, std::process::id());
+            assert_eq!(
+                rec.before,
+                fixture(),
+                "the record holds the layout to restore"
+            );
+            match end {
+                "keep" => {
+                    g.keep(id).unwrap();
+                }
+                "revert" => {
+                    g.revert(id).unwrap();
+                }
+                "exit" => g.revert_on_exit(),
+                _ => wait_until("timeout revert", || g.status().last.is_some()),
+            }
+            assert!(read_record(&path).is_none(), "{end} clears the record");
+            let _ = std::fs::remove_dir_all(path.parent().unwrap());
+        }
+    }
+
+    #[test]
+    fn a_failed_apply_leaves_no_rescue_record() {
+        let mock = Mock::new(fixture());
+        *lock(&mock.fail_eval) = Some("refused".into());
+        let (g, path) = rescued(&mock, "fail");
+        assert!(g.apply_for(rescaled(), Duration::from_secs(30)).is_err());
+        assert!(super::super::display_rescue::read_record(&path).is_none());
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn watchdog_restores_a_change_whose_app_died() {
+        use super::super::display_rescue::{check_once, read_record, write_record};
+        let mock = Mock::new(fixture());
+        let (g, path) = rescued(&mock, "killed");
+        let id = g
+            .apply_for(rescaled(), Duration::from_secs(30))
+            .unwrap()
+            .pending
+            .unwrap()
+            .id;
+        assert_ne!(mock.state(), fixture(), "the change is live");
+        // Simulate SIGKILL: the guard never runs again, and the deadline passes.
+        let mut rec = read_record(&path).unwrap();
+        rec.deadline_ms = 0;
+        write_record(&path, &rec).unwrap();
+        std::mem::forget(g);
+        assert_eq!(check_once(&*mock, &path, Some(id), |_| false), None);
+        assert_eq!(
+            mock.state(),
+            fixture(),
+            "the watchdog put the old layout back"
+        );
+        assert!(read_record(&path).is_none());
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    /// BSET-67 review: run A applies and is killed; the app is restarted
+    /// inside A's window and a new change is made. A's layout must not be
+    /// lost, the new change must not collide with A's id, and A's watchdog
+    /// must not act on the new record.
+    #[test]
+    fn restart_inside_a_dead_runs_window_keeps_both_safe() {
+        use super::super::display_rescue::{check_once, read_record, write_record, Record};
+        let mock = Mock::new(fixture());
+        let (g, path) = rescued(&mock, "restart");
+        // Run A left this: the good layout, a deadline still in the future,
+        // a pid that is gone, and an id a fresh counter could also produce.
+        let mut changed = fixture();
+        named(&mut changed, "DVI-I-2").transform = 0;
+        *lock(&mock.sim) = changed.clone();
+        write_record(
+            &path,
+            &Record {
+                id: 1,
+                pid: 4_000_000,
+                deadline_ms: super::super::display_rescue::now_ms() + 60_000,
+                before: fixture(),
+            },
+        )
+        .unwrap();
+        let id = g
+            .apply_for(rescaled(), Duration::from_secs(30))
+            .unwrap()
+            .pending
+            .unwrap()
+            .id;
+        assert_ne!(id, 1, "ids are unique across runs");
+        let rec = read_record(&path).unwrap();
+        assert_eq!(rec.id, id);
+        assert_eq!(
+            rec.before,
+            fixture(),
+            "run A's layout was put back first, so it is what this change restores"
+        );
+        // Run A's watchdog wakes up: the record is not its own, so it leaves it.
+        assert_eq!(check_once(&*mock, &path, Some(1), |_| false), None);
+        assert_eq!(read_record(&path).map(|r| r.id), Some(id));
+        g.revert(id).unwrap();
+        assert_eq!(mock.state(), fixture(), "revert lands on the good layout");
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_live_other_window_blocks_a_new_change() {
+        use super::super::display_rescue::{write_record, Record};
+        let mock = Mock::new(fixture());
+        let dir = std::env::temp_dir().join(format!("bset67-g-live-{}", std::process::id()));
+        let path = dir.join("display-pending.json");
+        let (mut g, _) = guard(&mock);
+        g.set_rescue(Rescue {
+            path: path.clone(),
+            spawn: |_| Ok(()),
+            alive: |_| true,
+        });
+        write_record(
+            &path,
+            &Record {
+                id: 9,
+                pid: 4_000_000,
+                deadline_ms: super::super::display_rescue::now_ms() + 60_000,
+                before: fixture(),
+            },
+        )
+        .unwrap();
+        let err = g
+            .apply_for(rescaled(), Duration::from_secs(30))
+            .unwrap_err();
+        assert!(err.contains("Another BOS Settings window"), "{err}");
+        assert_eq!(mock.state(), fixture(), "nothing changed");
+        assert!(lock(&mock.log).is_empty(), "the compositor was not touched");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

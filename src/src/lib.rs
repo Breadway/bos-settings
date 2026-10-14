@@ -18,6 +18,12 @@ pub fn run() {
         }
         return;
     }
+    if args.iter().any(|a| a == "--display-watchdog") {
+        commands::display_rescue::run_watchdog(&args);
+        return;
+    }
+    // A display change left pending by a run that crashed or was killed.
+    commands::display_rescue::recover_at_start();
     let screenshot_req = screenshot::parse(&args);
     let initial_page = page::parse(&args);
 
