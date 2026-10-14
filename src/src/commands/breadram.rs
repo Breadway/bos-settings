@@ -34,8 +34,12 @@ fn call(body: serde_json::Value) -> Result<serde_json::Value, String> {
     let path = socket_path();
     let timeout = Some(Duration::from_secs(3));
     let stream = UnixStream::connect(&path).map_err(|_| "unavailable".to_string())?;
-    stream.set_read_timeout(timeout).map_err(|e| e.to_string())?;
-    stream.set_write_timeout(timeout).map_err(|e| e.to_string())?;
+    stream
+        .set_read_timeout(timeout)
+        .map_err(|e| e.to_string())?;
+    stream
+        .set_write_timeout(timeout)
+        .map_err(|e| e.to_string())?;
     let mut reader = BufReader::new(stream.try_clone().map_err(|e| e.to_string())?);
     let mut writer = stream;
     let mut id = 1u64;
@@ -47,7 +51,9 @@ fn call(body: serde_json::Value) -> Result<serde_json::Value, String> {
         }
         let mut text = serde_json::to_string(&line).map_err(|e| e.to_string())?;
         text.push('\n');
-        writer.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+        writer
+            .write_all(text.as_bytes())
+            .map_err(|e| e.to_string())?;
         let mut answer = String::new();
         reader.read_line(&mut answer).map_err(|e| e.to_string())?;
         serde_json::from_str(answer.trim()).map_err(|e| e.to_string())
@@ -125,10 +131,26 @@ fn load_config_from(path: &std::path::Path) -> BreadramConfig {
         .map(|a| {
             a.iter()
                 .map(|t| ProviderEntry {
-                    name: t.get("name").and_then(|v| v.as_str()).unwrap_or_default().into(),
-                    kind: t.get("kind").and_then(|v| v.as_str()).unwrap_or_default().into(),
-                    url: t.get("url").and_then(|v| v.as_str()).unwrap_or_default().into(),
-                    scope: t.get("scope").and_then(|v| v.as_str()).unwrap_or_default().into(),
+                    name: t
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .into(),
+                    kind: t
+                        .get("kind")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .into(),
+                    url: t
+                        .get("url")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .into(),
+                    scope: t
+                        .get("scope")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .into(),
                     allow_automation: t
                         .get("allow_automation")
                         .and_then(|v| v.as_bool())
@@ -152,8 +174,22 @@ fn load_config_from(path: &std::path::Path) -> BreadramConfig {
     }
 }
 
-fn gib_to_bytes(gib: f64) -> i64 {
-    (gib * 1024.0 * 1024.0 * 1024.0).round() as i64
+/// A GiB figure the daemon can actually use, or why it cannot.
+///
+/// Rejects NaN and infinities (which would serialize back wrong), negatives,
+/// and anything past a pebibyte (larger than any host this manages). The
+/// check happens before any write, so a refused save changes nothing.
+fn gib_to_bytes(gib: f64) -> Result<i64, String> {
+    if !gib.is_finite() {
+        return Err("memory size must be a real number".to_string());
+    }
+    if gib < 0.0 {
+        return Err("memory size cannot be negative".to_string());
+    }
+    if gib > 1_048_576.0 {
+        return Err("memory size above one pebibyte is not a real budget".to_string());
+    }
+    Ok((gib * 1024.0 * 1024.0 * 1024.0).round() as i64)
 }
 
 #[tauri::command]
@@ -200,27 +236,41 @@ fn save_config_to(path: &std::path::Path, cfg: BreadramConfig) -> Result<(), Str
         config::set_bool(&mut doc, &["jobs", "enabled"], enabled);
     }
     if let Some(gib) = cfg.jobs_total_budget_gib {
-        if gib < 0.0 {
-            return Err("job budget cannot be negative".to_string());
-        }
-        config::set_i64(&mut doc, &["jobs", "total_budget_bytes"], gib_to_bytes(gib));
+        config::set_i64(
+            &mut doc,
+            &["jobs", "total_budget_bytes"],
+            gib_to_bytes(gib).map_err(|e| format!("job budget: {e}"))?,
+        );
     }
     if let Some(gib) = cfg.jobs_default_estimate_gib {
-        if gib < 0.0 {
-            return Err("job estimate cannot be negative".to_string());
-        }
         config::set_i64(
             &mut doc,
             &["jobs", "default_estimate_bytes"],
-            gib_to_bytes(gib),
+            gib_to_bytes(gib).map_err(|e| format!("job estimate: {e}"))?,
         );
     }
     if let Some(auto) = cfg.jobs_auto_launch {
         config::set_bool(&mut doc, &["jobs", "auto_launch"], auto);
     }
+    // Providers merge by name into the existing tables: the five modelled
+    // keys are written, and anything the panel does not model (hook
+    // commands, credential references, integrated-GPU flags, hook timeouts)
+    // stays exactly where it was. Entries the panel removed are gone on
+    // purpose; entries it added start clean.
     let mut providers = toml_edit::ArrayOfTables::new();
     for provider in &cfg.providers {
-        let mut table = toml_edit::Table::new();
+        let mut table = doc
+            .get("providers")
+            .and_then(|v| v.as_array_of_tables())
+            .and_then(|existing| {
+                existing
+                    .iter()
+                    .find(|t| {
+                        t.get("name").and_then(|v| v.as_str()) == Some(provider.name.as_str())
+                    })
+                    .cloned()
+            })
+            .unwrap_or_default();
         table["name"] = toml_edit::value(provider.name.clone());
         table["kind"] = toml_edit::value(provider.kind.clone());
         table["url"] = toml_edit::value(provider.url.clone());
@@ -251,12 +301,20 @@ fn apply_profile_to(path: &std::path::Path, profile: &str) -> Result<(), String>
         "monitor" => ("monitor", &[], &[]),
         "desktop" => (
             "automatic",
-            &["reclaim_protection", "cgroup_soft_limit", "unload_idle_model"],
+            &[
+                "reclaim_protection",
+                "cgroup_soft_limit",
+                "unload_idle_model",
+            ],
             &["exe:Hyprland", "unit:systemd-logind.service"],
         ),
         "headless-server" => (
             "automatic",
-            &["cgroup_soft_limit", "reclaim_protection", "queue_background_job"],
+            &[
+                "cgroup_soft_limit",
+                "reclaim_protection",
+                "queue_background_job",
+            ],
             &[],
         ),
         other => return Err(format!("unknown profile: {other}")),
@@ -314,11 +372,7 @@ mod tests {
     #[test]
     fn round_trip_preserves_everything_including_unmodelled_keys() {
         let path = scratch("round-trip");
-        std::fs::write(
-            &path,
-            "# operator comment\n[custom]\nnote = \"keep me\"\n",
-        )
-        .unwrap();
+        std::fs::write(&path, "# operator comment\n[custom]\nnote = \"keep me\"\n").unwrap();
         save_config_to(&path, sample_config()).unwrap();
         let loaded = load_config_from(&path);
         assert_eq!(loaded.mode.as_deref(), Some("automatic"));
@@ -343,7 +397,9 @@ mod tests {
         apply_profile_to(&path, "desktop").unwrap();
         let loaded = load_config_from(&path);
         assert_eq!(loaded.mode.as_deref(), Some("automatic"));
-        assert!(loaded.allowed_actions.contains(&"unload_idle_model".to_string()));
+        assert!(loaded
+            .allowed_actions
+            .contains(&"unload_idle_model".to_string()));
         assert!(loaded.protected.contains(&"exe:Hyprland".to_string()));
         apply_profile_to(&path, "monitor").unwrap();
         let loaded = load_config_from(&path);
@@ -390,7 +446,8 @@ mod tests {
                     } else if line.contains(r#""actions""#) {
                         r#"{"id":0,"type":"actions","plan":{},"history":[]}"#.to_string()
                     } else {
-                        r#"{"id":0,"type":"error","code":"unknown_request","message":"nope"}"#.to_string()
+                        r#"{"id":0,"type":"error","code":"unknown_request","message":"nope"}"#
+                            .to_string()
                     };
                     if stream.write_all(answer.as_bytes()).is_err() {
                         break;
@@ -427,6 +484,46 @@ mod tests {
     }
 
     #[test]
+    fn provider_saves_keep_unmodelled_keys() {
+        let path = scratch("provider-merge");
+        std::fs::write(
+            &path,
+            "[[providers]]\nname = \"hook\"\nkind = \"hook\"\ncommand = [\"/usr/bin/do\"]\ncredential_ref = \"x\"\n",
+        )
+        .unwrap();
+        let mut cfg = sample_config();
+        cfg.providers = vec![ProviderEntry {
+            name: "hook".to_string(),
+            kind: "hook".to_string(),
+            url: "hook:do".to_string(),
+            scope: "exe:do".to_string(),
+            allow_automation: true,
+        }];
+        save_config_to(&path, cfg).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            text.contains("command = [\"/usr/bin/do\"]") && text.contains("credential_ref"),
+            "hook command and credential survive a save: {text}"
+        );
+        assert!(text.contains("allow_automation = true"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn gib_figures_must_be_realistic() {
+        assert!(gib_to_bytes(f64::NAN).is_err());
+        assert!(gib_to_bytes(f64::INFINITY).is_err());
+        assert!(gib_to_bytes(-0.5).is_err());
+        assert!(gib_to_bytes(2.0).is_ok());
+        let path = scratch("gib-refusal");
+        std::fs::write(&path, "").unwrap();
+        let mut bad = sample_config();
+        bad.jobs_total_budget_gib = Some(f64::NAN);
+        assert!(save_config_to(&path, bad).is_err());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn bad_values_are_refused_before_touching_the_file() {
         let path = scratch("refusals");
         std::fs::write(&path, "mode = \"automatic\"\n").unwrap();
@@ -437,7 +534,10 @@ mod tests {
         bad.jobs_total_budget_gib = Some(-1.0);
         assert!(save_config_to(&path, bad).is_err());
         let text = std::fs::read_to_string(&path).unwrap();
-        assert_eq!(text, "mode = \"automatic\"\n", "a refused save changes nothing");
+        assert_eq!(
+            text, "mode = \"automatic\"\n",
+            "a refused save changes nothing"
+        );
         let _ = std::fs::remove_file(&path);
     }
 }
@@ -494,7 +594,11 @@ pub fn set_breadram_mode(mode: String, persist: bool) -> Result<String, String> 
 
 /// Change protection through the daemon, which validates it.
 #[tauri::command]
-pub fn set_breadram_protection(add: Vec<String>, remove: Vec<String>, persist: bool) -> Result<String, String> {
+pub fn set_breadram_protection(
+    add: Vec<String>,
+    remove: Vec<String>,
+    persist: bool,
+) -> Result<String, String> {
     let answer = call(serde_json::json!({
         "type": "set_protection", "add": add, "remove": remove, "persist": persist,
     }))

@@ -57,15 +57,28 @@
 		jobs_auto_launch: boolean;
 	}
 
+	interface CapabilityEntry {
+		name: string;
+		state: string;
+		reason?: string | null;
+	}
+
 	interface LiveStatus {
 		present: boolean;
 		mode?: string;
 		version?: string;
 		pressure?: { state?: string; some_avg10?: number | null };
-		memory?: { ram_available_bytes?: number | null; ram_total_bytes?: number | null };
-		capabilities?: unknown;
+		memory?: {
+			ram_available_bytes?: number | null;
+			ram_total_bytes?: number | null;
+			vram_bytes?: number | null;
+			gtt_used_bytes?: number | null;
+			gtt_total_bytes?: number | null;
+		};
+		capabilities?: { capabilities?: CapabilityEntry[] };
 		journal?: { entries?: number; capacity?: number; executing?: boolean };
 		config_path?: string | null;
+		notes?: string[];
 		rules?: {
 			mode?: string;
 			allowed_actions?: string[];
@@ -87,10 +100,18 @@
 	interface LiveActions {
 		present: boolean;
 		actions?: {
-			plan?: { state?: string; explanation?: string[] };
+			plan?: { state?: string; would_execute?: boolean; explanation?: string[] };
 			history?: ActionRecord[];
 		} | null;
 	}
+
+	const RELOAD_NOTES: Record<string, string> = {
+		ollama: "Release keeps the model unloaded until something asks for it; the next request pays a cold load.",
+		llamacpp: "Unload drops the model; the router reloads it on the next request.",
+		vllm: "Sleep keeps weights staged and wakes faster than a cold load.",
+		breadsearch: "Unload drops the embedding session; the next search reloads it on demand.",
+		hook: "Release and reload mean whatever the hook program does.",
+	};
 
 	let cfg = $state<BreadramConfig | null>(null);
 	let status = $state<LiveStatus | null>(null);
@@ -207,6 +228,14 @@
 				label="Available"
 				value={`${gib(status.memory?.ram_available_bytes)} of ${gib(status.memory?.ram_total_bytes)}`}
 			/>
+			<InfoRow
+				label="Device memory"
+				value={status.memory?.vram_bytes != null
+					? gib(status.memory.vram_bytes)
+					: status.memory?.gtt_used_bytes != null
+						? `${gib(status.memory.gtt_used_bytes)} shared of ${gib(status.memory.gtt_total_bytes)}`
+						: "nothing measured it"}
+			/>
 			<InfoRow label="Daemon version" value={String(status.version ?? "unknown")} />
 			<Row label="Pause" hint="Stops automatic changes now without saving anything. A restart goes back to the saved mode.">
 				<button
@@ -260,7 +289,17 @@
 			</Row>
 			{#each Object.entries(ACTION_LABELS) as [code, label] (code)}
 				{@const on = cfg.allowed_actions.includes(code)}
-				<Row {label} hint={on ? "Allowed." : "Off. The daemon will not do this."}>
+				{@const enforced = status && status.present && status.rules
+					? status.rules.allowed_actions?.includes(code) ?? false
+					: null}
+				<Row
+					{label}
+					hint={on
+						? enforced === false
+							? "Ticked in the file, but the running daemon has it off."
+							: "Allowed."
+						: "Off. The daemon will not do this."}
+				>
 					<input
 						type="checkbox"
 						checked={on}
@@ -282,7 +321,10 @@
 			hint="Extra programs the daemon may ask to release memory. Each one only watches the workload scope you name."
 		>
 			{#each cfg.providers as provider, i (i)}
-				<Row label={provider.name || `Backend ${i + 1}`} hint={provider.url}>
+				<Row
+					label={provider.name || `Backend ${i + 1}`}
+					hint={`${provider.url}${RELOAD_NOTES[provider.kind] ? ` ${RELOAD_NOTES[provider.kind]}` : ""}`}
+				>
 					<span class="provider-row">
 						<TextField label="Name" bind:value={provider.name} />
 						<TextField label="Address" bind:value={provider.url} />
@@ -315,7 +357,7 @@
 
 		<Group
 			title="Background jobs"
-			hint="Queued programs the daemon may run when memory allows."
+			hint="Queued programs the daemon may run when memory allows. breadram never caps a workload by default: only a supervised job carries a hard MemoryMax reservation, taken from its estimate."
 		>
 			<SwitchField label="Let the daemon run queued jobs" bind:value={cfg.jobs_enabled} />
 			<NumberField label="Total memory for jobs (GiB)" bind:value={cfg.jobs_total_budget_gib} min={0.1} max={1024} step={0.5} />
@@ -333,7 +375,7 @@
 			title="What the daemon thinks"
 			hint="The settings actually in force, and why. File changes apply when the daemon restarts."
 		>
-			{#if status?.present && status.rules}
+			{#if status && status.present && status.rules}
 				<InfoRow label="Mode in force" value={String(status.rules.mode ?? "unknown")} />
 				<InfoRow
 					label="Actions in force"
@@ -343,6 +385,9 @@
 					label="Protected in force"
 					value={(status.rules.protected ?? []).join(", ") || "none"}
 				/>
+				{#each status.rules.budgets ?? [] as budget (budget.scope)}
+					<InfoRow label={`Budget ${budget.scope}`} value={gib(budget.max_bytes)} />
+				{/each}
 				<InfoRow label="Config file" value={String(status.config_path ?? "none loaded")} />
 			{:else}
 				<Row label="Effective settings" hint="Start the daemon to compare the file against what is running.">
@@ -352,7 +397,33 @@
 			<ServiceControl unit="breadram.service" name="Memory daemon" bare hasConfig />
 		</Group>
 
+		<Group
+			title="What this host can do"
+			hint="Each capability the daemon probed, and why anything unavailable stays off. A workload is observation-only when its controls are missing here."
+		>
+			{#if status && status.present && (status.capabilities?.capabilities?.length ?? 0) > 0}
+				{#each status.capabilities?.capabilities ?? [] as capability (capability.name)}
+					<InfoRow
+						label={capability.name}
+						value={capability.state === "available"
+							? "Available"
+							: `${capability.state}${capability.reason ? `: ${capability.reason}` : ""}`}
+					/>
+				{/each}
+			{:else}
+				<Row label="Capabilities" hint="Start the daemon to probe this host.">
+					<span>Daemon unavailable</span>
+				</Row>
+			{/if}
+		</Group>
+
 		<Group title="Recent changes" hint="Newest first. Expected is the plan's guess, measured is what the daemon saw.">
+			{#if actions && actions.present && actions.actions?.plan}
+				<InfoRow
+					label={`Plan (${actions.actions.plan.state ?? "unknown"})`}
+					value={(actions.actions.plan.explanation ?? []).slice(0, 3).join(" " ) || "Nothing proposed."}
+				/>
+			{/if}
 			{#if actions && actions.present && actions.actions && (actions.actions.history?.length ?? 0) > 0}
 				{#each (actions.actions.history ?? []).slice(0, 20) as record, n (n)}
 					<Row
