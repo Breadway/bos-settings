@@ -14,6 +14,7 @@ pub mod breadhelp;
 pub mod breadlock;
 pub mod breadpad;
 pub mod breadpaper;
+pub mod breadram;
 pub mod breadsearch;
 pub mod breadshot;
 pub mod channel;
