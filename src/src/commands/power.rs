@@ -113,22 +113,40 @@ async fn tlp_profile() -> Option<String> {
         .map(|v| v.trim().to_string())
 }
 
+/// The first screen backlight as (device, percent). Plain `brightnessctl`
+/// picks whatever device it finds first, which on desktops and VMs is a
+/// keyboard LED such as `input1::numlock` (BSET-73); only the `backlight`
+/// class is a screen.
+async fn backlight() -> Option<(String, u32)> {
+    let out = Command::new("brightnessctl")
+        .args(["--class=backlight", "--machine-readable"])
+        .output()
+        .await
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    parse_backlight(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// `name,class,current,percent%,max` lines from `brightnessctl -m`.
+fn parse_backlight(text: &str) -> Option<(String, u32)> {
+    text.lines().find_map(|line| {
+        let f: Vec<&str> = line.trim().split(',').collect();
+        if f.len() < 4 || f[1] != "backlight" || f[0].is_empty() {
+            return None;
+        }
+        let pct = f[3].trim_end_matches('%').parse().ok()?;
+        Some((f[0].to_string(), pct))
+    })
+}
+
 async fn brightness_device() -> Option<String> {
-    let out = Command::new("brightnessctl").output().await.ok()?;
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .find(|l| l.starts_with("Device"))
-        .and_then(|l| l.split('\'').nth(1))
-        .map(str::to_string)
+    backlight().await.map(|(d, _)| d)
 }
 
 async fn brightness_pct() -> Option<u32> {
-    let out = Command::new("brightnessctl").output().await.ok()?;
-    let text = String::from_utf8_lossy(&out.stdout);
-    text.lines()
-        .find(|l| l.contains("Current brightness"))
-        .and_then(|l| l.split('(').nth(1))
-        .and_then(|v| v.trim_end_matches("%)").parse().ok())
+    backlight().await.map(|(_, p)| p)
 }
 
 /// Charge-threshold sysfs paths, only Some when the running kernel driver
@@ -445,6 +463,22 @@ pub async fn set_charge_threshold(which: String, percent: i64) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_backlight_class_is_a_screen() {
+        assert_eq!(
+            parse_backlight("amdgpu_bl1,backlight,325805,81%,400000\n"),
+            Some(("amdgpu_bl1".into(), 81))
+        );
+        assert_eq!(parse_backlight("input1::numlock,leds,0,0%,1\n"), None);
+        assert_eq!(
+            parse_backlight(
+                "input1::numlock,leds,0,0%,1\nintel_backlight,backlight,500,50%,1000\n"
+            ),
+            Some(("intel_backlight".into(), 50))
+        );
+        assert_eq!(parse_backlight(""), None);
+    }
 
     #[test]
     fn time_estimate_only_matches_the_battery_state() {
