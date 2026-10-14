@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from "$lib/confirm.svelte";
 	import { useDraft } from "$lib/drafts.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
@@ -409,8 +410,8 @@
 		layoutOrder = [...layoutOrder, name];
 		newLayoutName = "";
 	}
-	function removeLayout(name: string) {
-		if (!confirm(`Remove layout "${name}"? Deletes every bind defined under this layout. This can't be undone here.`)) return;
+	async function removeLayout(name: string) {
+		if (!(await confirmAction({ title: `Remove layout "${name}"?`, message: "Deletes every bind defined under this layout. This can't be undone here.", confirmLabel: "Remove" }))) return;
 		delete layoutRows[name];
 		layoutOrder = layoutOrder.filter((n) => n !== name);
 		if (activeLayout === name) activeLayout = layoutOrder[0] ?? "";

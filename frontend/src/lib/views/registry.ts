@@ -23,6 +23,7 @@ import Users from "./Users.svelte";
 import DateTime from "./DateTime.svelte";
 import Accessibility from "./Accessibility.svelte";
 import Storage from "./Storage.svelte";
+import Memory from "./Memory.svelte";
 import Sharing from "./Sharing.svelte";
 import Notifications from "./Notifications.svelte";
 
@@ -30,6 +31,7 @@ export const VIEWS: Record<string, Component> = {
 	sharing: Sharing,
 	notifications: Notifications,
 	storage: Storage,
+	memory: Memory,
 	home: Home,
     "power-menu": PowerMenu,
 	keyboard: KeyboardHub,

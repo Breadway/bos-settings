@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from "$lib/confirm.svelte";
 	import { snapshotLabel } from "$lib/snapshotLabel";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
@@ -52,7 +53,7 @@
 	}
 
 	async function deleteSnapshot(number: string) {
-		if (!confirm(`Delete snapshot #${number}? This can't be undone.`)) return;
+		if (!(await confirmAction({ title: `Delete snapshot #${number}?`, message: "This can't be undone.", confirmLabel: "Delete" }))) return;
 		sheetError = "";
 		try {
 			await invoke("delete_snapshot", { number });

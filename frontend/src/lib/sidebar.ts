@@ -27,6 +27,8 @@ import History from "@lucide/svelte/icons/history";
 
 import HardDrive from "@lucide/svelte/icons/hard-drive";
 
+import MemoryStick from "@lucide/svelte/icons/memory-stick";
+
 import Users from "@lucide/svelte/icons/users";
 
 import Globe from "@lucide/svelte/icons/globe";
@@ -80,6 +82,7 @@ export const SIDEBAR_SECTIONS: SidebarSection[] = [
 		{ id: "updates", label: "Updates", icon: Download },
 		{ id: "restore", label: "Backup & restore", icon: History },
 		{ id: "storage", label: "Storage", icon: HardDrive },
+		{ id: "memory", label: "Memory", icon: MemoryStick },
 		{ id: "privacy", label: "Privacy & security", icon: Shield },
 		{ id: "users", label: "Users", icon: Users },
 		{ id: "datetime", label: "Date & language", icon: Globe },
