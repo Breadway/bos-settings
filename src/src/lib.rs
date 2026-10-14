@@ -53,6 +53,13 @@ pub fn run() {
             initial_page,
         )))
         .setup(move |app| {
+            let handle = app.handle().clone();
+            app.manage(commands::display_guard::DisplayGuard::production(
+                move |outcome| {
+                    let _ = handle.emit("display-guard-outcome", outcome);
+                },
+            ));
+            commands::display_guard::revert_on_signal(app.handle().clone());
             commands::theme::watch_and_emit(app.handle());
             if let Some(req) = screenshot_req {
                 screenshot::dispatch(req, app.handle().clone());
@@ -112,6 +119,13 @@ pub fn run() {
             commands::breadpad::save_breadpad_config,
             commands::breadsearch::get_breadsearch_config,
             commands::breadsearch::save_breadsearch_config,
+            commands::breadram::get_breadram_config,
+            commands::breadram::save_breadram_config,
+            commands::breadram::apply_breadram_profile,
+            commands::breadram::breadram_status,
+            commands::breadram::breadram_actions,
+            commands::breadram::set_breadram_mode,
+            commands::breadram::set_breadram_protection,
             commands::breadbar::get_breadbar_css,
             commands::breadbar::save_breadbar_css,
             commands::breadbar::get_breadbar_style,
@@ -139,8 +153,10 @@ pub fn run() {
             commands::hyprland::get_live_monitors,
             commands::hyprland::get_monitor_rules,
             commands::hyprland::save_monitor_rules,
-            commands::hyprland::apply_monitor_layout,
-            commands::hyprland::persist_monitor_layout,
+            commands::display_guard::apply_display_layout,
+            commands::display_guard::keep_display_layout,
+            commands::display_guard::revert_display_layout,
+            commands::display_guard::display_guard_status,
             commands::hyprland::open_hyprland_conf,
             commands::hyprland::open_keybinds_viewer,
             commands::keybinds::get_keybinds,
@@ -169,6 +185,8 @@ pub fn run() {
             commands::network::connect_wifi,
             commands::network::open_connection_editor,
             commands::bluetooth::get_adapter_powered,
+            commands::bluetooth::get_bluetooth_state,
+            commands::bluetooth::start_bluetooth_service,
             commands::bluetooth::set_adapter_powered,
             commands::bluetooth::get_paired_devices,
             commands::bluetooth::scan_bluetooth,
@@ -248,6 +266,15 @@ pub fn run() {
             commands::optional::get_optional_software,
             commands::optional::enable_flathub,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // A display change nobody confirmed is undone before the process
+            // goes away, however the window was closed.
+            if let tauri::RunEvent::Exit = event {
+                if let Some(guard) = app.try_state::<commands::display_guard::DisplayGuard>() {
+                    guard.revert_on_exit();
+                }
+            }
+        });
 }
