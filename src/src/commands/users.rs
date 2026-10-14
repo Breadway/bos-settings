@@ -97,23 +97,28 @@ fn valid_username(name: &str) -> bool {
         .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(*b, b'_' | b'-'))
 }
 
-/// chpasswd reads `user:password` lines; a `:`, `\n`, or `\r` in either
-/// field injects extra passwd entries or shifts columns.
-fn valid_chpasswd_password(password: &str) -> bool {
-    !password.is_empty()
-        && password.len() <= 512
-        && !password.contains('\n')
-        && !password.contains('\r')
-        && !password.contains(':')
-        && !password.contains('\0')
+/// chpasswd reads one `user:password` line and splits it at the *first*
+/// `:` only (shadow-utils `stpsep`), and usernames can't contain `:`, so a
+/// colon in the password is safe (BSET-64). A line break or NUL would start
+/// a second entry, so those stay out.
+fn chpasswd_password_problem(password: &str) -> Option<&'static str> {
+    if password.is_empty() {
+        Some("Enter a password.")
+    } else if password.len() > 512 {
+        Some("That password is too long. Use 512 characters or fewer.")
+    } else if password.contains(['\n', '\r', '\0']) {
+        Some("Passwords can't contain line breaks.")
+    } else {
+        None
+    }
 }
 
 fn chpasswd_input(username: &str, password: &str) -> Result<String, String> {
     if !valid_username(username) {
-        return Err("invalid username".into());
+        return Err("Usernames start with a lowercase letter or _, then use lowercase letters, numbers, _ or -.".into());
     }
-    if !valid_chpasswd_password(password) {
-        return Err("invalid password".into());
+    if let Some(problem) = chpasswd_password_problem(password) {
+        return Err(problem.into());
     }
     Ok(format!("{username}:{password}\n"))
 }
@@ -139,7 +144,7 @@ pub async fn change_password(username: String, password: String) -> Result<(), S
     if util::run_with_stdin(&["pkexec", "chpasswd"], &input).await {
         Ok(())
     } else {
-        Err("Failed to change password".into())
+        Err("The password wasn't changed. The password prompt may have been cancelled, or the system refused it.".into())
     }
 }
 
@@ -213,8 +218,19 @@ mod tests {
         assert!(chpasswd_input("alice\rroot", "pw").is_err());
         assert!(chpasswd_input("alice", "pw\rroot:x").is_err());
         assert!(chpasswd_input("al:ice", "pw").is_err());
-        assert!(chpasswd_input("alice", "p:w").is_err());
+        assert!(chpasswd_input("alice", "pw\0x").is_err());
+        assert!(chpasswd_input("alice", "").is_err());
         assert_eq!(chpasswd_input("alice", "secret").unwrap(), "alice:secret\n");
+    }
+
+    /// chpasswd splits at the first `:`, and the username has none, so the
+    /// rest of the line is the password verbatim.
+    #[test]
+    fn colon_in_password_is_one_entry() {
+        let line = chpasswd_input("alice", "a:b::c").unwrap();
+        assert_eq!(line.lines().count(), 1);
+        let (user, pw) = line.trim_end_matches('\n').split_once(':').unwrap();
+        assert_eq!((user, pw), ("alice", "a:b::c"));
     }
 
     #[test]
