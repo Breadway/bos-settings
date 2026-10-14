@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from "$lib/confirm.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
@@ -70,7 +71,7 @@
 	}
 
 	async function removeAccount(username: string) {
-		if (!confirm(`Remove user ${username}? Deletes the account and its home directory. This cannot be undone.`)) return;
+		if (!(await confirmAction({ title: `Remove ${username}?`, message: "Deletes the account and its home directory. This cannot be undone.", confirmLabel: "Remove" }))) return;
 		try {
 			await invoke("remove_user", { username });
 		} catch (e) {
