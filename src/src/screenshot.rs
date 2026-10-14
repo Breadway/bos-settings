@@ -66,6 +66,7 @@ const KNOWN_VIEWS: &[&str] = &[
     "snapshots",
     "updates",
     "system",
+    "memory",
     "printing",
     "vpn",
     "nightlight",
