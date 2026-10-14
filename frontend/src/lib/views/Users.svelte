@@ -64,8 +64,8 @@
 			setStatus(username, "Password changed");
 			openPasswordFor = null;
 			passwordInput = "";
-		} catch {
-			setStatus(username, "The password wasn't changed", true);
+		} catch (e) {
+			setStatus(username, `${e}`, true);
 			openPasswordFor = null;
 		}
 	}
@@ -143,7 +143,7 @@
 {#if adding}
 	<Sheet title="Add a person" lede="They get their own home folder and settings." onClose={() => (adding = false)}>
 		<label class="field"><span>Name</span><input class="ui-input" bind:value={newFullName} oninput={suggestUsername} placeholder="Alex Smith" /></label>
-		<label class="field"><span>Username</span><input class="ui-input" bind:value={newUsername} oninput={() => (usernameTouched = true)} placeholder="alex" /><small>Lowercase letters and numbers. Used to log in.</small></label>
+		<label class="field"><span>Username</span><input class="ui-input" bind:value={newUsername} oninput={() => (usernameTouched = true)} placeholder="alex" /><small>Lowercase letters, numbers, _ and -. Used to log in.</small></label>
 		<label class="field"><span>Password</span><input class="ui-input" type="password" autocomplete="new-password" bind:value={newPassword} /></label>
 		{#if addStatus}<p class="bad">{addStatus}</p>{/if}
 		{#snippet actions()}
