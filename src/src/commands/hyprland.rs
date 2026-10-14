@@ -83,7 +83,7 @@ fn hypr_path(name: &str) -> std::path::PathBuf {
     config::config_dir().join("hypr").join(name)
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct LiveMonitor {
     pub name: String,
     pub mode: String,
@@ -101,6 +101,9 @@ pub struct LiveMonitor {
     /// Name of the output this one mirrors, empty when it is not mirroring.
     #[serde(default)]
     pub mirror_of: String,
+    /// Turned off in the compositor. Only `hyprctl monitors all` reports these.
+    #[serde(default)]
+    pub disabled: bool,
 }
 
 fn json_i32(v: &serde_json::Value, key: &str) -> Option<i32> {
@@ -133,44 +136,77 @@ fn json_vrr(v: &serde_json::Value) -> u32 {
     }
 }
 
-#[tauri::command]
-pub fn get_live_monitors() -> Vec<LiveMonitor> {
-    let Some(value) = bread_utils::proc::run_json(
-        "hyprctl",
-        &["monitors", "-j"],
-        std::time::Duration::from_secs(3),
-    ) else {
+/// Drop repeated entries but keep first-seen order. Hyprland lists some
+/// modes twice (the same size and refresh from two EDID timings), and the
+/// picker must never see the same mode twice.
+fn dedupe_keep_order(items: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    items
+        .into_iter()
+        .filter(|item| seen.insert(item.clone()))
+        .collect()
+}
+
+/// Name of the output being mirrored, from a `mirrorOf` value. Current
+/// Hyprland reports the source's numeric id ("0"), older builds a name;
+/// "none", "" and "-1" mean the output is not mirroring.
+fn resolve_mirror(
+    value: Option<&Value>,
+    ids: &std::collections::HashMap<String, String>,
+) -> String {
+    let raw = match value {
+        Some(Value::String(s)) => s.trim().to_string(),
+        Some(Value::Number(n)) => n.to_string(),
+        _ => return String::new(),
+    };
+    if raw.is_empty() || raw == "none" || raw == "-1" {
+        return String::new();
+    }
+    ids.get(&raw).cloned().unwrap_or(raw)
+}
+
+/// Turn the JSON of `hyprctl monitors [all] -j` into the panel's monitors.
+/// Entries without a name or size are skipped, and a repeated output name is
+/// kept only once.
+pub(crate) fn parse_monitors(value: &serde_json::Value) -> Vec<LiveMonitor> {
+    let Some(monitors) = value.as_array() else {
         return Vec::new();
     };
-    let Ok(monitors) = serde_json::from_value::<Vec<serde_json::Value>>(value) else {
-        return Vec::new();
-    };
+    // `mirrorOf` is the numeric id of the source output, not its name.
+    let ids: std::collections::HashMap<String, String> = monitors
+        .iter()
+        .filter_map(|m| {
+            let id = m.get("id")?.as_i64()?;
+            Some((id.to_string(), m.get("name")?.as_str()?.to_string()))
+        })
+        .collect();
+    let mut names = std::collections::HashSet::new();
     monitors
         .iter()
         .filter_map(|m| {
             let name = m.get("name")?.as_str()?.to_string();
             let width = json_u32(m, "width")?;
             let height = json_u32(m, "height")?;
+            if !names.insert(name.clone()) {
+                return None;
+            }
             let refresh = json_f64(m, "refreshRate").unwrap_or(60.0);
             let x = json_i32(m, "x").unwrap_or(0);
             let y = json_i32(m, "y").unwrap_or(0);
             let scale = json_f64(m, "scale").unwrap_or(1.0).max(0.1);
             let transform = json_u32(m, "transform").unwrap_or(0);
-            let available_modes = m
-                .get("availableModes")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|x| x.as_str().map(str::to_string))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            let mirror_of = m
-                .get("mirrorOf")
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty() && *s != "none")
-                .unwrap_or("")
-                .to_string();
+            let available_modes = dedupe_keep_order(
+                m.get("availableModes")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|x| x.as_str().map(str::to_string))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default(),
+            );
+            let mirror_of = resolve_mirror(m.get("mirrorOf"), &ids);
+            let disabled = m.get("disabled").and_then(Value::as_bool).unwrap_or(false);
             Some(LiveMonitor {
                 name,
                 mode: format!("{width}x{height} @ {refresh:.0}Hz"),
@@ -184,8 +220,31 @@ pub fn get_live_monitors() -> Vec<LiveMonitor> {
                 available_modes,
                 vrr: json_vrr(m),
                 mirror_of,
+                disabled,
             })
         })
+        .collect()
+}
+
+/// Every output Hyprland knows, including turned-off ones and mirrors, read
+/// live from `hyprctl monitors all -j`.
+pub(crate) fn read_all_monitors() -> Result<Vec<LiveMonitor>, String> {
+    let value = bread_utils::proc::run_json(
+        "hyprctl",
+        &["monitors", "all", "-j"],
+        std::time::Duration::from_secs(3),
+    )
+    .ok_or_else(|| "Hyprland did not answer `hyprctl monitors all -j`.".to_string())?;
+    Ok(parse_monitors(&value))
+}
+
+/// The enabled outputs, with mirror relationships read from live state.
+#[tauri::command]
+pub fn get_live_monitors() -> Vec<LiveMonitor> {
+    read_all_monitors()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|m| !m.disabled)
         .collect()
 }
 
@@ -224,7 +283,7 @@ fn write_rule_objects(rules: &[Map<String, Value>]) -> Result<(), String> {
     config::atomic_write(&config_path(), &json).map_err(|e| e.to_string())
 }
 
-fn lua_ident(name: &str) -> Result<(), String> {
+pub(crate) fn lua_ident(name: &str) -> Result<(), String> {
     if name.is_empty()
         || !name
             .chars()
@@ -235,13 +294,13 @@ fn lua_ident(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn mode_string(m: &LiveMonitor) -> String {
-    let refresh = if m.refresh > 1.0 {
-        m.refresh.round() as u32
-    } else {
-        60
-    };
-    format!("{}x{}@{refresh}", m.width.max(1), m.height.max(1))
+/// `WxH@R` with the refresh kept to two decimals (59.94 stays 59.94, 60.003
+/// becomes 60) so a 59.94 Hz mode is not silently turned into 60 Hz.
+pub(crate) fn mode_string(m: &LiveMonitor) -> String {
+    let refresh = if m.refresh > 1.0 { m.refresh } else { 60.0 };
+    let text = format!("{refresh:.2}");
+    let text = text.trim_end_matches('0').trim_end_matches('.');
+    format!("{}x{}@{text}", m.width.max(1), m.height.max(1))
 }
 
 fn scale_string(m: &LiveMonitor) -> String {
@@ -255,8 +314,14 @@ fn scale_string(m: &LiveMonitor) -> String {
 /// One `hl.monitor{}` call for a connected monitor. `vrr` is whatever the
 /// panel was handed (the live value unless the user changed it); it is never
 /// forced off.
-fn lua_statement(m: &LiveMonitor) -> Result<String, String> {
+pub(crate) fn lua_statement(m: &LiveMonitor) -> Result<String, String> {
     lua_ident(&m.name)?;
+    if m.disabled {
+        return Ok(format!(
+            "hl.monitor({{ output = \"{}\", disabled = true }})",
+            m.name
+        ));
+    }
     let mirror = if m.mirror_of.is_empty() {
         String::new()
     } else {
@@ -324,29 +389,33 @@ fn merge_rules(
 }
 
 /// Ask Hyprland (configured with hyprland.lua, so `hyprctl eval` works) to
-/// run `lua`; maps its answers to
-/// readable errors.
-fn hyprctl_eval(lua: &str) -> Result<(), String> {
-    let output = std::process::Command::new("hyprctl")
-        .args(["eval", lua])
-        .output()
-        .map_err(|e| e.to_string())?;
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+/// run `lua`; maps its answers to readable errors. The reply must be "ok":
+/// `hyprctl keyword` is refused under the Lua config yet still exits 0.
+pub(crate) fn hyprctl_eval(lua: &str) -> Result<(), String> {
+    let out = bread_utils::proc::run("hyprctl", &["eval", lua], std::time::Duration::from_secs(5));
+    let stdout = out.stdout.trim().to_string();
     if stdout != "ok" {
         let low = stdout.to_lowercase();
         if low.contains("unknown request")
             || low.contains("unknown command")
             || low.contains("only supported with the lua config manager")
-            || stdout.is_empty()
         {
             return Err("Live layout needs BOS Hyprland (hyprctl eval / hl.monitor).".into());
+        }
+        if stdout.is_empty() {
+            let why = out.stderr.trim();
+            return Err(if why.is_empty() {
+                "hyprctl gave no answer.".into()
+            } else {
+                format!("hyprctl: {why}")
+            });
         }
         return Err(format!("hyprctl: {stdout}"));
     }
     Ok(())
 }
 
-fn persist_layout(monitors: &[LiveMonitor]) -> Result<(), String> {
+pub(crate) fn persist_layout(monitors: &[LiveMonitor]) -> Result<(), String> {
     for m in monitors {
         lua_ident(&m.name)?;
     }
@@ -360,40 +429,6 @@ fn persist_layout(monitors: &[LiveMonitor]) -> Result<(), String> {
         &format!("-- Managed by BOS Settings.\n{}\n", stmts.join("\n")),
     )?;
     write_rule_objects(&merged)
-}
-
-/// Live-apply a layout via BOS Hyprland `hl.monitor()`. With `persist`
-/// (default true) the result is also merged into monitors.json; the display
-/// panel passes `false` while a "keep these settings?" countdown is running
-/// and only persists (see [`persist_monitor_layout`]) once the user keeps it.
-#[tauri::command]
-pub fn apply_monitor_layout(
-    monitors: Vec<LiveMonitor>,
-    persist: Option<bool>,
-) -> Result<(), String> {
-    if monitors.is_empty() {
-        return Err("no monitors".into());
-    }
-    let mut stmts = Vec::new();
-    for m in &monitors {
-        stmts.push(lua_statement(m)?);
-    }
-    hyprctl_eval(&stmts.join("; "))?;
-    if persist.unwrap_or(true) {
-        persist_layout(&monitors)?;
-    }
-    Ok(())
-}
-
-/// Write the given layout into monitors.json (merged by output name)
-/// without touching the live session: the "Keep changes" half of the
-/// keep-or-revert flow.
-#[tauri::command]
-pub fn persist_monitor_layout(monitors: Vec<LiveMonitor>) -> Result<(), String> {
-    if monitors.is_empty() {
-        return Err("no monitors".into());
-    }
-    persist_layout(&monitors)
 }
 
 #[tauri::command]
@@ -458,6 +493,7 @@ mod tests {
             available_modes: vec![],
             vrr: 0,
             mirror_of: String::new(),
+            disabled: false,
         }
     }
 
@@ -572,5 +608,44 @@ mod tests {
         let mut m = mon("eDP-1");
         m.mirror_of = "a\"b".into();
         assert!(lua_statement(&m).is_err());
+    }
+
+    const FIXTURE: &str = include_str!("testdata/hyprctl-monitors-all.json");
+
+    fn fixture_monitors() -> Vec<LiveMonitor> {
+        parse_monitors(&serde_json::from_str(FIXTURE).unwrap())
+    }
+
+    #[test]
+    fn duplicate_modes_are_removed_keeping_order() {
+        let monitors = fixture_monitors();
+        for name in ["DVI-I-1", "DVI-I-2"] {
+            let m = monitors.iter().find(|m| m.name == name).unwrap();
+            assert_eq!(m.available_modes.len(), 25, "{name}");
+            let unique: std::collections::HashSet<_> = m.available_modes.iter().collect();
+            assert_eq!(unique.len(), m.available_modes.len(), "{name}");
+            assert_eq!(m.available_modes[0], "1920x1080@60.00Hz");
+            assert_eq!(m.available_modes[1], "1920x1080@59.94Hz");
+            assert_eq!(m.available_modes.last().unwrap(), "720x400@70.08Hz");
+        }
+        let edp = monitors.iter().find(|m| m.name == "eDP-1").unwrap();
+        assert_eq!(edp.available_modes.len(), 11);
+    }
+
+    #[test]
+    fn dedupe_keeps_first_occurrence_order() {
+        let out = dedupe_keep_order(["b", "a", "b", "c", "a"].map(String::from));
+        assert_eq!(out, ["b", "a", "c"]);
+    }
+
+    #[test]
+    fn repeated_output_names_are_kept_once() {
+        let v = serde_json::json!([
+            {"name": "A", "width": 1, "height": 1},
+            {"name": "A", "width": 2, "height": 2}
+        ]);
+        let parsed = parse_monitors(&v);
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].width, 1);
     }
 }

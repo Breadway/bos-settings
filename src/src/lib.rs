@@ -53,6 +53,13 @@ pub fn run() {
             initial_page,
         )))
         .setup(move |app| {
+            let handle = app.handle().clone();
+            app.manage(commands::display_guard::DisplayGuard::production(
+                move |outcome| {
+                    let _ = handle.emit("display-guard-outcome", outcome);
+                },
+            ));
+            commands::display_guard::revert_on_signal(app.handle().clone());
             commands::theme::watch_and_emit(app.handle());
             if let Some(req) = screenshot_req {
                 screenshot::dispatch(req, app.handle().clone());
@@ -146,8 +153,10 @@ pub fn run() {
             commands::hyprland::get_live_monitors,
             commands::hyprland::get_monitor_rules,
             commands::hyprland::save_monitor_rules,
-            commands::hyprland::apply_monitor_layout,
-            commands::hyprland::persist_monitor_layout,
+            commands::display_guard::apply_display_layout,
+            commands::display_guard::keep_display_layout,
+            commands::display_guard::revert_display_layout,
+            commands::display_guard::display_guard_status,
             commands::hyprland::open_hyprland_conf,
             commands::hyprland::open_keybinds_viewer,
             commands::keybinds::get_keybinds,
@@ -255,6 +264,15 @@ pub fn run() {
             commands::optional::get_optional_software,
             commands::optional::enable_flathub,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // A display change nobody confirmed is undone before the process
+            // goes away, however the window was closed.
+            if let tauri::RunEvent::Exit = event {
+                if let Some(guard) = app.try_state::<commands::display_guard::DisplayGuard>() {
+                    guard.revert_on_exit();
+                }
+            }
+        });
 }

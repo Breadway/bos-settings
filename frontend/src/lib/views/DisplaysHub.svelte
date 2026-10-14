@@ -6,7 +6,7 @@
 
 <Hub
 	title="Displays"
-	lede="Drag to arrange. Scale and rotate apply now."
+	lede="Drag to arrange. Every change can be kept or reverted."
 	tabs={[
 		{ id: "hyprland", label: "Layout", component: Display },
 		{ id: "nightlight", label: "Night light", component: NightLight },
