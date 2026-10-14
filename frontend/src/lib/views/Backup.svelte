@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from "$lib/confirm.svelte";
 	import { useDraft } from "$lib/drafts.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
@@ -133,9 +134,7 @@
 			return;
 		}
 		if (!dryRun) {
-			const ok = confirm(
-				`Copy the files from this backup into ${target}?`,
-			);
+			const ok = await confirmAction({ title: "Restore files?", message: `Copy the files from this backup into ${target}?`, confirmLabel: "Restore", danger: false });
 			if (!ok) return;
 		}
 		log = [];
