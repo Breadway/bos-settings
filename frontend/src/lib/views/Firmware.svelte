@@ -65,7 +65,7 @@
 		{/if}
 		<div class="foot">
 			<button class="btn small" disabled={busy} onclick={checkForUpdates}>{busy ? "Working…" : "Check for firmware updates"}</button>
-			<button class="btn small primary" disabled={busy} onclick={updateAll}>Install firmware updates</button>
+			{#if devices?.length}<button class="btn small primary" disabled={busy} onclick={updateAll}>Install firmware updates</button>{/if}
 		</div>
 		{#if log.length}<details class="ui-disclosure"><summary>Details</summary><LogView lines={log} /></details>{/if}
 	</Group>
