@@ -5,7 +5,9 @@
 	// own. The caller already applied the change live; `onKeep` persists it,
 	// `onRevert` puts the previous state back. If nothing is chosen before the
 	// countdown ends it reverts, because a bad scale or rotation can leave the
-	// screen unreadable and unreachable.
+	// screen unreadable and unreachable. The real deadline is held by the
+	// backend, so this countdown is only a display of it: closing or leaving
+	// the page cannot stop the revert, and `seconds` is the time still left.
 	let {
 		seconds = 15,
 		onKeep,
