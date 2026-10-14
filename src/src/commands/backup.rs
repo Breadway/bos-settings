@@ -192,6 +192,15 @@ fn exclude_args(home: &str) -> Vec<String> {
     args
 }
 
+/// `--exclude*` are flags of the `backup` subcommand, so they must follow it:
+/// before it restic reads the first exclude value as the subcommand name.
+fn backup_args(repo: &str, home: &str) -> Vec<String> {
+    let mut args = vec!["--repo".to_string(), repo.to_string(), "backup".into()];
+    args.extend(exclude_args(home));
+    args.push(home.to_string());
+    args
+}
+
 #[tauri::command]
 pub async fn restic_backup(app: AppHandle, session_id: String) -> bool {
     let s = match require_ready() {
@@ -203,11 +212,7 @@ pub async fn restic_backup(app: AppHandle, session_id: String) -> bool {
     };
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
     let password = s.password.clone().unwrap_or_default();
-    let excludes = exclude_args(&home);
-    let mut args = vec!["--repo".to_string(), s.repo.clone()];
-    args.extend(excludes);
-    args.push("backup".into());
-    args.push(home);
+    let args = backup_args(&s.repo, &home);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     streaming::run_hardcoded_env(
         app,
@@ -485,15 +490,66 @@ mod tests {
         assert!(joined.contains("target"));
         assert!(joined.contains(".git"));
     }
+
+    #[test]
+    fn backup_subcommand_precedes_its_flags() {
+        let args = backup_args("/mnt/repo", "/home/a");
+        assert_eq!(args[..3], ["--repo", "/mnt/repo", "backup"]);
+        let first_flag = args
+            .iter()
+            .position(|a| a.starts_with("--exclude"))
+            .unwrap();
+        assert!(first_flag > 2);
+        assert_eq!(args.last().map(String::as_str), Some("/home/a"));
+    }
+
+    /// Runs the real argv through restic when it is installed.
+    #[test]
+    fn restic_accepts_backup_args() {
+        if !command_exists("restic") {
+            eprintln!("restic not installed; skipping");
+            return;
+        }
+        let tmp = std::env::temp_dir().join(format!("bset72-{}", std::process::id()));
+        let repo = tmp.join("repo");
+        let home = tmp.join("home");
+        std::fs::create_dir_all(home.join(".cache")).unwrap();
+        std::fs::write(home.join("note.txt"), "keep").unwrap();
+        std::fs::write(home.join(".cache/skip.txt"), "skip").unwrap();
+        let run = |args: &[String]| {
+            std::process::Command::new("restic")
+                .args(args)
+                .env("RESTIC_PASSWORD", "test-only")
+                .env("RESTIC_CACHE_DIR", tmp.join("cache"))
+                .output()
+                .unwrap()
+        };
+        let repo_s = repo.to_string_lossy().into_owned();
+        let init = run(&["--repo".into(), repo_s.clone(), "init".into()]);
+        assert!(
+            init.status.success(),
+            "{}",
+            String::from_utf8_lossy(&init.stderr)
+        );
+        let out = run(&backup_args(&repo_s, &home.to_string_lossy()));
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let ls = run(&["--repo".into(), repo_s, "ls".into(), "latest".into()]);
+        let listing = String::from_utf8_lossy(&ls.stdout);
+        assert!(listing.contains("note.txt"), "{listing}");
+        assert!(!listing.contains("skip.txt"), "{listing}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }
 
 /// Timer entry point: no window, webview or command output events.
 pub async fn scheduled_backup() -> Result<(), String> {
     let s = require_ready()?;
     let home = home_dir().to_string_lossy().into_owned();
-    let mut args = vec!["--repo".to_string(), s.repo];
-    args.extend(exclude_args(&home));
-    args.extend(["backup".into(), home]);
+    let args = backup_args(&s.repo, &home);
     let status = Command::new("restic")
         .args(args)
         .env("RESTIC_PASSWORD", s.password.unwrap_or_default())
