@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from "$lib/confirm.svelte";
  import {invoke} from '@tauri-apps/api/core';
  import {runStreamed} from '$lib/streaming';
  import ViewScaffold from '$lib/components/ViewScaffold.svelte';
@@ -13,7 +14,7 @@
  let query=$state('');let apps=$state<App[]>([]);let errors=$state<string[]>([]);let searched=$state(false);let busy=$state(false);let installing=$state('');let logs=$state<string[]>([]);let epoch=0;let visible=$derived(apps.filter(app=>source==='all'||app.source===source));
  async function search(){const n=++epoch;busy=true;errors=[];try{const result=await invoke<{apps:App[];errors:string[]}>('search_apps',{query});if(n===epoch){apps=result.apps;errors=result.errors;searched=true}}catch(e){errors=[String(e)]}finally{if(n===epoch)busy=false}}
  async function install(app:App){if(installing)return;
- if(app.source==='aur' && !confirm('AUR packages contain community build scripts. Continue to interactive PKGBUILD review in a terminal?'))return;
+ if(app.source==='aur' && !(await confirmAction({title:'Install from the AUR?',message:'AUR packages contain community build scripts. Continue to interactive PKGBUILD review in a terminal?',confirmLabel:'Continue'})))return;
  installing=app.id;logs=[];try{const ok=await runStreamed('install_store_app',{id:app.id,source:app.source},line=>logs=[...logs,line]);if(!ok)errors=['Installation failed. Review the log.'];else if(app.source==='aur')errors=['Review and finish the install in the opened terminal, then search again to refresh installed status.'];else await search()}catch(e){errors=[String(e)]}finally{installing=''}}
 </script>
 <ViewScaffold title="Get apps" lede="Apps from Flathub, the BOS repositories and the AUR, in one place.">
