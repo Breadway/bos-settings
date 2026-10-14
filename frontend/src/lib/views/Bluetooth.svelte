@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from "$lib/confirm.svelte";
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
@@ -100,7 +101,7 @@
 	}
 
 	async function forget(dev: BtDevice) {
-		if (!confirm(`Forget ${dev.name}? You'll need to pair it again to use it.`)) return;
+		if (!(await confirmAction({ title: `Forget ${dev.name}?`, message: "You'll need to pair it again to use it.", confirmLabel: "Forget" }))) return;
 		error = "";
 		try { await invoke("bt_forget", { address: dev.address }); changes.message = `Forgot ${dev.name}`; changes.undo = null; }
 		catch (e) { error = `Couldn't forget ${dev.name}: ${e}`; }
