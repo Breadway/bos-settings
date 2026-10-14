@@ -116,6 +116,8 @@ type Notify = Arc<dyn Fn(&GuardOutcome) + Send + Sync>;
 pub struct Rescue {
     pub path: std::path::PathBuf,
     pub spawn: fn(u64) -> Result<(), String>,
+    /// Whether the process that wrote a record is still a running BOS Settings.
+    pub alive: fn(u32) -> bool,
 }
 
 struct Inner {
@@ -317,7 +319,12 @@ impl DisplayGuard {
                 rescue: None,
                 notify: Arc::new(notify),
                 op: Mutex::new(()),
-                state: Mutex::new(State::default()),
+                // Seeded from the clock, so ids from separate runs never meet
+                // in the crash-recovery record (BSET-67 review).
+                state: Mutex::new(State {
+                    next_id: super::display_rescue::now_ms().saturating_mul(1000),
+                    ..State::default()
+                }),
                 wake: Condvar::new(),
             }),
         }
@@ -332,6 +339,7 @@ impl DisplayGuard {
             g.set_rescue(Rescue {
                 path,
                 spawn: super::display_rescue::spawn_watchdog,
+                alive: super::display_rescue::owner_alive,
             });
         }
         g
@@ -443,6 +451,32 @@ impl Inner {
         Ok(())
     }
 
+    /// A record from another run must never be overwritten: its `before` is
+    /// the only copy of the layout that run promised to restore. If that run
+    /// is gone, put its layout back now (its own watchdog then finds the
+    /// record cleared and exits); if it is still running, refuse.
+    fn settle_foreign_record(&self) -> Result<(), String> {
+        use super::display_rescue as dr;
+        let Some(r) = &self.rescue else { return Ok(()) };
+        let Some(rec) = dr::read_record(&r.path) else {
+            return Ok(());
+        };
+        if rec.pid == std::process::id() {
+            return Ok(());
+        }
+        if (r.alive)(rec.pid) {
+            return Err(
+                "Another BOS Settings window is waiting for an answer about a display change. Keep or revert it there first."
+                    .into(),
+            );
+        }
+        dr::restore(&*self.comp, &rec).map_err(|e| {
+            format!("An earlier display change that was never confirmed could not be undone ({e}), so nothing was changed.")
+        })?;
+        dr::clear_record(&r.path, rec.id);
+        Ok(())
+    }
+
     fn disarm_rescue(&self, id: u64) {
         if let Some(r) = &self.rescue {
             super::display_rescue::clear_record(&r.path, id);
@@ -466,6 +500,7 @@ impl Inner {
         if lock(&self.state).pending.is_some() {
             return Err("Another display change is still waiting to be kept or reverted.".into());
         }
+        self.settle_foreign_record()?;
         let before = self.comp.read().map_err(|e| {
             format!("The current display layout could not be read, so nothing was changed. {e}")
         })?;
@@ -1301,6 +1336,7 @@ mod tests {
         g.set_rescue(Rescue {
             path: path.clone(),
             spawn,
+            alive: |_| false,
         });
         (g, path)
     }
@@ -1375,5 +1411,82 @@ mod tests {
         );
         assert!(read_record(&path).is_none());
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    /// BSET-67 review: run A applies and is killed; the app is restarted
+    /// inside A's window and a new change is made. A's layout must not be
+    /// lost, the new change must not collide with A's id, and A's watchdog
+    /// must not act on the new record.
+    #[test]
+    fn restart_inside_a_dead_runs_window_keeps_both_safe() {
+        use super::super::display_rescue::{check_once, read_record, write_record, Record};
+        let mock = Mock::new(fixture());
+        let (g, path) = rescued(&mock, "restart");
+        // Run A left this: the good layout, a deadline still in the future,
+        // a pid that is gone, and an id a fresh counter could also produce.
+        let mut changed = fixture();
+        named(&mut changed, "DVI-I-2").transform = 0;
+        *lock(&mock.sim) = changed.clone();
+        write_record(
+            &path,
+            &Record {
+                id: 1,
+                pid: 4_000_000,
+                deadline_ms: super::super::display_rescue::now_ms() + 60_000,
+                before: fixture(),
+            },
+        )
+        .unwrap();
+        let id = g
+            .apply_for(rescaled(), Duration::from_secs(30))
+            .unwrap()
+            .pending
+            .unwrap()
+            .id;
+        assert_ne!(id, 1, "ids are unique across runs");
+        let rec = read_record(&path).unwrap();
+        assert_eq!(rec.id, id);
+        assert_eq!(
+            rec.before,
+            fixture(),
+            "run A's layout was put back first, so it is what this change restores"
+        );
+        // Run A's watchdog wakes up: the record is not its own, so it leaves it.
+        assert_eq!(check_once(&*mock, &path, Some(1), |_| false), None);
+        assert_eq!(read_record(&path).map(|r| r.id), Some(id));
+        g.revert(id).unwrap();
+        assert_eq!(mock.state(), fixture(), "revert lands on the good layout");
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_live_other_window_blocks_a_new_change() {
+        use super::super::display_rescue::{write_record, Record};
+        let mock = Mock::new(fixture());
+        let dir = std::env::temp_dir().join(format!("bset67-g-live-{}", std::process::id()));
+        let path = dir.join("display-pending.json");
+        let (mut g, _) = guard(&mock);
+        g.set_rescue(Rescue {
+            path: path.clone(),
+            spawn: |_| Ok(()),
+            alive: |_| true,
+        });
+        write_record(
+            &path,
+            &Record {
+                id: 9,
+                pid: 4_000_000,
+                deadline_ms: super::super::display_rescue::now_ms() + 60_000,
+                before: fixture(),
+            },
+        )
+        .unwrap();
+        let err = g
+            .apply_for(rescaled(), Duration::from_secs(30))
+            .unwrap_err();
+        assert!(err.contains("Another BOS Settings window"), "{err}");
+        assert_eq!(mock.state(), fixture(), "nothing changed");
+        assert!(lock(&mock.log).is_empty(), "the compositor was not touched");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

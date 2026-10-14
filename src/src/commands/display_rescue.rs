@@ -37,7 +37,10 @@ pub fn now_ms() -> u64 {
 /// per-user, mode 0700 and cleared at logout, which is the right lifetime:
 /// a stale record must never apply to a later session.
 pub fn record_path() -> Option<PathBuf> {
-    let dir = std::env::var_os("XDG_RUNTIME_DIR")?;
+    let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") else {
+        eprintln!("bos-settings: XDG_RUNTIME_DIR is not set; display changes are not protected against a crash");
+        return None;
+    };
     Some(PathBuf::from(dir).join("bos-settings/display-pending.json"))
 }
 
@@ -64,16 +67,26 @@ pub fn clear_record(path: &Path, id: u64) {
 }
 
 /// True when `pid` is a live bos-settings process. A recycled pid that now
-/// belongs to something else counts as gone.
+/// belongs to something else counts as gone. An owner whose binary was
+/// replaced by an update still runs and reads as `<path> (deleted)`.
 pub fn owner_alive(pid: u32) -> bool {
     let Ok(exe) = std::fs::read_link(format!("/proc/{pid}/exe")) else {
         return false;
     };
     let me = std::env::current_exe().ok();
     match me {
-        Some(me) => exe == me || exe.file_name() == me.file_name(),
+        Some(me) => same_program(&exe, &me),
         None => true,
     }
+}
+
+fn same_program(exe: &Path, me: &Path) -> bool {
+    let strip = |p: &Path| {
+        let s = p.to_string_lossy();
+        s.strip_suffix(" (deleted)").unwrap_or(&s).to_string()
+    };
+    let (a, b) = (strip(exe), strip(me));
+    a == b || Path::new(&a).file_name() == Path::new(&b).file_name()
 }
 
 #[derive(Debug, PartialEq)]
@@ -190,7 +203,15 @@ pub fn spawn_watchdog(id: u64) -> Result<(), String> {
             Ok(())
         });
     }
-    cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+    let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+    // Reap it when it exits so it never lingers as a zombie of the app.
+    std::thread::Builder::new()
+        .name("display-watchdog-reaper".into())
+        .spawn(move || {
+            let _ = child.wait();
+        })
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 extern "C" {
@@ -296,6 +317,17 @@ mod tests {
         assert_eq!(check_once(&comp, &path, Some(1), |_| false), None);
         assert_eq!(comp.0.lock().unwrap().len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn replaced_binary_is_the_same_program() {
+        let me = Path::new("/usr/local/bin/bos-settings");
+        assert!(same_program(
+            Path::new("/usr/local/bin/bos-settings (deleted)"),
+            me
+        ));
+        assert!(same_program(me, me));
+        assert!(!same_program(Path::new("/usr/bin/sleep"), me));
     }
 
     #[test]
