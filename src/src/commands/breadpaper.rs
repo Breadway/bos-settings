@@ -14,9 +14,27 @@ use tokio::process::Command;
 /// wallpaper anywhere else (BSET-70) is allowed here as that single file, and
 /// only when it really is an image file that exists.
 fn allow_preview(app: &tauri::AppHandle, path: &str) {
-    let p = Path::new(path);
-    if p.is_absolute() && is_wallpaper_file(p) && p.is_file() {
-        let _ = app.asset_protocol_scope().allow_file(p);
+    if let Some(resolved) = preview_target(Path::new(path)) {
+        let _ = app.asset_protocol_scope().allow_file(&resolved);
+    }
+}
+
+/// The file that may be added to the asset scope for `path`, or `None`.
+///
+/// The path is resolved with `canonicalize` first and every check (absolute,
+/// image extension, is a regular file) runs on the resolved path. Checking the
+/// raw path would let a symlink named `*.png` point the scope at a non-image
+/// target. Returning the resolved path also means the scope grants exactly
+/// the file the checks ran against.
+fn preview_target(path: &Path) -> Option<PathBuf> {
+    if !path.is_absolute() {
+        return None;
+    }
+    let resolved = std::fs::canonicalize(path).ok()?;
+    if is_wallpaper_file(&resolved) && resolved.is_file() {
+        Some(resolved)
+    } else {
+        None
     }
 }
 
@@ -186,4 +204,91 @@ pub fn list_wallpaper_library() -> Vec<LibraryEntry> {
 #[tauri::command]
 pub fn wallpaper_library_dir_display() -> String {
     wallpaper_library_dir().to_string_lossy().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A fresh scratch directory per test, cleaned up on drop.
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new(name: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "bos-settings-breadpaper-test-{}-{name}",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            Scratch(dir)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn normal_image_file_is_allowed() {
+        let dir = Scratch::new("normal");
+        let img = dir.path().join("wall.png");
+        std::fs::write(&img, b"not really a png").unwrap();
+
+        let got = preview_target(&img).expect("an existing image should be allowed");
+        assert_eq!(got, std::fs::canonicalize(&img).unwrap());
+    }
+
+    #[test]
+    fn missing_file_is_refused() {
+        let dir = Scratch::new("missing");
+        let img = dir.path().join("gone.png");
+
+        assert_eq!(preview_target(&img), None);
+    }
+
+    #[test]
+    fn symlink_to_a_non_image_is_refused() {
+        let dir = Scratch::new("symlink-nonimage");
+        let secret = dir.path().join("secret.txt");
+        std::fs::write(&secret, b"not an image").unwrap();
+        // Named like a wallpaper, but the resolved target is not an image.
+        let link = dir.path().join("wall.png");
+        std::os::unix::fs::symlink(&secret, &link).unwrap();
+
+        assert_eq!(preview_target(&link), None);
+    }
+
+    #[test]
+    fn symlink_named_png_to_real_image_resolves_to_target() {
+        let dir = Scratch::new("symlink-image");
+        let real = dir.path().join("real.jpg");
+        std::fs::write(&real, b"pixels").unwrap();
+        let link = dir.path().join("wall.png");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        // The scope is granted the resolved file, not the link name.
+        let got = preview_target(&link).expect("symlink to an image should resolve");
+        assert_eq!(got, std::fs::canonicalize(&real).unwrap());
+    }
+
+    #[test]
+    fn relative_path_is_refused() {
+        assert_eq!(preview_target(Path::new("wall.png")), None);
+    }
+
+    #[test]
+    fn directory_named_like_an_image_is_refused() {
+        let dir = Scratch::new("dir");
+        let d = dir.path().join("folder.png");
+        std::fs::create_dir_all(&d).unwrap();
+
+        assert_eq!(preview_target(&d), None);
+    }
 }
