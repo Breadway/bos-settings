@@ -150,6 +150,24 @@ fn matches_action(block: &str, action: &str) -> bool {
         })
     })
 }
+/// The shipped line (`pidof breadlock || breadlock`) never starts a locker
+/// while `breadlock listen` is running. Spacing around `=` varies between
+/// the ISO skel (eight spaces) and an existing install (six), so match any
+/// amount. Only that exact command is replaced; a hand-written lock_cmd is
+/// left alone, and the surrounding whitespace is kept.
+fn migrate_lock_cmd(text: &str) -> String {
+    // The command must end at `breadlock`: end of line, or whitespace and a
+    // comment. `breadlock --foo`, `breadlock && ...` and `breadlocker` are
+    // different commands and stay as written.
+    regex::Regex::new(
+        r"(?m)^([ \t]*lock_cmd)([ \t]*)=([ \t]*)pidof breadlock \|\| breadlock([ \t]*(?:#.*)?)[ \t]*$",
+    )
+    .unwrap()
+    .replace_all(text, |c: &regex::Captures| {
+        format!("{}{}={}{}", &c[1], &c[2], &c[3], LOCK_CMD)
+    })
+    .into_owned()
+}
 fn timeout_of(text: &str, action: &str) -> Option<u32> {
     let text = migrate_dpms(text);
     idle_regex()
@@ -158,11 +176,14 @@ fn timeout_of(text: &str, action: &str) -> Option<u32> {
         .and_then(|m| timeout_regex().captures(m.as_str()))
         .and_then(|c| c[2].parse().ok())
 }
+/// Matches a running locker only. `pidof breadlock` is also true for the
+/// always-running `breadlock listen`, which made lock_cmd a no-op.
+const LOCK_CMD: &str = "pgrep -xf breadlock >/dev/null || breadlock";
 fn render_idle(text: &str, p: &PowerSettings) -> String {
     let mut result = if text.trim().is_empty() {
-        format!("general {{\n lock_cmd = pidof breadlock || breadlock\n before_sleep_cmd = loginctl lock-session\n after_sleep_cmd = {DPMS_ON}\n ignore_dbus_inhibit = false\n}}\n")
+        format!("general {{\n lock_cmd = {LOCK_CMD}\n before_sleep_cmd = loginctl lock-session\n after_sleep_cmd = {DPMS_ON}\n ignore_dbus_inhibit = false\n}}\n")
     } else {
-        migrate_dpms(text)
+        migrate_lock_cmd(&migrate_dpms(text))
     };
     for ((_, action), seconds) in ACTIONS.iter().zip([p.dim, p.screen_off, p.lock, p.sleep]) {
         let mut found = false;
@@ -389,6 +410,34 @@ mod tests {
         assert_eq!(render_idle(&out, &p), out, "migration is idempotent");
         let fresh = render_idle("", &p);
         assert!(fresh.contains("on-resume = brightnessctl -c backlight -r"));
+    }
+    #[test]
+    fn broken_pidof_lock_cmd_is_rewritten_and_custom_lock_cmd_is_kept() {
+        let skel = "general {\n    lock_cmd         = pidof breadlock || breadlock\n    before_sleep_cmd = loginctl lock-session\n}\n";
+        let out = render_idle(skel, &PowerSettings::default());
+        assert!(out.contains("lock_cmd         = pgrep -xf breadlock >/dev/null || breadlock"), "{out}");
+        assert!(!out.contains("pidof breadlock"), "{out}");
+        let again = render_idle(&out, &PowerSettings::default());
+        assert_eq!(again, out, "migration is idempotent");
+        let six = "general {\n    lock_cmd      = pidof breadlock || breadlock\n}\n";
+        let six_out = render_idle(six, &PowerSettings::default());
+        assert!(six_out.contains("lock_cmd      = pgrep -xf breadlock >/dev/null || breadlock"), "{six_out}");
+        assert!(!six_out.contains("pidof"), "{six_out}");
+        let custom = "general {\n lock_cmd = swaylock\n}\n";
+        assert!(render_idle(custom, &PowerSettings::default()).contains("lock_cmd = swaylock"));
+        for kept in [
+            " lock_cmd = pidof breadlock || breadlock --foo",
+            " lock_cmd = pidof breadlock || breadlock && echo hi",
+            " lock_cmd = pidof breadlock || breadlocker",
+            " mylock_cmd = pidof breadlock || breadlock",
+        ] {
+            let rendered = render_idle(&format!("general {{\n{kept}\n}}\n"), &PowerSettings::default());
+            assert!(rendered.contains(kept), "rewrote a different command: {rendered}");
+            assert!(!rendered.contains("pgrep"), "{rendered}");
+        }
+        let fresh = render_idle("", &PowerSettings::default());
+        assert!(fresh.contains("lock_cmd = pgrep -xf breadlock >/dev/null || breadlock"));
+        assert!(!fresh.contains("pidof"));
     }
     #[test]
     fn never_removes_managed_listener() {
