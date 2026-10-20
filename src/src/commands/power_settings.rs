@@ -415,13 +415,19 @@ mod tests {
     fn broken_pidof_lock_cmd_is_rewritten_and_custom_lock_cmd_is_kept() {
         let skel = "general {\n    lock_cmd         = pidof breadlock || breadlock\n    before_sleep_cmd = loginctl lock-session\n}\n";
         let out = render_idle(skel, &PowerSettings::default());
-        assert!(out.contains("lock_cmd         = pgrep -xf breadlock >/dev/null || breadlock"), "{out}");
+        assert!(
+            out.contains("lock_cmd         = pgrep -xf breadlock >/dev/null || breadlock"),
+            "{out}"
+        );
         assert!(!out.contains("pidof breadlock"), "{out}");
         let again = render_idle(&out, &PowerSettings::default());
         assert_eq!(again, out, "migration is idempotent");
         let six = "general {\n    lock_cmd      = pidof breadlock || breadlock\n}\n";
         let six_out = render_idle(six, &PowerSettings::default());
-        assert!(six_out.contains("lock_cmd      = pgrep -xf breadlock >/dev/null || breadlock"), "{six_out}");
+        assert!(
+            six_out.contains("lock_cmd      = pgrep -xf breadlock >/dev/null || breadlock"),
+            "{six_out}"
+        );
         assert!(!six_out.contains("pidof"), "{six_out}");
         let custom = "general {\n lock_cmd = swaylock\n}\n";
         assert!(render_idle(custom, &PowerSettings::default()).contains("lock_cmd = swaylock"));
@@ -431,8 +437,14 @@ mod tests {
             " lock_cmd = pidof breadlock || breadlocker",
             " mylock_cmd = pidof breadlock || breadlock",
         ] {
-            let rendered = render_idle(&format!("general {{\n{kept}\n}}\n"), &PowerSettings::default());
-            assert!(rendered.contains(kept), "rewrote a different command: {rendered}");
+            let rendered = render_idle(
+                &format!("general {{\n{kept}\n}}\n"),
+                &PowerSettings::default(),
+            );
+            assert!(
+                rendered.contains(kept),
+                "rewrote a different command: {rendered}"
+            );
             assert!(!rendered.contains("pgrep"), "{rendered}");
         }
         let fresh = render_idle("", &PowerSettings::default());
