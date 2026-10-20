@@ -156,10 +156,17 @@ fn matches_action(block: &str, action: &str) -> bool {
 /// amount. Only that exact command is replaced; a hand-written lock_cmd is
 /// left alone, and the surrounding whitespace is kept.
 fn migrate_lock_cmd(text: &str) -> String {
-    regex::Regex::new(r"lock_cmd(\s*)=(\s*)pidof breadlock \|\| breadlock")
-        .unwrap()
-        .replace_all(text, format!("lock_cmd${{1}}=${{2}}{LOCK_CMD}"))
-        .into_owned()
+    // The command must end at `breadlock`: end of line, or whitespace and a
+    // comment. `breadlock --foo`, `breadlock && ...` and `breadlocker` are
+    // different commands and stay as written.
+    regex::Regex::new(
+        r"(?m)^([ \t]*lock_cmd)([ \t]*)=([ \t]*)pidof breadlock \|\| breadlock([ \t]*(?:#.*)?)[ \t]*$",
+    )
+    .unwrap()
+    .replace_all(text, |c: &regex::Captures| {
+        format!("{}{}={}{}", &c[1], &c[2], &c[3], LOCK_CMD)
+    })
+    .into_owned()
 }
 fn timeout_of(text: &str, action: &str) -> Option<u32> {
     let text = migrate_dpms(text);
@@ -418,8 +425,16 @@ mod tests {
         assert!(!six_out.contains("pidof"), "{six_out}");
         let custom = "general {\n lock_cmd = swaylock\n}\n";
         assert!(render_idle(custom, &PowerSettings::default()).contains("lock_cmd = swaylock"));
-        let similar = "general {\n lock_cmd = pidof breadlock || breadlock --foo\n}\n";
-        assert!(render_idle(similar, &PowerSettings::default()).contains("breadlock --foo"));
+        for kept in [
+            " lock_cmd = pidof breadlock || breadlock --foo",
+            " lock_cmd = pidof breadlock || breadlock && echo hi",
+            " lock_cmd = pidof breadlock || breadlocker",
+            " mylock_cmd = pidof breadlock || breadlock",
+        ] {
+            let rendered = render_idle(&format!("general {{\n{kept}\n}}\n"), &PowerSettings::default());
+            assert!(rendered.contains(kept), "rewrote a different command: {rendered}");
+            assert!(!rendered.contains("pgrep"), "{rendered}");
+        }
         let fresh = render_idle("", &PowerSettings::default());
         assert!(fresh.contains("lock_cmd = pgrep -xf breadlock >/dev/null || breadlock"));
         assert!(!fresh.contains("pidof"));
