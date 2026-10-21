@@ -38,6 +38,9 @@ tokio = { version = "1", features = ["process", "io-util", "time", "macros", "si
 notify = "7"
 regex = "1"
 bread-theme = { git = "https://git.breadway.dev/Breadway/bread-ecosystem", tag = "v0.8.0" }
+# breadbug core: config paths, the report history and queue, the consent text.
+# Pinned to the feature branch until the next bread release is tagged.
+bread-bug = { git = "https://git.breadway.dev/Breadway/bread", branch = "feature/breadbug-reload" }
 bread-utils = { git = "https://git.breadway.dev/Breadway/bread-ecosystem", tag = "v0.7.2", features = ["toml"] }
 anyhow = "1"
 
