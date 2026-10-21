@@ -127,6 +127,8 @@ export const PAGE_ALIASES: Record<string, { page: string; tab?: string }> = {
 	optional: { page: "getapps", tab: "optional" },
 	printing: { page: "printers" },
 	privacy: { page: "privacy" },
+	breadbug: { page: "privacy", tab: "bugs" },
+	bugreports: { page: "privacy", tab: "bugs" },
 	firewall: { page: "privacy" },
 	users: { page: "users" },
 	system: { page: "updates" },
