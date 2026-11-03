@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onMount, onDestroy } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
@@ -23,10 +23,18 @@
 		known: boolean;
 	}
 
+	interface NetworkInfo {
+		radio_enabled: boolean;
+		ethernet: string | null;
+		ssid: string | null;
+	}
+
 	let radioEnabled = $state(false);
 	let ethernet = $state<string | null>(null);
+	let connectedSsid = $state<string | null>(null);
 	let networks = $state<WifiNetwork[] | null>(null);
 	let scanning = $state(false);
+	let radioBusy = $state(false);
 	let status = $state("");
 	let pendingSsid = $state<string | null>(null);
 	let password = $state("");
@@ -42,7 +50,13 @@
 		return rawState === "connected";
 	});
 	let activeNet = $derived(networks?.find((n) => n.active) ?? null);
-	let nearby = $derived(networks?.filter((n) => !n.active) ?? []);
+	// NetworkManager's own answer wins over the scan list: a hidden network, or
+	// the band the device roamed to, can be missing from a scan. One source for
+	// "am I connected" is also what stops the page saying "Not connected" above
+	// a "Connected to ..." message.
+	let heroSsid = $derived(connectedSsid ?? activeNet?.ssid);
+	let heroNet = $derived(networks?.find((n) => n.ssid === heroSsid) ?? null);
+	let nearby = $derived(networks?.filter((n) => !n.active && n.ssid !== heroSsid) ?? []);
 	let saved = $derived(crumbs.cfg?.networks ?? []);
 	let shownSaved = $derived(saved.filter((n) => n.ssid.toLowerCase().includes(savedQuery.trim().toLowerCase())));
 
@@ -50,16 +64,36 @@
 	// saved networks, advanced settings): they all edit `crumbs.cfg`.
 	useDraft(() => crumbs.cfg, saveCrumbs, () => crumbs.cfg !== null);
 
+	let timer: ReturnType<typeof setInterval> | undefined;
+
 	onMount(async () => {
-		const info = await invoke<{ radio_enabled: boolean; ethernet: string | null }>("get_network_info");
-		radioEnabled = info.radio_enabled;
-		ethernet = info.ethernet;
+		await refreshInfo();
 		loadCrumbs().catch(() => {});
-		if (info.radio_enabled) await scan();
+		if (radioEnabled) await scan();
+		// The page can stay open while the link roams or drops, so keep the
+		// connection state fresh. This asks NetworkManager for its cached
+		// state and never rescans, so it is cheap.
+		timer = setInterval(refreshInfo, 10_000);
 	});
+
+	onDestroy(() => clearInterval(timer));
+
+	async function refreshInfo() {
+		try {
+			const info = await invoke<NetworkInfo>("get_network_info");
+			// Don't let a poll tick snap the switch back while the user is
+			// still toggling it.
+			if (!radioBusy) radioEnabled = info.radio_enabled;
+			ethernet = info.ethernet;
+			connectedSsid = info.ssid;
+		} catch {
+			// Keep the last known state; the next tick tries again.
+		}
+	}
 
 	async function toggleRadio(enabled: boolean) {
 		const before = radioEnabled;
+		radioBusy = true;
 		radioEnabled = enabled;
 		try {
 			await recordChange(
@@ -68,10 +102,13 @@
 				async () => { await invoke("set_wifi_radio", { enabled: before }); radioEnabled = before; },
 			);
 			if (enabled) setTimeout(scan, 1500);
-			else networks = [];
+			else { networks = []; connectedSsid = null; }
 		} catch (e) {
 			radioEnabled = before;
 			status = `Couldn't turn Wi-Fi ${enabled ? "on" : "off"}: ${e}`;
+		} finally {
+			radioBusy = false;
+			await refreshInfo();
 		}
 	}
 
@@ -79,6 +116,7 @@
 		scanning = true;
 		try {
 			networks = await invoke<WifiNetwork[]>("scan_wifi");
+			await refreshInfo();
 		} finally {
 			scanning = false;
 		}
@@ -99,10 +137,14 @@
 		status = `Connecting to ${ssid}…`;
 		try {
 			await invoke("connect_wifi", { ssid, password: pw });
-			status = `Connected to ${ssid}`;
+			// The hero card shows the result, so a "Connected to ..." line here
+			// would only be able to go stale and contradict it later.
+			status = "";
 			await scan();
+			if (connectedSsid !== ssid) status = `Couldn't confirm the connection to ${ssid}.`;
 		} catch (e) {
 			status = pw ? `Couldn't join ${ssid}. Check the password and try again.` : `Couldn't join ${ssid}: ${e}`;
+			await refreshInfo();
 		}
 	}
 
@@ -141,12 +183,12 @@
 <ViewScaffold title="Wi-Fi">
 	<div class="hero-card">
 		<span class="big">
-			{#if activeNet}<Wifi size={26} />{:else if ethernetUp}<Cable size={26} />{:else}<WifiOff size={26} />{/if}
+			{#if heroSsid}<Wifi size={26} />{:else if ethernetUp}<Cable size={26} />{:else}<WifiOff size={26} />{/if}
 		</span>
 		<div>
-			{#if activeNet}
-				<h3>{activeNet.ssid}</h3>
-				<p>Connected · {strength(activeNet.signal)} · {activeNet.secured ? "secured" : "open network"}{crumbs.current ? ` · ${crumbs.current}` : ""}</p>
+			{#if heroSsid}
+				<h3>{heroSsid}</h3>
+				<p>Connected{#if heroNet?.signal} · {strength(heroNet.signal)}{/if}{#if heroNet} · {heroNet.secured ? "secured" : "open network"}{/if}{crumbs.current ? ` · ${crumbs.current}` : ""}</p>
 			{:else if ethernetUp}
 				<h3>Wired connection</h3>
 				<p>Connected by cable{radioEnabled ? " · Wi-Fi is on" : ""}</p>
