@@ -17,12 +17,20 @@ pub struct PendingUpdate {
 
 #[derive(Serialize)]
 pub struct UpdatesStatus {
+    /// Package updates only: pacman plus bakery. Firmware devices are shown
+    /// separately because a device that can accept firmware is not itself a
+    /// pending package update.
+    total: usize,
     pacman: Vec<PendingUpdate>,
     pacman_error: Option<String>,
     bakery: Vec<PendingUpdate>,
     bakery_error: Option<String>,
     firmware: Vec<FwDevice>,
     nvidia: Option<NvidiaOffer>,
+}
+
+fn package_total(pacman: &[PendingUpdate], bakery: &[PendingUpdate]) -> usize {
+    pacman.len() + bakery.len()
 }
 
 #[tauri::command]
@@ -40,7 +48,9 @@ pub async fn get_updates_status() -> UpdatesStatus {
         Ok(v) => (v, None),
         Err(e) => (Vec::new(), Some(e)),
     };
+    let total = package_total(&pacman, &bakery);
     UpdatesStatus {
+        total,
         pacman,
         pacman_error,
         bakery,
@@ -186,5 +196,28 @@ Would update  breadcast  1.2.3
         assert_eq!(v[0].latest, "0.7.3-dev.2");
         assert_eq!(v[1].name, "breadcast");
         assert_eq!(v[1].latest, "1.2.3");
+    }
+
+    fn package_list(count: usize, prefix: &str) -> Vec<PendingUpdate> {
+        (0..count)
+            .map(|index| PendingUpdate {
+                name: format!("{prefix}{index}"),
+                current: "1".to_string(),
+                latest: "2".to_string(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn package_total_is_the_only_update_count() {
+        for count in [0, 1, 10] {
+            let system = package_list(count, "system");
+            assert_eq!(package_total(&system, &[]), count);
+            assert_eq!(package_total(&[], &system), count);
+        }
+
+        let system = package_list(9, "system");
+        let bread = package_list(1, "bread");
+        assert_eq!(package_total(&system, &bread), 10);
     }
 }
