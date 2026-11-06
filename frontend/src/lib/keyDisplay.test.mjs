@@ -26,6 +26,14 @@ const expected = {
 	TAB: "Tab",
 	BACKSPACE: "Backspace",
 	DELETE: "Delete",
+	left: "Left",
+	right: "Right",
+	up: "Up",
+	down: "Down",
+	"mouse:272": "Left click",
+	"mouse:273": "Right click",
+	mouse_down: "Scroll down",
+	mouse_up: "Scroll up",
 	XF86AudioRaiseVolume: "Vol +",
 	XF86AudioLowerVolume: "Vol -",
 	XF86AudioMute: "Mute",
@@ -67,6 +75,21 @@ assert.equal(comboText(["SUPER", "SHIFT"], "slash"), "Super + Shift + /");
 assert.equal(comboText(["SUPER"], "RETURN"), "Super + Enter");
 // BSET-112: the shipped binds.json opens the calculator with this keysym.
 assert.equal(comboText(["SUPER"], "XF86Calculator"), "Super + Calculator");
+
+// BSET-115: the shipped binds.json stores arrows lower-case and mouse tokens
+// as stored, so those combos must read as people see them on the hardware.
+assert.equal(comboText(["SUPER"], "left"), "Super + Left");
+assert.equal(comboText(["SUPER"], "right"), "Super + Right");
+assert.equal(comboText(["SUPER"], "up"), "Super + Up");
+assert.equal(comboText(["SUPER"], "down"), "Super + Down");
+assert.equal(comboText(["SUPER", "SHIFT"], "left"), "Super + Shift + Left");
+assert.equal(comboText(["SUPER", "CTRL"], "right"), "Super + Ctrl + Right");
+assert.equal(comboText([], "mouse:272"), "Left click");
+assert.equal(comboText([], "mouse:273"), "Right click");
+assert.equal(comboText([], "mouse_down"), "Scroll down");
+assert.equal(comboText([], "mouse_up"), "Scroll up");
+assert.equal(keyLabel("Mouse:272"), "Left click");
+assert.equal(keyLabel("MOUSE:273"), "Right click");
 
 // A combo with no key shows only its modifiers, and an empty combo is empty.
 assert.deepEqual(comboLabels(["SUPER", "CTRL"], ""), ["Super", "Ctrl"]);
