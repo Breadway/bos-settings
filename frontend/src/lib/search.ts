@@ -12,8 +12,8 @@ export interface SearchHit {
 export const SEARCH_INDEX: SearchHit[] = [
  { page: "storage", label:"Storage", keywords:"disk space cache clean trash downloads", target:"App caches" },
  { page: "sharing", label:"Sharing", keywords:"localsend kde connect phone ssh remote login" },
- { page: "notifications", label:"Notifications", keywords:"history alerts banners notification" },
- { page: "mouse", label:"Mouse & touchpad", keywords:"focus natural scrolling pointer" },
+ { page: "notifications", label:"Notifications", keywords:"history alerts banners notification do not disturb dnd quiet hours lock screen app apps per-app" },
+ { page: "mouse", label:"Mouse & touchpad", keywords:"focus natural scrolling pointer tap to click tap clicking scroll speed buttons" },
  { page: "keyboard", tab:"layout", label:"Keyboard layout", keywords:"language xkb qwerty azerty dvorak", target:"Keyboard layout" },
 
 	{"page": "appearance", "tab": "appearance", "label": "Gaps between windows", "target": "Gaps between windows", "keywords": "gaps between windows"},
@@ -165,6 +165,24 @@ export const SEARCH_INDEX: SearchHit[] = [
 		tab: "shelltheme",
 		label: "Shell theme",
 		keywords: "shell theme breadbar breadbox bar launcher style liquid motion glass workbench spotlight daylight layout animation",
+	},
+	{
+		page: "appearance",
+		tab: "shelltheme",
+		label: "Theme",
+		keywords: "theme dark mode light mode dark theme light theme night mode daylight night color colour scheme colours appearance look and feel style",
+	},
+	{
+		page: "appearance",
+		tab: "text",
+		label: "Text size",
+		keywords: "text size font size larger smaller",
+	},
+	{
+		page: "appearance",
+		tab: "text",
+		label: "Font",
+		keywords: "font family typeface",
 	},
 	{
 		page: "appearance",
