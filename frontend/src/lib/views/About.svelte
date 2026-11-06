@@ -19,7 +19,8 @@
 		hostname: string;
 	}
 
-	let checks=$state<{name:string;ok:boolean;output:string}[]>([]);
+	type HealthState = "ok" | "degraded" | "failed";
+	let checks=$state<{name:string;status:HealthState;ok:boolean;summary:string;output:string}[]>([]);
 	let checking=$state(false);
 	async function health(){checking=true;status="";try{checks=await invoke("run_health_checks")}catch(e){status=String(e)}finally{checking=false}}
 	let track = $state("");
@@ -85,10 +86,11 @@
 		</Group>
 		<Group title="Help">
 			<Row label="Copy system info" hint="Paste it into a bug report."><button class="btn small" onclick={copyInfo}>Copy</button></Row>
-			<Row label="Run a health check" hint="Checks the bread daemon, packages and BOS services."><button class="btn small" disabled={checking} onclick={health}>{checking ? "Checking…" : "Run"}</button></Row>
+			<Row label="Run a health check" hint="Checks the bread daemon and adapters, systemd user services, and package tools."><button class="btn small" disabled={checking} onclick={health}>{checking ? "Checking…" : "Run"}</button></Row>
 			{#each checks as check (check.name)}
 				<details class="check">
-					<summary><span>{check.name}</span><span class="ui-tag" class:ok={check.ok} class:warn={!check.ok}>{check.ok ? "OK" : "Attention"}</span></summary>
+					<summary><span>{check.name}</span><span class="ui-tag" class:ok={check.status === "ok"} class:warn={check.status === "degraded"} class:bad={check.status === "failed"}>{check.status === "ok" ? "OK" : check.status === "degraded" ? "Degraded" : "Failed"}</span></summary>
+					{#if check.summary}<p class="summary">{check.summary}</p>{/if}
 					<pre>{check.output}</pre>
 				</details>
 			{/each}
@@ -101,6 +103,8 @@
 	.hero-card .big { font:500 24px var(--font-display, 'Outfit', sans-serif); }
 	.check summary { display:flex; justify-content:space-between; align-items:center; padding:9px 2px; cursor:pointer; font-size:13px; }
 	.check pre { font-size:11.5px; color:var(--muted); white-space:pre-wrap; margin:0 2px 10px; }
+	.check .summary { margin:0 2px 6px; font-size:12.5px; color:var(--fg); }
 	.ui-tag.warn { background:rgba(214,178,94,.14); color:#d6b25e; }
+	.ui-tag.bad { background:rgba(214,94,94,.14); color:#d65e5e; }
 	.msg { margin:4px 2px 10px; color:var(--muted); font-size:12.5px; }
 </style>
