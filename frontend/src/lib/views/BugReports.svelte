@@ -2,6 +2,7 @@
 	import { onMount } from "svelte";
 	import { invoke } from "@tauri-apps/api/core";
 	import { useDraft } from "$lib/drafts.svelte";
+	import { confirmAction } from "$lib/confirm.svelte";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
 	import Row from "$lib/components/Row.svelte";
@@ -58,9 +59,12 @@
 		// Turning sending off while reports wait in the offline queue: ask what
 		// to do with them instead of leaving them to be sent later by surprise.
 		if (!s.upload_enabled && s.queued > 0) {
-			const discard = confirm(
-				`${s.queued} report(s) are waiting to be sent. Sending is now off.\n\nOK discards them. Cancel keeps them in case you turn sending back on.`,
-			);
+			const discard = await confirmAction({
+				title: "Discard the waiting reports?",
+				message: `${s.queued} report(s) are waiting to be sent. Sending is now off. Discarding deletes them; keeping them holds them until you turn sending back on.`,
+				confirmLabel: "Discard them",
+				cancelLabel: "Keep them",
+			});
 			if (discard) {
 				await invoke("breadbug_clear_queue");
 				s.queued = 0;
@@ -90,7 +94,12 @@
 	}
 
 	async function deleteReport(receipt: string) {
-		if (!confirm("Delete this report from the server? This cannot be undone.")) return;
+		const ok = await confirmAction({
+			title: "Delete this report from the server?",
+			message: "This cannot be undone.",
+			confirmLabel: "Delete from server",
+		});
+		if (!ok) return;
 		busy = true;
 		notice = "";
 		try {
@@ -104,7 +113,12 @@
 	}
 
 	async function wipe() {
-		if (!confirm("Delete all the logs and crash information breadbug has stored on this computer?")) return;
+		const ok = await confirmAction({
+			title: "Delete local data?",
+			message: "Delete all the logs and crash information breadbug has stored on this computer?",
+			confirmLabel: "Delete",
+		});
+		if (!ok) return;
 		try {
 			await invoke("breadbug_wipe_local");
 			await load();
@@ -115,7 +129,11 @@
 	}
 
 	async function discardQueue() {
-		if (!confirm("Discard the reports waiting to be sent?")) return;
+		const ok = await confirmAction({
+			title: "Discard the reports waiting to be sent?",
+			confirmLabel: "Discard",
+		});
+		if (!ok) return;
 		await invoke("breadbug_clear_queue");
 		await load();
 	}
