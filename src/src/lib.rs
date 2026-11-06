@@ -135,6 +135,7 @@ pub fn run() {
             commands::breadram::get_breadram_config,
             commands::breadram::save_breadram_config,
             commands::breadram::apply_breadram_profile,
+            commands::breadram::breadram_installed,
             commands::breadram::breadram_status,
             commands::breadram::breadram_actions,
             commands::breadram::set_breadram_mode,

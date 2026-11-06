@@ -12,6 +12,7 @@
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -524,6 +525,21 @@ mod tests {
     }
 
     #[test]
+    fn availability_needs_a_binary_or_a_unit_file() {
+        assert!(!breadram_available(false, &[]));
+        assert!(breadram_available(true, &[]));
+
+        let unit = scratch("installed-unit");
+        std::fs::write(&unit, "[Service]\n").unwrap();
+        assert!(breadram_available(false, std::slice::from_ref(&unit)));
+        assert!(!breadram_available(
+            false,
+            &[unit.with_file_name("missing.service")]
+        ));
+        let _ = std::fs::remove_file(unit);
+    }
+
+    #[test]
     fn bad_values_are_refused_before_touching_the_file() {
         let path = scratch("refusals");
         std::fs::write(&path, "mode = \"automatic\"\n").unwrap();
@@ -562,6 +578,30 @@ pub fn breadram_status() -> serde_json::Value {
         "config_path": diag.get("config_path").cloned().unwrap_or_default(),
         "rules": rules.unwrap_or(serde_json::Value::Null),
     })
+}
+
+fn breadram_available(binary: bool, unit_files: &[PathBuf]) -> bool {
+    binary || unit_files.iter().any(|path| path.is_file())
+}
+
+/// Whether breadram is on this computer at all. Live state can be absent
+/// because the daemon is stopped, but a machine without the package has no
+/// binary and no unit; the panel uses this to hide controls that cannot work.
+#[tauri::command]
+pub fn breadram_installed() -> bool {
+    let units: Vec<PathBuf> = [
+        "/usr/lib/systemd/system/breadram.service",
+        "/etc/systemd/system/breadram.service",
+        "/lib/systemd/system/breadram.service",
+    ]
+    .iter()
+    .map(PathBuf::from)
+    .collect();
+    let binary = super::util::command_exists("breadram")
+        || ["/usr/bin/breadram", "/usr/local/bin/breadram"]
+            .iter()
+            .any(|path| Path::new(path).is_file());
+    breadram_available(binary, &units)
 }
 
 #[tauri::command]

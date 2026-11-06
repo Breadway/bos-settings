@@ -348,7 +348,7 @@
 	</Group>
 
 	{#if live}
-		<Group title={live.name}>
+		<Group title={live.name} preserveTitleCase>
 			{#if monitors.length > 1}
 				<Row label="Display">
 					<div class="ui-seg">

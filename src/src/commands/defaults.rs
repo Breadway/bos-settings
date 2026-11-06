@@ -9,6 +9,8 @@ use serde::Serialize;
 
 use super::config;
 
+const TERMINAL_MIMES: &[&str] = &["x-scheme-handler/terminal"];
+
 const CATEGORIES: &[(&str, &[&str])] = &[
     (
         "browser",
@@ -19,7 +21,7 @@ const CATEGORIES: &[(&str, &[&str])] = &[
         ],
     ),
     ("files", &["inode/directory"]),
-    ("terminal", &["x-scheme-handler/terminal"]),
+    ("terminal", TERMINAL_MIMES),
     (
         "image",
         &[
@@ -70,13 +72,24 @@ fn applications_dirs() -> Vec<PathBuf> {
 struct DesktopMeta {
     id: String,
     name: String,
+    exec: Option<String>,
     mimes: Vec<String>,
     terminal: bool,
+}
+
+/// First word of an Exec line with any path and quotes removed, e.g.
+/// `/usr/bin/kitty --single-instance` -> `kitty`.
+fn command_binary(command: &str) -> Option<String> {
+    let first = command.split_whitespace().next()?;
+    let first = first.trim_matches(|c| c == '"' || c == '\'');
+    let name = first.rsplit('/').next()?;
+    (!name.is_empty()).then(|| name.to_string())
 }
 
 fn parse_desktop(id: &str, text: &str) -> Option<DesktopMeta> {
     let mut in_entry = false;
     let mut name = String::new();
+    let mut exec = None;
     let mut mimes = Vec::new();
     let mut terminal = false;
     let mut hidden = false;
@@ -92,6 +105,10 @@ fn parse_desktop(id: &str, text: &str) -> Option<DesktopMeta> {
         if let Some(v) = line.strip_prefix("Name=") {
             if name.is_empty() {
                 name = v.to_string();
+            }
+        } else if let Some(v) = line.strip_prefix("Exec=") {
+            if exec.is_none() {
+                exec = command_binary(v);
             }
         } else if let Some(v) = line.strip_prefix("MimeType=") {
             mimes = v
@@ -112,6 +129,7 @@ fn parse_desktop(id: &str, text: &str) -> Option<DesktopMeta> {
     Some(DesktopMeta {
         id: id.to_string(),
         name,
+        exec,
         mimes,
         terminal,
     })
@@ -245,11 +263,18 @@ pub fn get_default_apps() -> DefaultsStatus {
     let text = std::fs::read_to_string(&path).unwrap_or_default();
     let defaults = parse_default_applications(&text);
     let apps = scan_desktops();
+    let terminals_text = std::fs::read_to_string(xdg_terminals_path()).ok();
+    let bound_terminal = super::keybinds::terminal_bind_command();
     let mut current = HashMap::new();
     let mut options = HashMap::new();
     for (cat, mimes) in CATEGORIES {
         let cur = if *cat == "terminal" {
-            read_terminal_default(&defaults)
+            effective_terminal(
+                &defaults,
+                terminals_text.as_deref(),
+                &apps,
+                bound_terminal.as_deref(),
+            )
         } else {
             current_for_category(&defaults, mimes)
         };
@@ -263,17 +288,61 @@ pub fn get_default_apps() -> DefaultsStatus {
     }
 }
 
-fn read_terminal_default(defaults: &BTreeMap<String, String>) -> String {
-    if let Ok(text) = std::fs::read_to_string(xdg_terminals_path()) {
-        if let Some(id) = text
-            .lines()
-            .map(str::trim)
-            .find(|l| !l.is_empty() && !l.starts_with('#'))
+fn is_terminal(app: &DesktopMeta) -> bool {
+    app.terminal || app.mimes.iter().any(|m| m == TERMINAL_MIMES[0])
+}
+
+fn matches_terminal_binary(app: &DesktopMeta, binary: &str) -> bool {
+    let stem = app.id.trim_end_matches(".desktop");
+    app.exec.as_deref() == Some(binary) || stem.eq_ignore_ascii_case(binary)
+}
+
+/// An explicit user choice: xdg-terminals.list first, then the terminal MIME
+/// association. Explicit choices are returned as written, even if the
+/// desktop entry has since been removed, because that is what the file says.
+fn configured_terminal(
+    defaults: &BTreeMap<String, String>,
+    terminals_text: Option<&str>,
+) -> String {
+    let listed = terminals_text
+        .into_iter()
+        .flat_map(str::lines)
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with('#'))
+        .unwrap_or("");
+    if !listed.is_empty() {
+        return listed.to_string();
+    }
+    current_for_category(defaults, TERMINAL_MIMES)
+}
+
+/// The terminal the desktop will actually use when nothing is configured.
+/// Only a terminal whose desktop entry is installed can be inferred, and an
+/// ambiguous machine (several terminals, no explicit choice or Super+Enter
+/// bind) stays unset rather than guessing.
+fn effective_terminal(
+    defaults: &BTreeMap<String, String>,
+    terminals_text: Option<&str>,
+    apps: &[DesktopMeta],
+    bound_command: Option<&str>,
+) -> String {
+    let configured = configured_terminal(defaults, terminals_text);
+    if !configured.is_empty() {
+        return configured;
+    }
+    if let Some(binary) = bound_command.and_then(command_binary) {
+        if let Some(app) = apps
+            .iter()
+            .find(|a| is_terminal(a) && matches_terminal_binary(a, &binary))
         {
-            return id.to_string();
+            return app.id.clone();
         }
     }
-    current_for_category(defaults, &["x-scheme-handler/terminal"])
+    let terminals: Vec<&DesktopMeta> = apps.iter().filter(|a| is_terminal(a)).collect();
+    if terminals.len() == 1 {
+        return terminals[0].id.clone();
+    }
+    String::new()
 }
 
 #[derive(serde::Deserialize)]
@@ -448,6 +517,110 @@ text/html=extra.desktop;
         assert!(valid_desktop_id("org.gnome.Nautilus.desktop"));
         assert!(!valid_desktop_id("zen"));
         assert!(!valid_desktop_id("../evil.desktop"));
+    }
+
+    fn terminal_app(id: &str, exec: &str) -> DesktopMeta {
+        DesktopMeta {
+            id: id.into(),
+            name: id.trim_end_matches(".desktop").into(),
+            exec: command_binary(exec),
+            mimes: vec![],
+            terminal: true,
+        }
+    }
+
+    #[test]
+    fn parse_desktop_records_the_exec_binary() {
+        let app = parse_desktop(
+            "kitty.desktop",
+            "[Desktop Entry]\nName=kitty\nExec=/usr/bin/kitty --single-instance\nCategories=TerminalEmulator;\n",
+        )
+        .unwrap();
+        assert_eq!(app.exec.as_deref(), Some("kitty"));
+    }
+
+    #[test]
+    fn only_installed_terminal_is_detected_when_nothing_is_configured() {
+        let apps = vec![terminal_app("kitty.desktop", "kitty")];
+        assert_eq!(
+            effective_terminal(&BTreeMap::new(), None, &apps, None),
+            "kitty.desktop"
+        );
+    }
+
+    #[test]
+    fn missing_terminal_is_not_claimed() {
+        let apps: Vec<DesktopMeta> = vec![];
+        assert_eq!(effective_terminal(&BTreeMap::new(), None, &apps, None), "");
+    }
+
+    #[test]
+    fn bound_terminal_is_used_when_it_is_installed() {
+        let apps = vec![
+            terminal_app("kitty.desktop", "kitty"),
+            terminal_app("foot.desktop", "foot"),
+        ];
+        assert_eq!(
+            effective_terminal(&BTreeMap::new(), None, &apps, Some("foot --server")),
+            "foot.desktop"
+        );
+    }
+
+    #[test]
+    fn a_bound_terminal_that_is_not_installed_is_not_claimed() {
+        let apps = vec![terminal_app("foot.desktop", "foot")];
+        assert_eq!(
+            effective_terminal(&BTreeMap::new(), None, &apps, Some("kitty")),
+            "foot.desktop",
+            "fall back to the one installed terminal, never to kitty"
+        );
+    }
+
+    #[test]
+    fn explicit_user_default_wins_over_detection() {
+        let apps = vec![
+            terminal_app("kitty.desktop", "kitty"),
+            terminal_app("foot.desktop", "foot"),
+        ];
+        assert_eq!(
+            effective_terminal(
+                &BTreeMap::new(),
+                Some("foot.desktop\n"),
+                &apps,
+                Some("kitty")
+            ),
+            "foot.desktop"
+        );
+    }
+
+    #[test]
+    fn mimeapps_terminal_default_is_also_explicit() {
+        let mut defaults = BTreeMap::new();
+        defaults.insert("x-scheme-handler/terminal".into(), "foot.desktop".into());
+        let apps = vec![
+            terminal_app("kitty.desktop", "kitty"),
+            terminal_app("foot.desktop", "foot"),
+        ];
+        assert_eq!(
+            effective_terminal(&defaults, None, &apps, None),
+            "foot.desktop"
+        );
+    }
+
+    #[test]
+    fn several_installed_terminals_without_a_choice_stay_unset() {
+        let apps = vec![
+            terminal_app("kitty.desktop", "kitty"),
+            terminal_app("foot.desktop", "foot"),
+        ];
+        assert_eq!(effective_terminal(&BTreeMap::new(), None, &apps, None), "");
+    }
+
+    #[test]
+    fn command_binary_handles_paths_and_quotes() {
+        assert_eq!(command_binary("kitty --foo").as_deref(), Some("kitty"));
+        assert_eq!(command_binary("\"/usr/bin/foot\"").as_deref(), Some("foot"));
+        assert_eq!(command_binary("   "), None);
     }
 
     #[test]

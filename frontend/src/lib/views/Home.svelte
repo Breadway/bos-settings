@@ -1,6 +1,7 @@
 <script lang="ts">
  import { onMount } from "svelte";
  import { invoke } from "@tauri-apps/api/core";
+ import { greetingWithName } from "$lib/greeting";
  import { go } from "$lib/nav.svelte";
  import type {NotificationPreferences} from "$lib/notificationPreferences";
  import type {RadioState} from "$lib/home.svelte";
@@ -21,7 +22,7 @@
 
 
  const hour = new Date().getHours();
- const greeting = hour < 5 ? "Still up?" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+ let greeting = $derived(greetingWithName(hour, home.account?.display_name?.trim() || home.account?.username?.trim() || null));
  let busy = $state(false);
  let pending = $derived(updateCounts(home.updates).total);
  const size=(bytes:number)=>`${(bytes/1024**3).toFixed(1)} GiB`;
@@ -77,7 +78,7 @@
   finally { busy = false; }
  }
 </script>
-<ViewScaffold title={`${greeting}${home.account ? `, ${home.account.display_name}` : ""}`} lede={`${home.wifi?.ssid ? `On ${home.wifi.ssid}` : "Your desktop at a glance"}${charge ? ` · battery ${charge}` : ""}${battNote ? `, ${battNote}` : ""}${connected.length ? ` · ${connected.map(d=>d.name).join(", ")} connected` : ""}.`}>
+<ViewScaffold title={greeting} lede={`${home.wifi?.ssid ? `On ${home.wifi.ssid}` : "Your desktop at a glance"}${charge ? ` · battery ${charge}` : ""}${battNote ? `, ${battNote}` : ""}${connected.length ? ` · ${connected.map(d=>d.name).join(", ")} connected` : ""}.`}>
  <div class="quick">
   <button class="tile" class:on={home.wifi?.radio_enabled} disabled={busy || !home.wifi} onclick={() => toggle("wifi")} aria-pressed={home.wifi?.radio_enabled ?? false}><Wifi size={21} /><b>Wi-Fi</b><small>{home.wifi ? home.wifi.radio_enabled ? home.wifi.ssid || "On" : "Off" : home.errors.wifi ? "Unavailable" : "Checking…"}</small></button>
   <button class="tile" class:on={home.bluetooth} disabled={busy || home.bluetooth === null} onclick={() => toggle("bluetooth")} aria-pressed={home.bluetooth ?? false}><Bluetooth size={21} /><b>Bluetooth</b><small>{home.bluetooth === null ? home.errors.bluetooth ? "Unavailable" : "No adapter" : home.bluetooth ? connected.map(d=>d.name).join(", ") || "On" : "Off"}</small></button>

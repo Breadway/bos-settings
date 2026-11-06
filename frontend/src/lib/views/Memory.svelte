@@ -11,6 +11,7 @@
 	import TagsField from "$lib/components/TagsField.svelte";
 	import TextField from "$lib/components/TextField.svelte";
 	import ServiceControl from "$lib/components/ServiceControl.svelte";
+	import { memoryAvailability } from "$lib/memoryAvailability";
 
 	const ACTION_LABELS: Record<string, string> = {
 		cgroup_soft_limit: "Soft memory limits",
@@ -116,6 +117,8 @@
 	let cfg = $state<BreadramConfig | null>(null);
 	let status = $state<LiveStatus | null>(null);
 	let actions = $state<LiveActions | null>(null);
+	let installed = $state<boolean | null>(null);
+	let availability = $derived(memoryAvailability(installed));
 	let liveError = $state("");
 	let modeBusy = $state(false);
 	let profileBusy = $state("");
@@ -154,6 +157,13 @@
 	let timer: ReturnType<typeof setInterval> | undefined;
 
 	onMount(async () => {
+		try {
+			installed = await invoke<boolean>("breadram_installed");
+		} catch (e) {
+			liveError = String(e);
+			installed = false;
+		}
+		if (!installed) return;
 		await loadFile();
 		await refreshLive();
 		timer = setInterval(refreshLive, 10_000);
@@ -213,6 +223,27 @@
 </script>
 
 <ViewScaffold title="Memory">
+	{#if availability === "checking"}
+		<Group title="Memory daemon">
+			<Row label="Daemon" hint="Checking whether breadram is installed.">
+				<span>Loading…</span>
+			</Row>
+		</Group>
+	{:else if availability === "not-installed"}
+		<Group title="Memory daemon" hint="Memory automation is not available on this computer.">
+			<Row
+				label="breadram is not installed"
+				hint="This page controls the breadram memory daemon. Install breadram to manage memory automation here."
+			>
+				<span>Not installed</span>
+			</Row>
+			{#if liveError}
+				<Row label="Could not check for breadram" hint={liveError}>
+					<span>Unavailable</span>
+				</Row>
+			{/if}
+		</Group>
+	{:else}
 	<Group
 		title="Right now"
 		hint="What the memory daemon is doing. Nothing here needs the daemon running to open this page."
@@ -439,6 +470,7 @@
 				</Row>
 			{/if}
 		</Group>
+	{/if}
 	{/if}
 </ViewScaffold>
 

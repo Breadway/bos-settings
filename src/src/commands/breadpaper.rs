@@ -236,6 +236,13 @@ mod tests {
     }
 
     #[test]
+    fn library_path_matches_breadpaper_default() {
+        // breadpaper 43b679d (PAPER-19) defaults to the same folder, so the
+        // Appearance library and the Wallpapers app list the same files.
+        assert!(wallpaper_library_dir().ends_with("Pictures/Backgrounds"));
+    }
+
+    #[test]
     fn normal_image_file_is_allowed() {
         let dir = Scratch::new("normal");
         let img = dir.path().join("wall.png");
