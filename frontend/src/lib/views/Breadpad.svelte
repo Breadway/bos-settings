@@ -12,6 +12,11 @@
 	import NumberField from "$lib/components/NumberField.svelte";
 	import TagsField from "$lib/components/TagsField.svelte";
 	import Row from "$lib/components/Row.svelte";
+	import { noteShortcutText, type BindsFileLike } from "$lib/noteBind";
+
+	interface BindsPayloadLike {
+		file?: BindsFileLike;
+	}
 
 	interface BreadpadConfig {
 		default_type: string;
@@ -65,8 +70,23 @@
 		}
 	});
 
+	// Read the shortcut from binds.json so the copy follows the real bind.
+	// A missing or unreadable keybind file only drops the key name from the
+	// sentence; it must never stop the configuration from loading.
+	let noteShortcut = $state<string | null>(null);
+	let quickNotesHint = $derived(
+		noteShortcut
+			? `${noteShortcut} opens a note. BOS sorts it into a note, reminder or task.`
+			: "Open a note from the keyboard. BOS sorts it into a note, reminder or task.",
+	);
+
 	onMount(async () => {
-		cfg = await invoke<BreadpadConfig>("get_breadpad_config");
+		const [cfgResult, bindsResult] = await Promise.allSettled([
+			invoke<BreadpadConfig>("get_breadpad_config"),
+			invoke<BindsPayloadLike>("get_keybinds"),
+		]);
+		if (cfgResult.status === "fulfilled") cfg = cfgResult.value;
+		if (bindsResult.status === "fulfilled") noteShortcut = noteShortcutText(bindsResult.value?.file);
 	});
 
 	async function save() {
@@ -77,7 +97,7 @@
 
 <ViewScaffold title="Notes">
 	{#if cfg}
-		<Group title="Quick notes" hint="Super + N opens a note. BOS sorts it into a note, reminder or task.">
+		<Group title="Quick notes" hint={quickNotesHint}>
 			<Row label="New notes start as">
 				<div class="ui-seg">{#each [["note", "Note"], ["reminder", "Reminder"], ["task", "Task"]] as [v, l] (v)}<button class:on={cfg.default_type === v} onclick={() => (cfg!.default_type = v)}>{l}</button>{/each}</div>
 			</Row>
