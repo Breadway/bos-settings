@@ -5,12 +5,20 @@
 		title,
 		hint,
 		wide = false,
+		preserveTitleCase = false,
 		children,
-	}: { title: string; hint?: string; wide?: boolean; children: Snippet } = $props();
+	}: {
+		title: string;
+		hint?: string;
+		wide?: boolean;
+		/** Monitor and device names must keep the compositor's exact casing. */
+		preserveTitleCase?: boolean;
+		children: Snippet;
+	} = $props();
 </script>
 
 <div class="group" class:wide>
-	<h2 class="title">{title}</h2>
+	<h2 class="title" class:literal={preserveTitleCase}>{title}</h2>
 	{#if hint}<p class="hint">{hint}</p>{/if}
 	<div class="rows">
 		{@render children()}
@@ -39,6 +47,11 @@
 		text-transform: uppercase;
 		color: var(--muted, color-mix(in oklab, var(--fg) 58%, transparent));
 		margin: 0 0 5px;
+	}
+
+	.title.literal {
+		letter-spacing: 0;
+		text-transform: none;
 	}
 
 	.hint {

@@ -523,6 +523,26 @@ mod tests {
     }
 
     #[test]
+    fn mixed_case_output_name_is_preserved_from_the_compositor() {
+        let value = serde_json::json!([{
+            "id": 0,
+            "name": "eDP-1",
+            "width": 1920,
+            "height": 1200,
+            "refreshRate": 60.0,
+            "x": 0,
+            "y": 0,
+            "scale": 1.0,
+            "transform": 0,
+            "availableModes": ["1920x1200@60.00Hz"],
+            "disabled": false
+        }]);
+        let monitors = parse_monitors(&value);
+        assert_eq!(monitors.len(), 1);
+        assert_eq!(monitors[0].name, "eDP-1");
+    }
+
+    #[test]
     fn rules_for_disconnected_outputs_are_never_dropped() {
         let existing = rules(
             r#"{"monitors":[
