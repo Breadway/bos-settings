@@ -84,6 +84,22 @@ pub fn get_str_list(doc: &DocumentMut, path: &[&str]) -> Vec<String> {
     }
 }
 
+/// Read an array only when every element is a string.
+///
+/// `get_str_list` collapses a missing key and an explicitly empty array to
+/// the same `Vec::new()`. Callers that mirror another app's serde defaults
+/// must tell those apart: a missing key takes that app's default, while an
+/// empty array is a real (and deliberate) empty choice. A key that is not an
+/// array, or an array containing a non-string, is `None` (the app could not
+/// deserialize it either).
+pub fn get_str_list_strict(doc: &DocumentMut, path: &[&str]) -> Option<Vec<String>> {
+    get(doc, path)?
+        .as_array()?
+        .iter()
+        .map(|v| v.as_str().map(str::to_string))
+        .collect()
+}
+
 // --- setters (auto-create intermediate tables, replace only the leaf) ---
 
 fn table_at_mut<'a>(doc: &'a mut DocumentMut, parents: &[&str]) -> &'a mut Table {
@@ -201,6 +217,17 @@ password = \"secret\"  # keep me
         let items = vec!["a".to_string(), "b".to_string()];
         set_str_list(&mut doc, &["modules", "disable"], &items);
         assert_eq!(get_str_list(&doc, &["modules", "disable"]), items);
+    }
+
+    #[test]
+    fn strict_str_list_distinguishes_missing_empty_and_invalid() {
+        let doc: DocumentMut = "[a]\nempty = []\nmixed = [\"x\", 1]\nscalar = \"x\"\n"
+            .parse()
+            .unwrap();
+        assert_eq!(get_str_list_strict(&doc, &["a", "missing"]), None);
+        assert_eq!(get_str_list_strict(&doc, &["a", "empty"]), Some(vec![]));
+        assert_eq!(get_str_list_strict(&doc, &["a", "mixed"]), None);
+        assert_eq!(get_str_list_strict(&doc, &["a", "scalar"]), None);
     }
 
     #[test]
