@@ -24,6 +24,17 @@ jobs:
       # frontendDist); that only happens automatically under `cargo
       # tauri build`, so it's run explicitly here since this workflow
       # just uses plain `cargo build`.
+      - name: check promotion through beta
+        run: |
+          set -euo pipefail
+          SRC_DIR="src"
+          COMMIT="$(git -C "${SRC_DIR}" rev-parse HEAD)"
+          ECO_DIR="$(mktemp -d /tmp/bread-promotion-XXXXXX)"
+          trap 'rm -rf -- "${ECO_DIR}"' EXIT
+          git clone --depth 1 https://git.breadway.dev/Breadway/bread-ecosystem.git "${ECO_DIR}"
+          bash "${ECO_DIR}/scripts/check-promotion.sh" \
+            "${GITHUB_REPOSITORY}" "bos-settings" "${GITHUB_REF_NAME}" "${COMMIT}"
+
       - name: build frontend
         run: |
           set -euo pipefail
