@@ -230,6 +230,7 @@ pub fn run() {
             commands::aur::search_aur,
             commands::aur::install_aur_package,
             commands::firmware::get_updatable_firmware,
+            commands::snapshots::get_snapshot_availability,
             commands::snapshots::get_snapshots,
             commands::snapshots::create_update_snapshot,
             commands::snapshots::create_manual_snapshot,
