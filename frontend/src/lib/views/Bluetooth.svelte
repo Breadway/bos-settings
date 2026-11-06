@@ -46,6 +46,8 @@
 	let powered = $state<boolean | null | undefined>(undefined);
 	let serviceOff = $state(false);
 	let starting = $state(false);
+	let checking = $state(false);
+	let notice = $state("");
 	let paired = $state<BtDevice[] | null>(null);
 	let busy = $state<string | null>(null);
 	let error = $state("");
@@ -65,10 +67,13 @@
 
 	type BtState = "no-adapter" | "service-off" | { ready: { powered: boolean } };
 
-	async function load() {
-		const st = await invoke<BtState>("get_bluetooth_state");
+	function applyState(st: BtState) {
 		serviceOff = st === "service-off";
 		powered = typeof st === "object" ? st.ready.powered : null;
+	}
+
+	async function load() {
+		applyState(await invoke<BtState>("get_bluetooth_state"));
 		if (powered !== null) await refreshPaired();
 	}
 
@@ -76,10 +81,23 @@
 
 	async function startService() {
 		error = "";
+		notice = "";
 		starting = true;
-		try { await invoke("start_bluetooth_service"); await load(); }
-		catch (e) { error = `Couldn't start the Bluetooth service: ${e}`; }
-		finally { starting = false; }
+		try {
+			const result = await invoke<{ state: BtState; message: string }>("start_bluetooth_service");
+			applyState(result.state);
+			notice = result.message;
+			if (powered !== null) await refreshPaired();
+		} catch (e) {
+			error = `Couldn't start the Bluetooth service: ${e}`;
+		} finally {
+			starting = false;
+		}
+	}
+
+	async function checkAgain() {
+		checking = true;
+		try { await load(); } finally { checking = false; }
 	}
 
 	async function togglePower(on: boolean) {
@@ -148,7 +166,11 @@
 		<p class="muted">Loading…</p>
 	{:else if serviceOff}
 		<EmptyState icon={BluetoothOff} title="The Bluetooth service is off" hint="This computer has Bluetooth, but the service that runs it isn't started. Starting it asks for your password." />
-		<div class="service-acts"><button class="btn primary" disabled={starting} onclick={startService}>{starting ? "Starting…" : "Start Bluetooth"}</button></div>
+		<div class="service-acts">
+			<button class="btn primary" disabled={starting || checking} onclick={startService}>{starting ? "Starting…" : "Start Bluetooth"}</button>
+			<button class="btn" disabled={starting || checking} onclick={checkAgain}>{checking ? "Checking…" : "Check again"}</button>
+		</div>
+		{#if notice}<p class="ok" role="status">{notice}</p>{/if}
 		{#if error}<p class="err" role="alert">{error}</p>{/if}
 	{:else if powered === null}
 		<EmptyState icon={BluetoothOff} title="No Bluetooth adapter found" hint="This computer doesn't have Bluetooth, or it is switched off in the firmware settings." />
@@ -164,6 +186,7 @@
 				<Switch bind:value={() => powered ?? false, (v) => togglePower(v)} ariaLabel="Bluetooth" />
 			</div>
 		</div>
+		{#if notice}<p class="ok" role="status">{notice}</p>{/if}
 		{#if error}<p class="err" role="alert">{error}</p>{/if}
 
 		{#if powered}
@@ -236,6 +259,7 @@
 	.muted { color:var(--muted); font-size:12.5px; margin:4px 2px; }
 	.muted.small { font-size:12px; margin:0 2px 6px; }
 	.err { color:var(--red); font-size:12.5px; margin:0 2px; }
+	.ok { color:var(--accent); font-size:12.5px; margin:0 2px; }
 	.add { display:inline-flex; align-items:center; gap:6px; }
-	.service-acts { display:flex; justify-content:center; margin:4px 0 8px; }
+	.service-acts { display:flex; justify-content:center; gap:8px; margin:4px 0 8px; }
 </style>
