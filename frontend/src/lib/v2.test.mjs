@@ -22,6 +22,13 @@ try {
  assert.deepEqual(resolveDestination("input", "accessibility"), {page:"a11y"});
  assert.ok(searchSettings("wallpapr").some(h => h.label === "Wallpaper"), "A missing letter should find Wallpaper");
  assert.ok(searchSettings("natural scrolling").some(h => h.page === "mouse" && h.target === "Natural scrolling"));
+ // "dark mode" used to return No settings found although Appearance has the
+ // Daylight theme. The theme aliases must reach the Appearance > Style page.
+ for (const query of ["dark mode", "light mode", "theme", "daylight", "appearance", "night mode", "dark theme", "colour scheme"]) {
+  assert.ok(searchSettings(query).some(h => h.page === "appearance" && h.tab === "shelltheme"), `Missing appearance theme hit for ${query}`);
+ }
+ assert.ok(searchSettings("do not disturb").some(h => h.page === "notifications"), "Do not disturb should find Notifications");
+ assert.ok(searchSettings("tap to click").some(h => h.page === "mouse"), "Tap to click should find Mouse & touchpad");
  assert.deepEqual(searchSettings("nothingmatchesxyz"), []);
  assert.deepEqual(searchSettings("hdr"), [], "Do not advertise unsupported HDR controls");
  for (const query of ["layout", "keyboard", "night", "", "updates"]) {

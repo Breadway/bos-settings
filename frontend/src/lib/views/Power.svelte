@@ -11,6 +11,7 @@
 	import Hint from "$lib/components/Hint.svelte";
 	import SwitchField from "$lib/components/SwitchField.svelte";
 	import { createLiveGate, pollWhileVisible } from "$lib/liveGate";
+	import { timerChoices } from "$lib/powerTimers";
 
 	interface BatteryProtection {
 		kind: "thresholds" | "charge_types" | "conservation";
@@ -41,11 +42,9 @@
  async function savePolicy(){await invoke('save_power_settings',{settings:policy})}
  useDraft(()=>policy,savePolicy,()=>policy!==null);
  async function setMode(profile:string){if(modeBusy)return;modeBusy=true;modeError='';try{await invoke('set_power_mode',{profile});modes=await invoke('get_power_modes')}catch(e){modeError=String(e)}finally{modeBusy=false}}
- const timerOptions=['0','60','120','300','480','510','600','900','1200','1800','3600'];
- // Any seconds value reads as words, including ones written outside these presets
- // (hypridle.conf had 240 and 330, which the select showed as raw numbers).
- function timerLabel(v:string):string{const n=Number(v);if(!n)return 'Never';const h=Math.floor(n/3600),m=Math.floor(n%3600/60),sec=n%60;const part=(x:number,u:string)=>`${x} ${u}${x===1?'':'s'}`;return [h&&part(h,'hour'),m&&part(m,'minute'),sec&&part(sec,'second')].filter(Boolean).join(' ');}
- const timerLabels=(values:string[])=>Object.fromEntries(values.map(v=>[v,timerLabel(v)]));
+ // Presets plus the value currently in hypridle.conf. An odd value such as
+ // 470 s stays selectable and is called out as the current custom value, so
+ // the dropdown never disagrees with the file without the user choosing it.
  let history=$state<{time:number;percentage:number}[]>([]);let historyError=$state('');
  onMount(async()=>{try{history=await invoke("get_battery_history")}catch(e){historyError=String(e)}});
  let chart=$derived(history.length>1 ? history.map((s,i)=>`${i===0?"M":"L"}${(s.time-history[0].time)/(history[history.length-1].time-history[0].time || 1)*200} ${48-s.percentage*.48}`).join(" ") : "");
@@ -220,7 +219,8 @@
 	{#if policy}
 		<Group title="When you step away">
 			{#each [["dim", "Dim the screen after"], ["screen_off", "Turn off the screen after"], ["lock", "Lock after"], ["sleep", "Sleep after"]] as [key, label] (key)}
-				<SelectField {label} bind:value={() => String(policy![key as "dim"]), (v) => (policy![key as "dim"] = Number(v))} options={Array.from(new Set([...timerOptions, String(policy[key as "dim"])])).sort((a, b) => Number(a) - Number(b))} labels={timerLabels([...timerOptions, String(policy[key as "dim"])])} />
+				{@const timer = timerChoices(policy[key as "dim"])}
+				<SelectField {label} bind:value={() => String(policy![key as "dim"]), (v) => (policy![key as "dim"] = Number(v))} options={timer.options} labels={timer.labels} />
 			{/each}
 			<SwitchField label="Sleep only on battery" hint="Stay awake while plugged in." bind:value={policy.sleep_on_battery} />
 		</Group>
