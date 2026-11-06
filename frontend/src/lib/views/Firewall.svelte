@@ -4,6 +4,7 @@
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import SwitchField from "$lib/components/SwitchField.svelte";
 	import Group from "$lib/components/Group.svelte";
+	import { firewallCheckFailure, firewallNotCheckedMessage } from "$lib/firewallCheck";
 
 	interface FirewallRule {
 		number: string;
@@ -14,8 +15,13 @@
 		rules: FirewallRule[];
 	}
 
-	let status = $state<FirewallStatus | "unloaded" | { error: string }>("unloaded");
-	let enabledSensitive = $state(false);
+	let details = $state<FirewallStatus | null>(null);
+	// Non-root signal only: `systemctl is-active ufw` renders the page
+	// without a password prompt (BSET-93).
+	let serviceActive = $state<boolean | null>(null);
+	let checking = $state(false);
+	let checkNotice = $state("");
+	let checkError = $state("");
 	let newRule = $state("");
 	let log = $state<string[]>([]);
 	let busy = $state(false);
@@ -29,8 +35,8 @@
 	const ruleSpecs = (st: FirewallStatus) => new Set(st.rules.filter((r) => /ALLOW/.test(r.text)).map((r) => r.text.trim().split(/\s+/)[0]));
 	const allowed = (st: FirewallStatus, specs: string[]) => specs.every((sp) => ruleSpecs(st).has(sp));
 	async function setApp(specs: string[], allow: boolean) {
-		if (typeof status !== "object" || !("active" in status)) return;
-		const have = ruleSpecs(status);
+		if (!details) return;
+		const have = ruleSpecs(details);
 		busy = true; log = [];
 		try {
 			for (const spec of specs) {
@@ -44,33 +50,45 @@
 		await refresh();
 	}
 
-	onMount(refresh);
-
-	function friendlyError(raw: string): string {
-		const s = raw.toLowerCase();
-		if (
-			s.includes("polkit") ||
-			s.includes("pkexec") ||
-			s.includes("password") ||
-			s.includes("authentication") ||
-			s.includes("controlling terminal")
-		) {
-			return "it needs your password, which wasn't given.";
+	onMount(loadSignal);
+	async function loadSignal() {
+		try {
+			serviceActive = await invoke<boolean | null>("get_firewall_service_active");
+		} catch {
+			serviceActive = null;
 		}
-		return raw;
+	}
+	let notChecked = $derived(firewallNotCheckedMessage(serviceActive));
+
+	async function checkFirewall() {
+		checking = true;
+		checkNotice = "";
+		checkError = "";
+		try {
+			details = await invoke<FirewallStatus>("get_firewall_status");
+		} catch (e) {
+			const failure = firewallCheckFailure(`${e}`);
+			if (failure.declined) checkNotice = failure.message;
+			else checkError = failure.message;
+		} finally {
+			checking = false;
+		}
 	}
 
 	async function refresh() {
+		checkNotice = "";
+		checkError = "";
 		try {
-			status = await invoke<FirewallStatus>("get_firewall_status");
-			enabledSensitive = true;
+			details = await invoke<FirewallStatus>("get_firewall_status");
 		} catch (e) {
-			status = { error: friendlyError(`${e}`) };
+			const failure = firewallCheckFailure(`${e}`);
+			if (failure.declined) checkNotice = failure.message;
+			else checkError = failure.message;
 		}
 	}
 
 	async function toggleEnabled(enabled: boolean) {
-		if (typeof status !== "object" || !("active" in status)) return;
+		if (!details) return;
 		log = [];
 		try {
 			await invoke("set_firewall_enabled", { enabled });
@@ -105,15 +123,8 @@
 
 <ViewScaffold title="Firewall">
 	<Group title="Firewall">
-		{#if status === "unloaded"}
-			<p class="muted">Checking… this may ask for your password.</p>
-		{:else if "error" in status}
-			<div class="ui-item">
-				<div class="lb"><b>Firewall</b><small>Couldn't check it: {status.error}</small></div>
-				<button class="btn small" onclick={refresh}>Try again</button>
-			</div>
-		{:else}
-			{@const st = status}
+		{#if details}
+			{@const st = details}
 			<SwitchField label="Firewall" hint="Blocks incoming connections you haven't allowed. Changes ask for your password." bind:value={() => st.active, (v) => toggleEnabled(v)} />
 			<p class="sub">Allowed to connect in</p>
 			{#each APPS as app (app.name)}
@@ -131,7 +142,18 @@
 					<button class="btn small" disabled={busy || !newRule.trim()} onclick={addRule}>Allow</button>
 				</div>
 			</details>
+		{:else}
+			<div class="ui-item">
+				<div class="lb"><b>Firewall</b><small>{notChecked}</small></div>
+				<button class="btn small" disabled={checking} onclick={checkFirewall}>{checking ? "Checking…" : "Check firewall"}</button>
+			</div>
+			<p class="muted">
+				Reading the numbered rules asks for the admin password because ufw only reports them to root.
+				Nothing is checked until you press the button.
+			</p>
 		{/if}
+		{#if checkNotice}<p class="muted" role="status">{checkNotice}</p>{/if}
+		{#if checkError}<p class="muted bad" role="alert">Couldn't check the firewall: {checkError}</p>{/if}
 		{#if log.length}<p class="muted bad" role="alert">{log.join(" ")}</p>{/if}
 	</Group>
 </ViewScaffold>

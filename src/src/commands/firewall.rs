@@ -1,8 +1,8 @@
 //! ufw firewall rules. `ufw status` itself requires root (confirmed against
-//! the installed ufw script), so unlike every other read-only panel, this
-//! doesn't query eagerly; the frontend only calls `get_firewall_status`
-//! when the user clicks Refresh, deferring the one unavoidable polkit
-//! prompt to an explicit action instead of forcing it on app open.
+//! the installed ufw script), so this panel never queries it on open: the
+//! non-root `systemctl is-active` signal renders the page, and the one
+//! unavoidable polkit prompt happens only when the user asks for rule
+//! details or changes something.
 
 use serde::Serialize;
 use tokio::process::Command;
@@ -17,6 +17,24 @@ pub struct FirewallRule {
 pub struct FirewallStatus {
     active: bool,
     rules: Vec<FirewallRule>,
+}
+
+/// Non-root view of whether ufw's service is running. `None` means the
+/// signal itself was unavailable, which the page shows as "Not checked
+/// yet" rather than guessing.
+#[tauri::command]
+pub async fn get_firewall_service_active() -> Option<bool> {
+    service_active_with("systemctl", &[]).await
+}
+
+async fn service_active_with(program: &str, prefix: &[String]) -> Option<bool> {
+    Command::new(program)
+        .args(prefix)
+        .args(["is-active", "--quiet", "ufw.service"])
+        .status()
+        .await
+        .ok()
+        .map(|s| s.success())
 }
 
 /// One `pkexec ufw status numbered` call, parsed for both the active/
@@ -182,6 +200,7 @@ pub async fn remove_firewall_rule(number: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn firewall_rule_is_port_and_optional_proto() {
@@ -213,5 +232,47 @@ mod tests {
         assert!(!valid_rule_number("1;2"));
         assert!(!valid_rule_number("1\n2"));
         assert!(!valid_rule_number(""));
+    }
+
+    fn fake_systemctl(tag: &str, body: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("bset93-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("systemctl");
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        path
+    }
+
+    #[tokio::test]
+    async fn service_signal_is_active_without_root() {
+        let script = fake_systemctl("active", "exit 0");
+        let args = vec![script.to_string_lossy().into_owned()];
+        assert_eq!(
+            service_active_with("sh", &args).await,
+            Some(true),
+            "systemctl is-active exit 0 means the firewall is on"
+        );
+        let _ = std::fs::remove_dir_all(script.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn service_signal_is_inactive_without_root() {
+        let script = fake_systemctl("inactive", "exit 3");
+        let args = vec![script.to_string_lossy().into_owned()];
+        assert_eq!(
+            service_active_with("sh", &args).await,
+            Some(false),
+            "systemctl is-active exit 3 means the firewall is off, not unknown"
+        );
+        let _ = std::fs::remove_dir_all(script.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn missing_service_signal_is_unknown_not_off() {
+        assert_eq!(
+            service_active_with("bos-settings-no-such-systemctl", &[]).await,
+            None,
+            "an unavailable command is 'not checked yet', never 'off'"
+        );
     }
 }
