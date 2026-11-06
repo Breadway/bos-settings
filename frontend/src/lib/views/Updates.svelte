@@ -7,6 +7,7 @@
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
 	import LogView from "$lib/components/LogView.svelte";
+	import FirmwareDeviceList from "$lib/components/FirmwareDeviceList.svelte";
 	import { go } from "$lib/nav.svelte";
 	import Download from "@lucide/svelte/icons/download";
 	import Cpu from "@lucide/svelte/icons/cpu";
@@ -180,11 +181,7 @@
 			{#if status.firmware.length}
 				<details class="ui-disclosure">
 					<summary>Firmware devices ({status.firmware.length})</summary>
-					<div class="pkgs">
-						{#each status.firmware as device (device.name)}
-							<div class="pkg"><span>{device.name}</span><small>{short(device.version)}</small></div>
-						{/each}
-					</div>
+					<FirmwareDeviceList devices={status.firmware} />
 					<div class="foot"><button class="btn small" disabled={updateRun.busy} onclick={() => go("firmware")}>Open Firmware</button></div>
 				</details>
 			{/if}
