@@ -7,12 +7,14 @@
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
 	import LogView from "$lib/components/LogView.svelte";
+	import FirmwareDeviceList from "$lib/components/FirmwareDeviceList.svelte";
 	import { go } from "$lib/nav.svelte";
 	import Download from "@lucide/svelte/icons/download";
 	import Cpu from "@lucide/svelte/icons/cpu";
 	import Check from "@lucide/svelte/icons/check";
 	import CircleAlert from "@lucide/svelte/icons/circle-alert";
 	import { heroState, failedParts } from "$lib/updateHero";
+	import { updateCounts } from "$lib/updateCount";
 
 	interface PendingUpdate {
 		name: string;
@@ -31,6 +33,7 @@
 		installed: boolean;
 	}
 	interface UpdatesStatus {
+		total: number;
 		pacman: PendingUpdate[];
 		pacman_error: string | null;
 		bakery: PendingUpdate[];
@@ -40,15 +43,18 @@
 	}
 
 	let status = $state<UpdatesStatus | null>(null);
-	let total = $derived(status ? status.pacman.length + status.bakery.length : 0);
+	let counts = $derived(updateCounts(status));
+	let total = $derived(counts.total);
 	let hero = $derived(heroState(status, updateRun.busy));
 	let summary = $derived.by(() => {
 		if (!status) return "";
 		const parts: string[] = [];
-		if (status.pacman.length) parts.push(`${status.pacman.length} system ${status.pacman.length === 1 ? "package" : "packages"}`);
-		if (status.bakery.length) parts.push(`${status.bakery.length} bread ${status.bakery.length === 1 ? "app" : "apps"}`);
+		if (counts.system) parts.push(`${counts.system} system ${counts.system === 1 ? "package" : "packages"}`);
+		if (counts.bread) parts.push(`${counts.bread} bread ${counts.bread === 1 ? "app" : "apps"}`);
 		const kernel = status.pacman.some((p) => p.name === "linux" || p.name.startsWith("linux-")) ? " · includes a new kernel, restart after" : "";
-		return `${parts.join(" and ")} · a safety snapshot is taken first${kernel}`;
+		const firmware = counts.firmware ? ` ${counts.firmware} firmware ${counts.firmware === 1 ? "device" : "devices"} can be checked on the Firmware page.` : "";
+		if (!parts.length) return `${firmware.trim()}${kernel}`.trim();
+		return `${parts.join(" and ")} · a safety snapshot is taken first${kernel}.${firmware}`;
 	});
 	// "0.9.1-dev.20261002094801+63126c4" -> "0.9.1 (dev build)".
 	function short(v: string): string {
@@ -113,6 +119,8 @@
 				<h3>Checking for updates…</h3><p>This takes a few seconds.</p>
 			{:else if hero === "failed" && status}
 				<h3>Couldn't check for updates</h3><p>BOS couldn't check {failedParts(status)}. Check your connection and try again. Details are below.</p>
+			{:else if hero === "firmware"}
+				<h3>No package updates</h3><p>{counts.firmware} firmware {counts.firmware === 1 ? "device can" : "devices can"} be checked on the Firmware page.</p>
 			{:else if hero === "current"}
 				<h3>You're up to date</h3><p>{updateRun.message || "System and bread apps are current."}</p>
 			{:else}
@@ -120,7 +128,7 @@
 			{/if}
 		</div>
 		<div class="acts">
-			{#if status && total > 0}<button class="btn primary" disabled={updateRun.busy} onclick={updateEverything}>{updateRun.busy ? "Updating…" : "Update everything"}</button>{/if}
+			{#if status && (total > 0 || counts.firmware > 0)}<button class="btn primary" disabled={updateRun.busy} onclick={updateEverything}>{updateRun.busy ? "Updating…" : "Update everything"}</button>{/if}
 			{#if status && !updateRun.busy}<button class="btn ghost small" onclick={recheck}>Check again</button>{/if}
 		</div>
 	</div>
@@ -145,7 +153,7 @@
 		</Group>
 	{/if}
 
-	{#if status && (status.pacman.length || status.bakery.length || status.pacman_error || status.bakery_error)}
+	{#if status && (status.pacman.length || status.bakery.length || status.firmware.length || status.pacman_error || status.bakery_error)}
 		<Group title="What will update">
 			{#if status.pacman_error}<p class="msg bad">Couldn't check system updates: {status.pacman_error}</p>{/if}
 			{#if status.bakery_error}<p class="msg bad">Couldn't check bread app updates: {status.bakery_error}</p>{/if}
@@ -170,11 +178,19 @@
 					</div>
 				</details>
 			{/if}
+			{#if status.firmware.length}
+				<details class="ui-disclosure">
+					<summary>Firmware devices ({status.firmware.length})</summary>
+					<FirmwareDeviceList devices={status.firmware} />
+					<div class="foot"><button class="btn small" disabled={updateRun.busy} onclick={() => go("firmware")}>Open Firmware</button></div>
+				</details>
+			{/if}
 			<details class="ui-disclosure">
 				<summary>Update one part only</summary>
 				<div class="foot">
 					<button class="btn small" disabled={updateRun.busy || !status.pacman.length} onclick={() => run("pacman_system_update")}>System packages</button>
 					<button class="btn small" disabled={updateRun.busy || !status.bakery.length} onclick={() => run("bakery_update_all")}>Bread apps</button>
+					<button class="btn small" disabled={updateRun.busy || !status.firmware.length} onclick={() => go("firmware")}>Firmware</button>
 				</div>
 			</details>
 		</Group>

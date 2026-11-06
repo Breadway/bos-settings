@@ -1,20 +1,25 @@
 // Which headline the Updates page shows. A failed check is never reported as
 // "up to date" (BSET-71): zero updates from a check that errored means unknown.
+import { updateCounts } from "./updateCount.ts";
 
 export interface UpdateCheck {
+	total?: number;
 	pacman: unknown[];
 	pacman_error: string | null;
 	bakery: unknown[];
 	bakery_error: string | null;
+	firmware?: unknown[];
 }
 
-export type Hero = "updating" | "checking" | "ready" | "failed" | "current";
+export type Hero = "updating" | "checking" | "ready" | "failed" | "firmware" | "current";
 
 export function heroState(status: UpdateCheck | null, busy: boolean): Hero {
 	if (busy) return "updating";
 	if (!status) return "checking";
-	if (status.pacman.length + status.bakery.length > 0) return "ready";
+	const counts = updateCounts(status);
+	if (counts.total > 0) return "ready";
 	if (status.pacman_error || status.bakery_error) return "failed";
+	if (counts.firmware > 0) return "firmware";
 	return "current";
 }
 

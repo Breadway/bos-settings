@@ -2,6 +2,7 @@
 	import {onMount} from "svelte";
 	import {invoke} from "@tauri-apps/api/core";
 	import {home} from "$lib/home.svelte";
+	import {updateCounts} from "$lib/updateCount";
 	let account=$state({username:"User",display_name:"User",hostname:""});
 	// Native title tooltips only help when the labels are hidden (icon rail); at full
 	// width they repeat the label and their popup covers the item below.
@@ -10,7 +11,7 @@
 	onMount(()=>{const f=(e:MediaQueryListEvent)=>rail=e.matches;railQuery?.addEventListener("change",f);return()=>railQuery?.removeEventListener("change",f);});
 	onMount(async()=>{try{account=await invoke("get_current_account")}catch{/* Keep account fallback */}});
 	const newPages=new Set(["sharing","notifications","getapps","storage"]);
-	const pending=$derived(home.updates ? home.updates.pacman.length+home.updates.bakery.length+home.updates.firmware.length : 0);
+	const pending=$derived(updateCounts(home.updates).total);
 	import Search from "@lucide/svelte/icons/search";
 	import { SIDEBAR_SECTIONS } from "$lib/sidebar";
 	import { go, nav } from "$lib/nav.svelte";
