@@ -11,6 +11,7 @@
 	import Switch from "$lib/components/Switch.svelte";
 	import { hyprFromKeyEvent } from "$lib/keycapture";
 	import { findConflict } from "$lib/bindConflicts";
+	import { comboLabels, comboText } from "$lib/keyDisplay";
 
 	// Mirrors src-tauri/src/commands/keybinds.rs's `Bind`  -  `action`/`key`/
 	// `mods` are the only fields every bind has; everything else (`command`,
@@ -106,37 +107,16 @@
 		exit: "Log out",
 	};
 
-	const KEY_LABELS: Record<string, string> = {
-		RETURN: "Enter",
-		SPACE: "Space",
-		ESCAPE: "Esc",
-		BACKSPACE: "Backspace",
-		TAB: "Tab",
-		SUPER: "Super",
-		CTRL: "Ctrl",
-		ALT: "Alt",
-		SHIFT: "Shift",
-		XF86AudioRaiseVolume: "Vol +",
-		XF86AudioLowerVolume: "Vol -",
-		XF86AudioMute: "Mute",
-		XF86AudioMicMute: "Mic mute",
-		XF86MonBrightnessUp: "Bright +",
-		XF86MonBrightnessDown: "Bright -",
-		XF86AudioNext: "Next",
-		XF86AudioPrev: "Prev",
-		XF86AudioPlay: "Play",
-		Print: "Print",
-	};
-
-	function keyLabel(k: string): string {
-		return KEY_LABELS[k] ?? k;
-	}
-
 	let filter=$state("");
 	let filterGroup=$state("all");
 	function groupOf(row:EditRow) { const cmd=String(row.extraValue.command ?? "");return /wpctl|playerctl|brightnessctl/.test(cmd) ? "Media" : row.action === "exec" ? "Applications" : "Windows"; }
 	function matches(row:EditRow) { return (filterGroup === "all" || groupOf(row) === filterGroup) && `${bindTitle(row)} ${keyChips(row).join(" ")} ${JSON.stringify(row.extraValue)}`.toLowerCase().includes(filter.toLowerCase()); }
 	function bindTitle(row: EditRow): string {
+		// binds.json labels are the intended action names (breadhelp uses the
+		// same field). Command-derived names are only a fallback for files
+		// without one.
+		const label = row.extraValue.label;
+		if (typeof label === "string" && label.trim()) return label.trim();
 		if (row.action === "exec") {
 			const cmd = String(row.extraValue.command ?? "");
 			if (cmd.includes("set-volume") && cmd.includes("+")) return "Volume up";
@@ -176,8 +156,7 @@
 	// "Super + B", not a bare "B" that reads as the B key alone.
 	function keyChips(row: EditRow): string[] {
 		const mods = row.modsTouched ? textToMods(row.mods) : textToMods(defaultMods);
-		const key = row.key.trim();
-		return [...mods, key].filter(Boolean).map(keyLabel);
+		return comboLabels(mods, row.key);
 	}
 
 	function allRows(): EditRow[] {
@@ -338,10 +317,6 @@
 		row.mods = mods.join(", ");
 		row.modsTouched = true;
 		row.key = key;
-	}
-
-	function comboText(mods: string[], key: string): string {
-		return [...mods, key].map(keyLabel).join(" + ");
 	}
 
 	function replaceConflict() {
