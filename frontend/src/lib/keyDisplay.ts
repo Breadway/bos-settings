@@ -32,6 +32,22 @@ export const KEY_LABELS: Record<string, string> = {
 	BACKSPACE: "Backspace",
 	DELETE: "Delete",
 
+	// Arrow and navigation keys. The shipped binds.json stores these
+	// lower-case (`left`, `right`, `up`, `down`), unlike the upper-case
+	// named keys above.
+	left: "Left",
+	right: "Right",
+	up: "Up",
+	down: "Down",
+
+	// Mouse tokens. `mouse:272`/`mouse:273` are Linux input button codes
+	// (BTN_LEFT/BTN_RIGHT) and `mouse_down`/`mouse_up` are scroll axes; the
+	// shipped binds.json uses those exact spellings.
+	"mouse:272": "Left click",
+	"mouse:273": "Right click",
+	mouse_down: "Scroll down",
+	mouse_up: "Scroll up",
+
 	// Media and function keys.
 	XF86AudioRaiseVolume: "Vol +",
 	XF86AudioLowerVolume: "Vol -",
