@@ -35,6 +35,7 @@ const expected = {
 	XF86AudioNext: "Next",
 	XF86AudioPrev: "Prev",
 	XF86AudioPlay: "Play",
+	XF86Calculator: "Calculator",
 	Print: "Print",
 };
 
@@ -64,6 +65,8 @@ assert.deepEqual(comboLabels(["SUPER"], "U"), ["Super", "U"]);
 assert.equal(comboText(["SUPER"], "comma"), "Super + ,");
 assert.equal(comboText(["SUPER", "SHIFT"], "slash"), "Super + Shift + /");
 assert.equal(comboText(["SUPER"], "RETURN"), "Super + Enter");
+// BSET-112: the shipped binds.json opens the calculator with this keysym.
+assert.equal(comboText(["SUPER"], "XF86Calculator"), "Super + Calculator");
 
 // A combo with no key shows only its modifiers, and an empty combo is empty.
 assert.deepEqual(comboLabels(["SUPER", "CTRL"], ""), ["Super", "Ctrl"]);

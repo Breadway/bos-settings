@@ -42,6 +42,7 @@ export const KEY_LABELS: Record<string, string> = {
 	XF86AudioNext: "Next",
 	XF86AudioPrev: "Prev",
 	XF86AudioPlay: "Play",
+	XF86Calculator: "Calculator",
 	Print: "Print",
 };
 
