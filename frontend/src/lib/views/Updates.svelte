@@ -41,8 +41,15 @@
 		firmware: FwDevice[];
 		nvidia: NvidiaOffer | null;
 	}
+	interface SnapshotAvailability {
+		state: "available" | "no-config" | "live-session" | "error";
+		live: boolean;
+		error: string | null;
+	}
 
 	let status = $state<UpdatesStatus | null>(null);
+	let snapshotState = $state<SnapshotAvailability["state"] | null>(null);
+	let snapshotUnavailable = $derived(snapshotState === "live-session" || snapshotState === "no-config");
 	let counts = $derived(updateCounts(status));
 	let total = $derived(counts.total);
 	let hero = $derived(heroState(status, updateRun.busy));
@@ -54,8 +61,21 @@
 		const kernel = status.pacman.some((p) => p.name === "linux" || p.name.startsWith("linux-")) ? " · includes a new kernel, restart after" : "";
 		const firmware = counts.firmware ? ` ${counts.firmware} firmware ${counts.firmware === 1 ? "device" : "devices"} can be checked on the Firmware page.` : "";
 		if (!parts.length) return `${firmware.trim()}${kernel}`.trim();
-		return `${parts.join(" and ")} · a safety snapshot is taken first${kernel}.${firmware}`;
+		const snapshotNote =
+			snapshotState === "live-session"
+				? " · snapshots aren't available in a live session"
+				: snapshotState === "no-config"
+					? ""
+					: " · a safety snapshot is taken first";
+		return `${parts.join(" and ")}${snapshotNote}${kernel}.${firmware}`;
 	});
+	let rollbackHint = $derived(
+		snapshotState === "live-session"
+			? "Snapshots aren't available in a live session; they start after you install BOS."
+			: snapshotState === "no-config"
+				? "Snapshots aren't set up on this system yet, so an update can't be rolled back from one."
+				: "Every update takes a snapshot first. Restart and pick it from the boot menu, or choose it in Backup & restore.",
+	);
 	// "0.9.1-dev.20261002094801+63126c4" -> "0.9.1 (dev build)".
 	function short(v: string): string {
 		const m = v.match(/^([\d.]+)(?:-(dev|beta|rc)[.\d]*)?/);
@@ -69,6 +89,11 @@
 
 	async function refresh() {
 		status = await invoke<UpdatesStatus>("get_updates_status");
+		try {
+			snapshotState = (await invoke<SnapshotAvailability>("get_snapshot_availability")).state;
+		} catch {
+			snapshotState = null;
+		}
 	}
 
 	onMount(refresh);
@@ -90,11 +115,14 @@
   if (updateRun.busy || !status) return;
   const jobs = [{label:"System packages", command:"pacman_system_update"},{label:"Bread apps",command:"bakery_update_all"},{label:"Firmware",command:"fwupd_update"}];
   updateRun.log = []; updateRun.message = ""; updateRun.busy = true;
-  updateRun.steps = [{label:"Taking a safety snapshot",state:"running"}, ...jobs.map(j => ({label:j.label,state:"waiting" as const}))];
+  updateRun.steps = [{label:snapshotUnavailable ? "Checking for a safety snapshot" : "Taking a safety snapshot",state:"running"}, ...jobs.map(j => ({label:j.label,state:"waiting" as const}))];
   let index = 0;
   try {
    const snapshot = await invoke<string|null>("create_update_snapshot");
-   if(!snapshot && !(await confirmAction({title:"Update without a snapshot?",message:"No root snapshot configuration was found. Continue updating without a system snapshot?",confirmLabel:"Update anyway"}))) { updateRun.message = "Update cancelled."; updateRun.steps[0].state = "failed"; return; }
+   const noSnapshotMessage = snapshotState === "live-session"
+    ? "Snapshots aren't available in a live session. Continue updating without a system snapshot?"
+    : "No root snapshot configuration was found. Continue updating without a system snapshot?";
+   if(!snapshot && !(await confirmAction({title:"Update without a snapshot?",message:noSnapshotMessage,confirmLabel:"Update anyway"}))) { updateRun.message = "Update cancelled."; updateRun.steps[0].state = "failed"; return; }
    updateRun.log.push(snapshot ? `Created system snapshot ${snapshot}` : "Continuing without a system snapshot");
    updateRun.steps[0].state = "done";
    for (const [i,job] of jobs.entries()) {
@@ -198,7 +226,7 @@
 
 	<Group title="If an update breaks something">
 		<div class="ui-item">
-			<div class="lb"><b>Go back to before the update</b><small>Every update takes a snapshot first. Restart and pick it from the boot menu, or choose it in Backup & restore.</small></div>
+			<div class="lb"><b>Go back to before the update</b><small>{rollbackHint}</small></div>
 			<button class="btn small" onclick={() => go("restore")}>Open</button>
 		</div>
 	</Group>
