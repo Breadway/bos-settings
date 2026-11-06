@@ -3,6 +3,7 @@
 	import { invoke } from "@tauri-apps/api/core";
 	import ViewScaffold from "$lib/components/ViewScaffold.svelte";
 	import Group from "$lib/components/Group.svelte";
+	import { printingError, printingState } from "$lib/printingView";
 	import Printer from "@lucide/svelte/icons/printer";
 
 	interface PrinterRow {
@@ -19,6 +20,7 @@
 	}
 
 	let status = $state<PrintingStatus | null>(null);
+	let view = $derived(printingState(status));
 	let message = $state("");
 	let address = $state("");
 	function printerState(p: PrinterRow): string {
@@ -64,12 +66,12 @@
 
 <ViewScaffold title="Printers" lede="Printers on your network usually show up on their own.">
 	<Group title="Your printers">
-		{#if !status}
+		{#if view === "loading" || !status}
 			<p class="muted">Loading…</p>
-		{:else if status.error}
-			<p class="muted bad">The printing service isn't answering. {status.error}</p>
-		{:else if status.printers.length === 0}
-			<p class="muted">No printers yet. Add one below.</p>
+		{:else if view === "error"}
+			<p class="muted bad">The printing service isn't answering. {printingError(status)}</p>
+		{:else if view === "empty"}
+			<p class="muted">No printers configured yet. Add one below.</p>
 		{:else}
 			{#each status.printers as p (p.name)}
 				<div class="ui-item">
