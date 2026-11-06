@@ -292,7 +292,7 @@ mod tests {
     #[test]
     fn defaults_when_nothing_is_set() {
         let doc: toml_edit::DocumentMut = "".parse().unwrap();
-        assert_eq!(get_bool(&doc, &["upload_enabled"]).unwrap_or(false), false);
+        assert!(!get_bool(&doc, &["upload_enabled"]).unwrap_or(false));
         assert!(get_str_list(&doc, &["excluded_apps"]).is_empty());
     }
 }
