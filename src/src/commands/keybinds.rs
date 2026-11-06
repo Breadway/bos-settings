@@ -201,6 +201,40 @@ fn save(f: &BindsFile, kind: SchemaKind) -> std::io::Result<()> {
     save_to(&config_path(), f, kind)
 }
 
+/// The command bound to Super+Enter, if any. Default applications uses it to
+/// find the terminal the user actually launches.
+pub(crate) fn terminal_bind_command() -> Option<String> {
+    let (file, _kind) = load();
+    terminal_bind_in(&file)
+}
+
+fn terminal_bind_in(file: &BindsFile) -> Option<String> {
+    let mut binds: Vec<&Bind> = Vec::new();
+    binds.extend(file.bindings.iter());
+    binds.extend(file.globals.iter());
+    binds.extend(file.common.iter());
+    binds.extend(file.layouts.values().flatten());
+    for bind in binds {
+        if bind.action != "exec" {
+            continue;
+        }
+        let Some(key) = bind.key.as_deref() else {
+            continue;
+        };
+        if !key.eq_ignore_ascii_case("RETURN") && !key.eq_ignore_ascii_case("ENTER") {
+            continue;
+        }
+        let mods = bind.mods.as_ref().unwrap_or(&file.default_mods);
+        if !mods.iter().any(|m| m.eq_ignore_ascii_case("SUPER")) {
+            continue;
+        }
+        if let Some(command) = bind.extra.get("command").and_then(|v| v.as_str()) {
+            return Some(command.to_string());
+        }
+    }
+    None
+}
+
 /// One breadshot `exec` bind as binds.json stored it. Used by the
 /// Screenshots panel (read-only); editing still happens here.
 pub(crate) struct ShotBindRaw {
@@ -298,6 +332,25 @@ mod tests {
     fn detects_flat_schema_from_real_bos_binds_json() {
         let (_, kind) = parse(REAL_BOS_FLAT_FIXTURE);
         assert_eq!(kind, SchemaKind::Flat);
+    }
+
+    #[test]
+    fn terminal_bind_reads_the_super_return_command() {
+        let (file, _) = parse(REAL_BOS_FLAT_FIXTURE);
+        assert_eq!(terminal_bind_in(&file).as_deref(), Some("kitty"));
+    }
+
+    #[test]
+    fn terminal_bind_ignores_return_without_super_and_other_keys() {
+        let text = r#"{
+            "default_mods": ["SUPER"],
+            "bindings": [
+                { "action": "exec", "command": "bare-return", "key": "RETURN", "mods": [] },
+                { "action": "exec", "command": "not-a-terminal-key", "key": "T" }
+            ]
+        }"#;
+        let (file, _) = parse(text);
+        assert_eq!(terminal_bind_in(&file), None);
     }
 
     #[test]
