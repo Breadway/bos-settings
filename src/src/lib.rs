@@ -208,6 +208,7 @@ pub fn run() {
             commands::bluetooth::bt_disconnect,
             commands::bluetooth::bt_forget,
             commands::bluetooth::bt_pair,
+            commands::firewall::get_firewall_service_active,
             commands::firewall::get_firewall_status,
             commands::firewall::set_firewall_enabled,
             commands::firewall::add_firewall_rule,
