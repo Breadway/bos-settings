@@ -51,4 +51,18 @@ async function walk(dir) {
 }
 await walk(root);
 assert.deepEqual(offenders, [], "use confirmAction instead of window.confirm/alert/prompt");
+
+// BSET-111: the bug-report page's destructive actions (queue discard on save,
+// delete from server, local wipe, discard the queue) must ask through the
+// shared dialog rather than a bare script dialog.
+const bugReports = await readFile(new URL("./views/BugReports.svelte", import.meta.url), "utf8");
+assert.match(
+	bugReports,
+	/import\s*\{[^}]*\bconfirmAction\b[^}]*\}\s*from\s*["']\$lib\/confirm\.svelte["']/,
+	"BugReports uses the shared confirm dialog",
+);
+assert.ok(
+	(bugReports.match(/await confirmAction\(/g) ?? []).length >= 4,
+	"each BugReports destructive action asks before running",
+);
 console.log("confirm: in-app confirm resolves only on Confirm, and no script dialogs remain");
