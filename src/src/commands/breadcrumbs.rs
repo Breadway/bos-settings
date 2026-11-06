@@ -15,6 +15,12 @@
 //! breadcrumbs.toml; leftover inline blocks from pre-split configs are
 //! read once (only if `networks.toml` is missing) and migrated on the
 //! next save. Other keys/comments in breadcrumbs.toml are preserved.
+//!
+//! The connect timeout is the file's `connect_wait` key. `nmcli_wait` is a
+//! legacy alias breadcrumbs still accepts on read, but its serde mapping is
+//! `alias = "nmcli_wait"` on the *same* field, so a file holding both fails
+//! to parse with `duplicate field connect_wait`. This app therefore reads
+//! either spelling but only ever writes the canonical `connect_wait`.
 
 use std::path::{Path, PathBuf};
 
@@ -62,8 +68,27 @@ pub struct Settings {
     exit_node: String,
     ping_host: String,
     connectivity_url: String,
-    nmcli_wait: i64,
+    /// Seconds to wait for a connect to reach ACTIVATED. Serialized to the
+    /// webview as `nmcli_wait` (the key NetworkAdvanced.svelte binds); the
+    /// on-disk key is breadcrumbs' canonical `connect_wait` (see
+    /// `read_connect_wait` / `apply_settings`).
+    #[serde(rename = "nmcli_wait")]
+    connect_wait: i64,
     watch_interval: i64,
+}
+
+/// File key names for the connect timeout. `nmcli_wait` is read for
+/// compatibility with configs written by older bos-settings releases, but
+/// must never be written: breadcrumbs maps it as an alias of
+/// `connect_wait`, and two such keys in one file are a parse error.
+const CONNECT_WAIT_KEY: &str = "connect_wait";
+const LEGACY_CONNECT_WAIT_KEY: &str = "nmcli_wait";
+const DEFAULT_CONNECT_WAIT: i64 = 8;
+
+fn read_connect_wait(doc: &DocumentMut) -> i64 {
+    config::get_i64(doc, &["settings", CONNECT_WAIT_KEY])
+        .or_else(|| config::get_i64(doc, &["settings", LEGACY_CONNECT_WAIT_KEY]))
+        .unwrap_or(DEFAULT_CONNECT_WAIT)
 }
 
 #[derive(Serialize)]
@@ -344,7 +369,10 @@ fn apply_settings(doc: &mut DocumentMut, settings: &Settings) {
         &["settings", "connectivity_url"],
         &settings.connectivity_url,
     );
-    config::set_i64(doc, &["settings", "nmcli_wait"], settings.nmcli_wait);
+    config::set_i64(doc, &["settings", CONNECT_WAIT_KEY], settings.connect_wait);
+    // Older builds wrote the legacy alias alongside (or instead of) the
+    // canonical key; leaving it behind makes breadcrumbs reject the file.
+    config::remove(doc, &["settings", LEGACY_CONNECT_WAIT_KEY]);
     config::set_i64(
         doc,
         &["settings", "watch_interval"],
@@ -365,7 +393,7 @@ fn load_from(settings_path: &Path, net_path: &Path) -> BreadcrumbsConfig {
                 .unwrap_or_else(|| "1.1.1.1".into()),
             connectivity_url: config::get_str(&doc, &["settings", "connectivity_url"])
                 .unwrap_or_else(|| "http://connectivitycheck.gstatic.com/generate_204".into()),
-            nmcli_wait: config::get_i64(&doc, &["settings", "nmcli_wait"]).unwrap_or(8),
+            connect_wait: read_connect_wait(&doc),
             watch_interval: config::get_i64(&doc, &["settings", "watch_interval"]).unwrap_or(12),
         },
         // Never ship a stored PSK to the webview; the password field is
@@ -470,7 +498,7 @@ mod tests {
             exit_node: String::new(),
             ping_host: "1.1.1.1".into(),
             connectivity_url: "http://connectivitycheck.gstatic.com/generate_204".into(),
-            nmcli_wait: 8,
+            connect_wait: 8,
             watch_interval: 12,
         }
     }
@@ -706,6 +734,225 @@ mod tests {
         assert_eq!(cfg.networks.len(), 1);
         assert_eq!(cfg.networks[0].ssid, "LegacyNet");
         assert_eq!(cfg.networks[0].password, None, "still redacted to the UI");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A breadcrumbs-generated file: a comment, the canonical
+    /// `connect_wait = 8` breadcrumbs serializes itself, and settings keys
+    /// this editor does not own.
+    fn breadcrumbs_generated_config() -> &'static str {
+        "# written by breadcrumbs\n\
+         [settings]\n\
+         default_profile = \"away\"\n\
+         connect_wait = 8\n\
+         dns = \"1.1.1.1\"\n\
+         watch_interval = 12\n\
+         interface = \"wlan0\"\n\
+         exit_nodes = [\"alpha\"]\n\
+         \n\
+         [profiles.away]\n\
+         networks = []\n\
+         tailscale = false\n\
+         include_all_known = true\n\
+         learn = true\n"
+    }
+
+    /// Round-trip exactly as the UI does: read the file, then save the values
+    /// that were read straight back.
+    fn load_and_save(settings_path: &Path, net_path: &Path) {
+        let BreadcrumbsConfig {
+            settings,
+            networks,
+            profiles,
+        } = load_from(settings_path, net_path);
+        save_to(
+            settings_path,
+            net_path,
+            SaveBreadcrumbsInput {
+                settings,
+                networks,
+                profiles,
+            },
+        )
+        .unwrap();
+    }
+
+    /// Count top-level assignments to `key` (indentation allowed). A file
+    /// must contain zero or one, never both spellings at once.
+    fn count_key(text: &str, key: &str) -> usize {
+        text.lines()
+            .filter(|line| {
+                line.trim_start()
+                    .strip_prefix(key)
+                    .is_some_and(|rest| rest.trim_start().starts_with('='))
+            })
+            .count()
+    }
+
+    /// Minimal mirror of breadcrumbs' `Settings` serde rule for the field
+    /// this app writes: canonical `connect_wait`, legacy alias `nmcli_wait`,
+    /// same field. Serde rejects a file holding both with
+    /// `duplicate field connect_wait`, which is the corruption this module
+    /// must never recreate. toml_edit is already a dependency, so only its
+    /// `serde` feature is needed to parse with the real rule.
+    #[derive(Deserialize, Default)]
+    struct BreadcrumbsSettingsRules {
+        #[serde(default = "default_connect_wait", alias = "nmcli_wait")]
+        connect_wait: u32,
+    }
+
+    #[derive(Deserialize, Default)]
+    struct BreadcrumbsConfigRules {
+        #[serde(default)]
+        settings: BreadcrumbsSettingsRules,
+    }
+
+    fn default_connect_wait() -> u32 {
+        8
+    }
+
+    fn breadcrumbs_connect_wait(text: &str) -> u32 {
+        toml_edit::de::from_str::<BreadcrumbsConfigRules>(text)
+            .unwrap_or_else(|e| panic!("breadcrumbs would reject this config: {e}\n{text}"))
+            .settings
+            .connect_wait
+    }
+
+    #[test]
+    fn save_over_breadcrumbs_generated_config_keeps_one_canonical_key() {
+        let dir = tmp_dir("canonical");
+        let settings = dir.join("breadcrumbs.toml");
+        let nets = dir.join("networks.toml");
+        std::fs::write(&settings, breadcrumbs_generated_config()).unwrap();
+
+        let cfg = load_from(&settings, &nets);
+        assert_eq!(cfg.settings.connect_wait, 8);
+
+        load_and_save(&settings, &nets);
+
+        let text = std::fs::read_to_string(&settings).unwrap();
+        assert_eq!(count_key(&text, "connect_wait"), 1, "{text}");
+        assert_eq!(count_key(&text, "nmcli_wait"), 0, "{text}");
+        assert!(text.contains("connect_wait = 8"), "{text}");
+        assert_eq!(breadcrumbs_connect_wait(&text), 8, "{text}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn legacy_nmcli_wait_loads_and_migrates_to_connect_wait() {
+        let dir = tmp_dir("migrate-alias");
+        let settings = dir.join("breadcrumbs.toml");
+        let nets = dir.join("networks.toml");
+        std::fs::write(
+            &settings,
+            "# written by an older bos-settings\n[settings]\nnmcli_wait = 5\n",
+        )
+        .unwrap();
+
+        let cfg = load_from(&settings, &nets);
+        assert_eq!(cfg.settings.connect_wait, 5, "legacy alias must be read");
+
+        load_and_save(&settings, &nets);
+
+        let text = std::fs::read_to_string(&settings).unwrap();
+        assert_eq!(count_key(&text, "connect_wait"), 1, "{text}");
+        assert_eq!(count_key(&text, "nmcli_wait"), 0, "{text}");
+        assert!(text.contains("connect_wait = 5"), "{text}");
+        assert!(
+            text.contains("# written by an older bos-settings"),
+            "{text}"
+        );
+        assert_eq!(breadcrumbs_connect_wait(&text), 5, "{text}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn config_with_both_keys_loads_and_saves_to_canonical_only() {
+        let duplicate = "[settings]\nconnect_wait = 6\nnmcli_wait = 9\n";
+        assert!(
+            toml_edit::de::from_str::<BreadcrumbsConfigRules>(duplicate).is_err(),
+            "fixture must reproduce breadcrumbs' duplicate-field rejection"
+        );
+
+        let dir = tmp_dir("both-keys");
+        let settings = dir.join("breadcrumbs.toml");
+        let nets = dir.join("networks.toml");
+        std::fs::write(&settings, format!("# both\n{duplicate}")).unwrap();
+
+        let cfg = load_from(&settings, &nets);
+        assert_eq!(
+            cfg.settings.connect_wait, 6,
+            "canonical key wins when a buggy file has both"
+        );
+
+        load_and_save(&settings, &nets);
+
+        let text = std::fs::read_to_string(&settings).unwrap();
+        assert_eq!(count_key(&text, "connect_wait"), 1, "{text}");
+        assert_eq!(count_key(&text, "nmcli_wait"), 0, "{text}");
+        assert!(text.contains("connect_wait = 6"), "{text}");
+        assert_eq!(breadcrumbs_connect_wait(&text), 6, "{text}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_round_trips_unmanaged_keys_and_comments() {
+        let dir = tmp_dir("round-trip");
+        let cfg_path = dir.join("breadcrumbs.toml");
+        let nets = dir.join("networks.toml");
+        std::fs::write(
+            &cfg_path,
+            "# top of file\n\
+             [settings]\n\
+             dns = \"9.9.9.9\"\n\
+             # physical radio choice\n\
+             interface = \"wlan1\"\n\
+             exit_nodes = [\"alpha\", \"beta\"]\n\
+             connect_wait = 8\n\
+             \n\
+             [profiles.home]\n\
+             networks = [\"HomeNet\"]\n\
+             tailscale = true\n\
+             learn = true\n",
+        )
+        .unwrap();
+
+        let BreadcrumbsConfig {
+            mut settings,
+            networks,
+            profiles,
+        } = load_from(&cfg_path, &nets);
+        settings.connect_wait = 30;
+        save_to(
+            &cfg_path,
+            &nets,
+            SaveBreadcrumbsInput {
+                settings,
+                networks,
+                profiles,
+            },
+        )
+        .unwrap();
+
+        let text = std::fs::read_to_string(&cfg_path).unwrap();
+        for kept in [
+            "# top of file",
+            "dns = \"9.9.9.9\"",
+            "# physical radio choice",
+            "interface = \"wlan1\"",
+            "exit_nodes = [\"alpha\", \"beta\"]",
+            "learn = true",
+        ] {
+            assert!(text.contains(kept), "lost {kept}: {text}");
+        }
+        assert_eq!(count_key(&text, "connect_wait"), 1, "{text}");
+        assert_eq!(count_key(&text, "nmcli_wait"), 0, "{text}");
+        assert!(text.contains("connect_wait = 30"), "{text}");
+        assert_eq!(breadcrumbs_connect_wait(&text), 30, "{text}");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
