@@ -11,6 +11,7 @@
 
 use serde::Serialize;
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::process::Output;
 use std::time::Duration;
 use tokio::process::Command;
@@ -20,26 +21,34 @@ use tokio::process::Command;
 const QUICK: Duration = Duration::from_secs(5);
 const SCAN: Duration = Duration::from_secs(15);
 const PAIR: Duration = Duration::from_secs(30);
+/// bluetoothd needs a moment after `systemctl start` before it owns the
+/// BlueZ name on the bus; the Start button waits this long for an answer.
+const START_WAIT: Duration = Duration::from_secs(10);
+const POLL: Duration = Duration::from_millis(250);
 
 async fn btctl(args: &[&str], limit: Duration) -> Result<Output, String> {
     bounded("bluetoothctl", args, limit).await
 }
 
 async fn bounded(program: &str, args: &[&str], limit: Duration) -> Result<Output, String> {
-    let child = Command::new(program).args(args).kill_on_drop(true).output();
+    bounded_with(program, &[], args, limit).await
+}
+
+async fn bounded_with(
+    program: &str,
+    prefix: &[String],
+    args: &[&str],
+    limit: Duration,
+) -> Result<Output, String> {
+    let child = Command::new(program)
+        .args(prefix)
+        .args(args)
+        .kill_on_drop(true)
+        .output();
     match tokio::time::timeout(limit, child).await {
         Ok(out) => out.map_err(|e| e.to_string()),
         Err(_) => Err("Bluetooth isn't responding. The Bluetooth service may be stopped.".into()),
     }
-}
-
-async fn bluetooth_service_active() -> bool {
-    Command::new("systemctl")
-        .args(["is-active", "--quiet", "bluetooth.service"])
-        .status()
-        .await
-        .map(|s| s.success())
-        .unwrap_or(false)
 }
 
 fn has_adapter_in(sysfs: &std::path::Path) -> bool {
@@ -53,7 +62,7 @@ fn has_adapter_in(sysfs: &std::path::Path) -> bool {
         .unwrap_or(false)
 }
 
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum BtState {
     /// No controller in /sys/class/bluetooth.
@@ -64,39 +73,220 @@ pub enum BtState {
     Ready { powered: bool },
 }
 
-#[tauri::command]
-pub async fn get_bluetooth_state() -> BtState {
-    let adapter = has_adapter_in(std::path::Path::new("/sys/class/bluetooth"));
-    if !bluetooth_service_active().await {
-        return if adapter {
-            BtState::ServiceOff
-        } else {
-            BtState::NoAdapter
-        };
+/// A command to run. Production uses the plain program name; tests point
+/// it at a script run through `sh`, so a script that was just written is
+/// only ever read, not exec'd (a fresh exec can hit ETXTBSY while a sibling
+/// test thread still has the file open on some filesystems).
+#[derive(Clone)]
+struct Cmd {
+    program: String,
+    prefix: Vec<String>,
+}
+
+impl Cmd {
+    fn plain(program: &str) -> Self {
+        Self {
+            program: program.into(),
+            prefix: Vec::new(),
+        }
     }
-    match get_adapter_powered().await {
+
+    #[cfg(test)]
+    fn script(path: &std::path::Path) -> Self {
+        Self {
+            program: "sh".into(),
+            prefix: vec![path.to_string_lossy().into_owned()],
+        }
+    }
+
+    fn command(&self) -> Command {
+        let mut command = Command::new(&self.program);
+        command.args(&self.prefix);
+        command
+    }
+}
+
+/// The commands and sysfs root the probe uses. Kept together so tests can
+/// point them at fake systemctl/bluetoothctl scripts instead of the host.
+struct BtHost {
+    systemctl: Cmd,
+    bluetoothctl: Cmd,
+    launcher: Cmd,
+    sysfs: PathBuf,
+}
+
+impl BtHost {
+    fn system() -> Self {
+        Self {
+            systemctl: Cmd::plain("systemctl"),
+            bluetoothctl: Cmd::plain("bluetoothctl"),
+            launcher: Cmd::plain("pkexec"),
+            sysfs: PathBuf::from("/sys/class/bluetooth"),
+        }
+    }
+
+    #[cfg(test)]
+    fn with_programs(
+        systemctl: &std::path::Path,
+        bluetoothctl: &std::path::Path,
+        launcher: &std::path::Path,
+        sysfs: PathBuf,
+    ) -> Self {
+        Self {
+            systemctl: Cmd::script(systemctl),
+            bluetoothctl: Cmd::script(bluetoothctl),
+            launcher: Cmd::script(launcher),
+            sysfs,
+        }
+    }
+
+    fn adapter_present(&self) -> bool {
+        has_adapter_in(&self.sysfs)
+    }
+
+    async fn service_active(&self) -> bool {
+        self.systemctl
+            .command()
+            .args(["is-active", "--quiet", "bluetooth.service"])
+            .status()
+            .await
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+
+    async fn btctl(&self, args: &[&str], limit: Duration) -> Result<Output, String> {
+        bounded_with(
+            &self.bluetoothctl.program,
+            &self.bluetoothctl.prefix,
+            args,
+            limit,
+        )
+        .await
+    }
+
+    async fn adapter_powered(&self) -> Option<bool> {
+        let output = self.btctl(&["show"], QUICK).await.ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        parse_controller_show(&String::from_utf8_lossy(&output.stdout))
+    }
+
+    /// Probe systemd and BlueZ together so the page and Home agree.
+    async fn probe(&self) -> Probe {
+        let service_active = self.service_active().await;
+        let powered = if service_active {
+            self.adapter_powered().await
+        } else {
+            None
+        };
+        Probe {
+            state: classify(powered, self.adapter_present()),
+            service_active,
+        }
+    }
+
+    /// Poll until bluetoothd actually answers, not just until systemd says
+    /// the unit is active. bluetoothctl can miss the controller for a
+    /// moment while the daemon claims its bus name (BSET-92).
+    async fn wait_for_started(&self, limit: Duration) -> Probe {
+        let start = std::time::Instant::now();
+        loop {
+            let probe = self.probe().await;
+            // A just-started daemon with an adapter present can still
+            // answer nothing at first: keep polling for a real answer.
+            if probe.service_active && probe.state != BtState::ServiceOff {
+                return probe;
+            }
+            if start.elapsed() >= limit {
+                return probe;
+            }
+            tokio::time::sleep(POLL).await;
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct Probe {
+    state: BtState,
+    service_active: bool,
+}
+
+/// BlueZ answering `show` wins over systemd's view: if it reports a
+/// controller, Bluetooth is usable. Otherwise a controller in sysfs means
+/// the service is the missing piece, and no controller means no adapter.
+fn classify(powered: Option<bool>, adapter: bool) -> BtState {
+    match powered {
         Some(powered) => BtState::Ready { powered },
         None if adapter => BtState::ServiceOff,
         None => BtState::NoAdapter,
     }
 }
 
-/// Starts bluetoothd after asking for the admin password. Only this fixed
-/// unit, never a caller-supplied one.
+/// A `bluetoothctl show` answer: a controller block means BlueZ is awake,
+/// and `Powered: yes` is its radio state. Empty output (daemon not up yet)
+/// is not an answer.
+fn parse_controller_show(text: &str) -> Option<bool> {
+    if !text.trim_start().starts_with("Controller") {
+        return None;
+    }
+    Some(text.lines().any(|l| l.trim() == "Powered: yes"))
+}
+
 #[tauri::command]
-pub async fn start_bluetooth_service() -> Result<(), String> {
-    let out = Command::new("pkexec")
+pub async fn get_bluetooth_state() -> BtState {
+    BtHost::system().probe().await.state
+}
+
+#[derive(Serialize, Debug)]
+pub struct BluetoothStart {
+    state: BtState,
+    message: String,
+}
+
+/// Starts bluetoothd after asking for the admin password. Only this fixed
+/// unit, never a caller-supplied one. The result carries a re-probed state
+/// and a message the page shows, so a successful start never leaves the
+/// old "service is off" screen behind.
+#[tauri::command]
+pub async fn start_bluetooth_service() -> Result<BluetoothStart, String> {
+    start_bluetooth_with(&BtHost::system(), START_WAIT).await
+}
+
+async fn start_bluetooth_with(host: &BtHost, limit: Duration) -> Result<BluetoothStart, String> {
+    let out = host
+        .launcher
+        .command()
         .args(["systemctl", "start", "bluetooth.service"])
         .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("couldn't ask for the admin password: {e}"))?;
     if !out.status.success() {
         return Err(super::util::fail_output(
             &out,
             "Starting the Bluetooth service",
         ));
     }
-    Ok(())
+    let probe = host.wait_for_started(limit).await;
+    let message = match probe.state {
+        BtState::Ready { .. } => "Bluetooth service started.".to_string(),
+        BtState::NoAdapter => {
+            "The Bluetooth service started, but this computer has no Bluetooth adapter."
+                .to_string()
+        }
+        BtState::ServiceOff if probe.service_active => {
+            "The Bluetooth service started, but Bluetooth isn't answering yet. Check again in a moment."
+                .to_string()
+        }
+        BtState::ServiceOff => {
+            "The start command finished, but the Bluetooth service isn't running yet. Check again in a moment."
+                .to_string()
+        }
+    };
+    Ok(BluetoothStart {
+        state: probe.state,
+        message,
+    })
 }
 
 #[derive(Serialize, Clone)]
@@ -122,22 +312,15 @@ fn has_real_name(name: &str, address: &str) -> bool {
 
 #[tauri::command]
 pub async fn get_adapter_powered() -> Option<bool> {
-    let output = btctl(&["show"], QUICK).await.ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&output.stdout);
-    if !text.trim_start().starts_with("Controller") {
-        return None;
-    }
-    Some(text.lines().any(|l| l.trim() == "Powered: yes"))
+    BtHost::system().adapter_powered().await
 }
 
 #[tauri::command]
 pub async fn set_adapter_powered(on: bool) -> Result<(), String> {
+    let host = BtHost::system();
     let val = if on { "on" } else { "off" };
     let out = btctl(&["power", val], QUICK).await?;
-    if !out.status.success() || get_adapter_powered().await != Some(on) {
+    if !out.status.success() || host.adapter_powered().await != Some(on) {
         return Err(super::util::fail_output(&out, "Changing Bluetooth power"));
     }
     Ok(())
@@ -281,6 +464,214 @@ pub async fn bt_pair(address: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::Path;
+
+    fn fake_script(dir: &Path, name: &str, body: &str) -> PathBuf {
+        use std::io::Write;
+        let path = dir.join(name);
+        let mut file = std::fs::File::create(&path).unwrap();
+        file.write_all(format!("#!/bin/sh\n{body}\n").as_bytes())
+            .unwrap();
+        file.sync_all().unwrap();
+        drop(file);
+        let mut perms = std::fs::metadata(&path).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&path, perms).unwrap();
+        path
+    }
+
+    fn fake_tree(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("bset92-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("sys/class/bluetooth")).unwrap();
+        dir
+    }
+
+    fn add_adapter(root: &Path) {
+        std::fs::create_dir_all(root.join("sys/class/bluetooth/hci0")).unwrap();
+    }
+
+    /// A host whose systemctl answers `active`, whose bluetoothctl prints
+    /// `show`, and whose pkexec launcher always succeeds.
+    fn fake_host(root: &Path, active: bool, show: &str) -> BtHost {
+        let systemctl = fake_script(root, "systemctl", if active { "exit 0" } else { "exit 3" });
+        let bluetoothctl = fake_script(root, "bluetoothctl", &format!("printf '%s\\n' '{show}'"));
+        let launcher = fake_script(root, "pkexec", "exit 0");
+        BtHost::with_programs(
+            &systemctl,
+            &bluetoothctl,
+            &launcher,
+            root.join("sys/class/bluetooth"),
+        )
+    }
+
+    #[test]
+    fn adapter_detected_from_sysfs() {
+        let dir = std::env::temp_dir().join(format!("bset65-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(!has_adapter_in(&dir));
+        std::fs::create_dir_all(dir.join("hci0")).unwrap();
+        assert!(has_adapter_in(&dir));
+        assert!(!has_adapter_in(&dir.join("missing")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn controller_show_needs_a_controller_block() {
+        assert_eq!(parse_controller_show(""), None);
+        assert_eq!(
+            parse_controller_show("Failed to connect to bluetoothd"),
+            None
+        );
+        assert_eq!(
+            parse_controller_show("Controller AA:BB:CC:DD:EE:FF\n\tPowered: yes\n"),
+            Some(true)
+        );
+        assert_eq!(
+            parse_controller_show("Controller AA:BB:CC:DD:EE:FF\n\tPowered: no\n"),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn state_off_with_adapter_is_service_off() {
+        assert_eq!(classify(None, true), BtState::ServiceOff);
+        assert_eq!(classify(None, false), BtState::NoAdapter);
+        assert_eq!(classify(Some(true), true), BtState::Ready { powered: true });
+        assert_eq!(
+            classify(Some(false), false),
+            BtState::Ready { powered: false }
+        );
+    }
+
+    #[tokio::test]
+    async fn service_off_with_adapter_is_service_off_not_no_adapter() {
+        let root = fake_tree("off-adapter");
+        add_adapter(&root);
+        let host = fake_host(&root, false, "");
+        let probe = host.probe().await;
+        assert_eq!(probe.state, BtState::ServiceOff);
+        assert!(!probe.service_active);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn service_off_without_adapter_is_no_adapter() {
+        let root = fake_tree("off-none");
+        let host = fake_host(&root, false, "");
+        let probe = host.probe().await;
+        assert_eq!(probe.state, BtState::NoAdapter);
+        assert!(!probe.service_active);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn service_on_reports_adapter_power() {
+        let root = fake_tree("on-powered");
+        add_adapter(&root);
+        let host = fake_host(&root, true, "Controller AA:BB:CC:DD:EE:FF\n\tPowered: yes");
+        assert_eq!(host.probe().await.state, BtState::Ready { powered: true });
+
+        let root2 = fake_tree("on-unpowered");
+        add_adapter(&root2);
+        let host2 = fake_host(&root2, true, "Controller AA:BB:CC:DD:EE:FF\n\tPowered: no");
+        assert_eq!(host2.probe().await.state, BtState::Ready { powered: false });
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&root2);
+    }
+
+    #[tokio::test]
+    async fn start_success_reprobes_until_bluez_answers() {
+        let root = fake_tree("start-ok");
+        add_adapter(&root);
+        let marker = root.join("started");
+        let systemctl = fake_script(
+            &root,
+            "systemctl",
+            &format!("[ -f '{}' ] && exit 0 || exit 3", marker.to_string_lossy()),
+        );
+        let bluetoothctl = fake_script(
+            &root,
+            "bluetoothctl",
+            &format!(
+                "[ -f '{}' ] || exit 1\nprintf 'Controller AA:BB:CC:DD:EE:FF\\n\\tPowered: yes\\n'",
+                marker.to_string_lossy()
+            ),
+        );
+        let launcher = fake_script(
+            &root,
+            "pkexec",
+            &format!(": > '{}'", marker.to_string_lossy()),
+        );
+        let host = BtHost::with_programs(
+            &systemctl,
+            &bluetoothctl,
+            &launcher,
+            root.join("sys/class/bluetooth"),
+        );
+        let res = start_bluetooth_with(&host, Duration::from_secs(2))
+            .await
+            .unwrap();
+        assert_eq!(res.state, BtState::Ready { powered: true });
+        assert!(
+            res.message
+                .to_lowercase()
+                .contains("bluetooth service started"),
+            "unexpected message: {}",
+            res.message
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn start_failure_surfaces_the_error_instead_of_success() {
+        let root = fake_tree("start-fail");
+        add_adapter(&root);
+        let systemctl = fake_script(&root, "systemctl", "exit 3");
+        let bluetoothctl = fake_script(&root, "bluetoothctl", "exit 1");
+        let launcher = fake_script(
+            &root,
+            "pkexec",
+            "echo 'Error executing command as another user: Request dismissed' >&2\nexit 126",
+        );
+        let host = BtHost::with_programs(
+            &systemctl,
+            &bluetoothctl,
+            &launcher,
+            root.join("sys/class/bluetooth"),
+        );
+        let err = start_bluetooth_with(&host, Duration::from_millis(100))
+            .await
+            .unwrap_err();
+        assert!(err.contains("Request dismissed"), "unexpected error: {err}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn start_without_a_bluetoothd_answer_says_so() {
+        let root = fake_tree("start-silent");
+        add_adapter(&root);
+        let systemctl = fake_script(&root, "systemctl", "exit 0");
+        let bluetoothctl = fake_script(&root, "bluetoothctl", "exit 1");
+        let launcher = fake_script(&root, "pkexec", "exit 0");
+        let host = BtHost::with_programs(
+            &systemctl,
+            &bluetoothctl,
+            &launcher,
+            root.join("sys/class/bluetooth"),
+        );
+        let res = start_bluetooth_with(&host, Duration::from_millis(100))
+            .await
+            .unwrap();
+        assert_eq!(res.state, BtState::ServiceOff);
+        assert!(
+            res.message.contains("isn't answering"),
+            "unexpected message: {}",
+            res.message
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[tokio::test]
     async fn hung_command_times_out_and_is_killed() {
@@ -296,17 +687,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "Controller");
-    }
-
-    #[test]
-    fn adapter_detected_from_sysfs() {
-        let dir = std::env::temp_dir().join(format!("bset65-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        assert!(!has_adapter_in(&dir));
-        std::fs::create_dir_all(dir.join("hci0")).unwrap();
-        assert!(has_adapter_in(&dir));
-        assert!(!has_adapter_in(&dir.join("missing")));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
