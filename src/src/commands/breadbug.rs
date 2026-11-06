@@ -17,7 +17,9 @@ use serde::Serialize;
 use super::config::{get_bool, get_str, get_str_list, load_doc, save_doc, set_bool, set_str_list};
 
 fn breadbug_toml() -> PathBuf {
-    bread_utils::xdg::config_home().join("bread").join("breadbug.toml")
+    bread_utils::xdg::config_home()
+        .join("bread")
+        .join("breadbug.toml")
 }
 
 #[derive(Serialize)]
@@ -79,14 +81,19 @@ fn app_choices(excluded: &[String]) -> Vec<AppChoice> {
 pub fn get_breadbug_settings() -> BreadbugSettings {
     let doc = load_doc(&breadbug_toml());
     let excluded = get_str_list(&doc, &["excluded_apps"]);
-    let queued = Queue::open(&state_dir()).map(|q| q.list().len()).unwrap_or(0);
+    let queued = Queue::open(&state_dir())
+        .map(|q| q.list().len())
+        .unwrap_or(0);
     BreadbugSettings {
         breadbug_installed: super::util::command_exists("breadbug"),
         upload_enabled: get_bool(&doc, &["upload_enabled"]).unwrap_or(false),
         notify_fixed: get_bool(&doc, &["notify_fixed"]).unwrap_or(false),
         endpoint: get_str(&doc, &["endpoint"]).unwrap_or_else(|| DEFAULT_ENDPOINT.to_string()),
         apps: app_choices(&excluded),
-        store_bytes: Reader::open(store_root()).usage().map(|u| u.total_bytes).unwrap_or(0),
+        store_bytes: Reader::open(store_root())
+            .usage()
+            .map(|u| u.total_bytes)
+            .unwrap_or(0),
         queued,
         consent_text: CONSENT_TEXT.to_string(),
     }
@@ -178,10 +185,15 @@ pub fn breadbug_history() -> Vec<HistoryRow> {
 pub fn breadbug_delete_report(receipt: String) -> Result<String, String> {
     let doc = load_doc(&breadbug_toml());
     if !get_bool(&doc, &["upload_enabled"]).unwrap_or(false) {
-        return Err("Sending is turned off, so breadbug will not contact the server. Turn it on first.".into());
+        return Err(
+            "Sending is turned off, so breadbug will not contact the server. Turn it on first."
+                .into(),
+        );
     }
     let h = History::open(&state_dir()).map_err(|e| e.to_string())?;
-    let entry = h.find(&receipt).ok_or("That report is not in your history.")?;
+    let entry = h
+        .find(&receipt)
+        .ok_or("That report is not in your history.")?;
     let token = entry
         .deletion_token
         .ok_or("This report has no deletion token on this computer.")?;
@@ -236,7 +248,13 @@ pub fn open_breadbug() -> Result<(), String> {
         return Err("breadbug is not installed.".into());
     }
     std::process::Command::new("kitty")
-        .args(["--class", "breadbug", "--title", "Report a problem", "breadbug"])
+        .args([
+            "--class",
+            "breadbug",
+            "--title",
+            "Report a problem",
+            "breadbug",
+        ])
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("Could not open a terminal: {e}"))
@@ -257,7 +275,10 @@ mod tests {
 
     #[test]
     fn saving_changes_only_the_modelled_keys_and_keeps_everything_else() {
-        let mut doc: toml_edit::DocumentMut = "# my notes\nendpoint = \"https://example.test\"\n\n[store]\nmax_apps = 5\n".parse().unwrap();
+        let mut doc: toml_edit::DocumentMut =
+            "# my notes\nendpoint = \"https://example.test\"\n\n[store]\nmax_apps = 5\n"
+                .parse()
+                .unwrap();
         apply_settings(&mut doc, true, false, &["clip".into()]);
         let text = doc.to_string();
         assert!(text.contains("# my notes"));
