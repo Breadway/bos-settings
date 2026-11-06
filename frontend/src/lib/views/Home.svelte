@@ -9,6 +9,7 @@
  import Zap from "@lucide/svelte/icons/zap";
  import Plane from "@lucide/svelte/icons/plane";
  import { home } from "$lib/home.svelte";
+ import { updateCounts } from "$lib/updateCount";
  import { changes, recordChange, undoChange } from "$lib/changes.svelte";
  import ViewScaffold from "$lib/components/ViewScaffold.svelte";
  import Group from "$lib/components/Group.svelte";
@@ -23,7 +24,7 @@
  const hour = new Date().getHours();
  let greeting = $derived(greetingWithName(hour, home.account?.display_name?.trim() || home.account?.username?.trim() || null));
  let busy = $state(false);
- let pending = $derived(home.updates ? home.updates.pacman.length + home.updates.bakery.length + home.updates.firmware.length : 0);
+ let pending = $derived(updateCounts(home.updates).total);
  const size=(bytes:number)=>`${(bytes/1024**3).toFixed(1)} GiB`;
  let dnd=$derived(Boolean(home.notifications?.effective_dnd ?? home.notifications?.dnd));
  let disk=$derived(home.storage?.disks[0]);
