@@ -34,34 +34,87 @@ fn admin_members(group_text: &str) -> Vec<String> {
         .collect()
 }
 
-fn list_accounts() -> Vec<Account> {
-    let Ok(text) = std::fs::read_to_string("/etc/passwd") else {
-        return Vec::new();
-    };
-    let admins = admin_members(&std::fs::read_to_string("/etc/group").unwrap_or_default());
-    text.lines()
+/// The account running this app. `USER` is set for the normal desktop
+/// session; `LOGNAME` covers sessions that only export that. An empty value
+/// simply means no override account is added.
+fn current_user() -> String {
+    ["USER", "LOGNAME"]
+        .iter()
+        .find_map(|key| {
+            std::env::var(key)
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .unwrap_or_default()
+}
+
+/// A shell a person can actually log in with. Service accounts use
+/// `nologin`/`false`; `/bin/sync` and empty shells are not login shells
+/// either.
+fn is_login_shell(shell: &str) -> bool {
+    let shell = shell.trim();
+    !shell.is_empty()
+        && !shell.ends_with("nologin")
+        && !shell.ends_with("/false")
+        && shell != "/bin/sync"
+}
+
+/// A home directory rather than a service path. System accounts mostly use
+/// `/`, `/run`, `/var/lib/...` or `/usr/share/...` (and `nobody` uses `/`).
+fn has_real_home(home: &str) -> bool {
+    let home = home.trim();
+    if home.is_empty() {
+        return false;
+    }
+    if home == "/" || home == "/nonexistent" || home.starts_with("/nonexistent/") {
+        return false;
+    }
+    !["/run", "/var", "/usr", "/proc", "/sys", "/dev"]
+        .iter()
+        .any(|root| home == *root || home.starts_with(&format!("{root}/")))
+}
+
+/// Human accounts are decided by shell and home, not only a UID window:
+/// BOS's live user is UID 60001 (BSET-99), well above the old 1000..60000
+/// filter. A UID floor still keeps system accounts out alongside the shell
+/// and home checks, and `nobody` (65534) never counts as a person.
+fn is_human_account(uid: u32, shell: &str, home: &str) -> bool {
+    uid != 0 && (1000..65534).contains(&uid) && is_login_shell(shell) && has_real_home(home)
+}
+
+fn list_accounts_from(passwd: &str, group: &str, current: &str) -> Vec<Account> {
+    let admins = admin_members(group);
+    let mut accounts: Vec<Account> = passwd
+        .lines()
         .filter_map(|line| {
             let f: Vec<&str> = line.split(':').collect();
             if f.len() < 7 {
                 return None;
             }
             let uid: u32 = f[2].parse().ok()?;
-            let shell = f[6];
-            // Real human accounts: normal UID range, a real login shell
-            // (excludes system/service accounts like greeter, avahi, etc).
-            if !(1000..60000).contains(&uid)
-                || shell.ends_with("nologin")
-                || shell.ends_with("/false")
-            {
+            let username = f[0];
+            // Always show the current user, even if a UID, shell or home
+            // rule would otherwise drop them (BSET-99).
+            if username != current && !is_human_account(uid, f[6], f[5]) {
                 return None;
             }
             Some(Account {
-                username: f[0].to_string(),
+                username: username.to_string(),
                 full_name: f[4].split(',').next().unwrap_or("").to_string(),
-                admin: admins.iter().any(|a| a == f[0]),
+                admin: admins.iter().any(|a| a == username),
             })
         })
-        .collect()
+        .collect();
+    // The env can name an account that /etc/passwd lacks (or one the rules
+    // drop); the page still needs the person who is logged in.
+    if !current.is_empty() && !accounts.iter().any(|a| a.username == current) {
+        accounts.push(Account {
+            username: current.to_string(),
+            full_name: String::new(),
+            admin: admins.iter().any(|a| a == current),
+        });
+    }
+    accounts
 }
 
 #[derive(Serialize)]
@@ -72,9 +125,12 @@ pub struct UsersInfo {
 
 #[tauri::command]
 pub fn get_users_info() -> UsersInfo {
+    let current_user = current_user();
+    let passwd = std::fs::read_to_string("/etc/passwd").unwrap_or_default();
+    let group = std::fs::read_to_string("/etc/group").unwrap_or_default();
     UsersInfo {
-        accounts: list_accounts(),
-        current_user: std::env::var("USER").unwrap_or_default(),
+        accounts: list_accounts_from(&passwd, &group, &current_user),
+        current_user,
     }
 }
 
@@ -259,5 +315,77 @@ mod tests {
         assert!(may_delete_user("alice", "alice").is_err());
         assert!(may_delete_user("root\n", "alice").is_err());
         assert!(may_delete_user("bob", "alice").is_ok());
+    }
+
+    const PASSWD: &str = "root:x:0:0:root:/root:/bin/bash\n\
+systemd-network:x:990:990::/:/usr/bin/nologin\n\
+git:x:970:970::/usr/share/git:/bin/bash\n\
+nobody:x:65534:65534::/:/usr/bin/nologin\n\
+daemon:x:998:998::/:/usr/bin/nologin\n\
+alice:x:1000:1000:Alice:/home/alice:/bin/bash\n\
+liveuser:x:60001:60001:Live User:/home/liveuser:/bin/bash\n";
+    const GROUP: &str = "wheel:x:998:alice\n";
+
+    fn usernames(accounts: &[Account]) -> Vec<&str> {
+        accounts.iter().map(|a| a.username.as_str()).collect()
+    }
+
+    #[test]
+    fn liveuser_uid_60001_is_listed() {
+        let accounts = list_accounts_from(PASSWD, GROUP, "liveuser");
+        assert!(
+            usernames(&accounts).contains(&"liveuser"),
+            "the live ISO user is UID 60001, above the old 60000 cutoff: {:?}",
+            usernames(&accounts)
+        );
+        let live = accounts.iter().find(|a| a.username == "liveuser").unwrap();
+        assert_eq!(live.full_name, "Live User");
+        assert!(!live.admin);
+    }
+
+    #[test]
+    fn normal_uid_1000_user_is_listed_and_can_be_an_admin() {
+        let accounts = list_accounts_from(PASSWD, GROUP, "alice");
+        let alice = accounts.iter().find(|a| a.username == "alice").unwrap();
+        assert_eq!(alice.full_name, "Alice");
+        assert!(alice.admin, "wheel membership still marks an administrator");
+    }
+
+    #[test]
+    fn system_and_service_accounts_are_excluded() {
+        let accounts = list_accounts_from(PASSWD, GROUP, "liveuser");
+        let names = usernames(&accounts);
+        for system in ["root", "systemd-network", "git", "nobody", "daemon"] {
+            assert!(
+                !names.contains(&system),
+                "{system} is not a person: {names:?}"
+            );
+        }
+        assert_eq!(names, vec!["alice", "liveuser"]);
+    }
+
+    #[test]
+    fn current_user_survives_a_filter_that_would_drop_them() {
+        let passwd = "svc:x:999:999::/usr/share/svc:/usr/bin/nologin\n";
+        let accounts = list_accounts_from(passwd, "", "svc");
+        assert!(usernames(&accounts).contains(&"svc"));
+    }
+
+    #[test]
+    fn current_user_missing_from_passwd_is_still_listed() {
+        let accounts =
+            list_accounts_from("alice:x:1000:1000::/home/alice:/bin/bash\n", "", "ghost");
+        assert!(usernames(&accounts).contains(&"ghost"));
+    }
+
+    #[test]
+    fn human_accounts_need_a_login_shell_and_a_real_home() {
+        assert!(is_human_account(1500, "/bin/bash", "/home/x"));
+        assert!(!is_human_account(1500, "/usr/bin/nologin", "/home/x"));
+        assert!(!is_human_account(1500, "/bin/false", "/home/x"));
+        assert!(!is_human_account(1500, "/bin/bash", "/var/lib/x"));
+        assert!(!is_human_account(1500, "/bin/bash", "/"));
+        assert!(!is_human_account(0, "/bin/bash", "/root"));
+        assert!(!is_human_account(65534, "/bin/bash", "/home/nobody"));
     }
 }
