@@ -41,8 +41,16 @@
   try { const result = await invoke<T>(command); Object.assign(home,{[key]:result}); delete home.errors[key]; }
   catch(e) { home.errors[key] = String(e); }
  }
+ type BtState = "no-adapter"|"service-off"|{ready:{powered:boolean}};
+ async function readBluetooth() {
+  try {
+   const st = await invoke<BtState>("get_bluetooth_state");
+   Object.assign(home,{bluetooth: st === "no-adapter" ? "no-adapter" : st === "service-off" ? "service-off" : st.ready.powered ? "on" : "off"});
+   delete home.errors.bluetooth;
+  } catch(e) { home.errors.bluetooth = String(e); }
+ }
  async function refresh() {
-  await Promise.all([read("wifi","get_network_info"),read("bluetooth","get_adapter_powered"),read("night","get_nightlight"),read("power","get_power_info"),read("updates","get_updates_status"),read("backup","get_backup_config"),read("account","get_current_account"),read("notifications","get_notification_preferences"),read("modes","get_power_modes"),read("radios","get_radio_states"),read("storage","get_storage_info"),read("devices","get_paired_devices"),read("automatic","get_automatic_power_mode")]);
+  await Promise.all([read("wifi","get_network_info"),readBluetooth(),read("night","get_nightlight"),read("power","get_power_info"),read("updates","get_updates_status"),read("backup","get_backup_config"),read("account","get_current_account"),read("notifications","get_notification_preferences"),read("modes","get_power_modes"),read("radios","get_radio_states"),read("storage","get_storage_info"),read("devices","get_paired_devices"),read("automatic","get_automatic_power_mode")]);
   home.lastCheck = Date.now();
  }
  onMount(() => { if(Date.now() - home.lastCheck > 60000) void refresh(); });
@@ -65,9 +73,9 @@
     const before = home.wifi.radio_enabled;
     const set = async (enabled:boolean) => { await invoke("set_wifi_radio",{enabled}); if(home.wifi) home.wifi.radio_enabled = enabled; };
     await recordChange(`Wi-Fi turned ${before ? "off" : "on"}`, () => set(!before), () => set(before));
-   } else if(kind === "bluetooth" && home.bluetooth !== null) {
-    const before = home.bluetooth;
-    const set = async (on:boolean) => { await invoke("set_adapter_powered",{on}); home.bluetooth = on; };
+   } else if(kind === "bluetooth" && (home.bluetooth === "on" || home.bluetooth === "off")) {
+    const before = home.bluetooth === "on";
+    const set = async (on:boolean) => { await invoke("set_adapter_powered",{on}); home.bluetooth = on ? "on" : "off"; };
     await recordChange(`Bluetooth turned ${before ? "off" : "on"}`, () => set(!before), () => set(before));
    } else if(kind === "night" && home.night) {
     const before = {...home.night};
@@ -81,7 +89,7 @@
 <ViewScaffold title={greeting} lede={`${home.wifi?.ssid ? `On ${home.wifi.ssid}` : "Your desktop at a glance"}${charge ? ` · battery ${charge}` : ""}${battNote ? `, ${battNote}` : ""}${connected.length ? ` · ${connected.map(d=>d.name).join(", ")} connected` : ""}.`}>
  <div class="quick">
   <button class="tile" class:on={home.wifi?.radio_enabled} disabled={busy || !home.wifi} onclick={() => toggle("wifi")} aria-pressed={home.wifi?.radio_enabled ?? false}><Wifi size={21} /><b>Wi-Fi</b><small>{home.wifi ? home.wifi.radio_enabled ? home.wifi.ssid || "On" : "Off" : home.errors.wifi ? "Unavailable" : "Checking…"}</small></button>
-  <button class="tile" class:on={home.bluetooth} disabled={busy || home.bluetooth === null} onclick={() => toggle("bluetooth")} aria-pressed={home.bluetooth ?? false}><Bluetooth size={21} /><b>Bluetooth</b><small>{home.bluetooth === null ? home.errors.bluetooth ? "Unavailable" : "No adapter" : home.bluetooth ? connected.map(d=>d.name).join(", ") || "On" : "Off"}</small></button>
+  <button class="tile" class:on={home.bluetooth === "on"} disabled={busy || (home.bluetooth !== "on" && home.bluetooth !== "off")} onclick={() => toggle("bluetooth")} aria-pressed={home.bluetooth === "on"}><Bluetooth size={21} /><b>Bluetooth</b><small>{home.bluetooth === "service-off" ? "Service off" : home.bluetooth === "no-adapter" ? "No adapter" : home.bluetooth === null ? home.errors.bluetooth ? "Unavailable" : "Checking…" : home.bluetooth === "on" ? connected.map(d=>d.name).join(", ") || "On" : "Off"}</small></button>
   <button class="tile" class:on={!!home.night?.enabled} disabled={busy || !home.night || !home.night.installed} onclick={() => toggle("night")} aria-pressed={!!home.night?.enabled}><Moon size={21} /><b>Night light</b><small>{home.night ? home.night.installed ? home.night.enabled ? "On" : "Off" : "Not installed" : "Checking…"}</small></button>
   <button class="tile" class:on={dnd} disabled={busy||!home.notifications} onclick={()=>toggle('dnd')} aria-pressed={dnd} title={home.notifications ? undefined : "The running bar doesn't offer notification settings yet."}><Bell size={21}/><b>Do not disturb</b><small>{home.notifications ? dnd ? 'On' : home.notifications.schedule ? 'Scheduled' : 'Off' : 'Not available'}</small></button>
   <button class="tile" class:on={!!home.modes?.current} disabled={busy||home.automatic||(!home.modes?.profiles.length&&!home.modes?.tlp_setup_available)} onclick={()=>home.modes?.profiles.length ? toggle('mode') : go('power')}><Zap size={21}/><b>Power mode{home.automatic ? " · Auto" : ""}</b><small>{({'power-saver':'Battery saver',balanced:'Balanced',performance:'Performance'} as Record<string,string>)[home.modes?.current ?? ''] ?? (home.modes?.tlp_setup_available ? 'Set up in Power' : 'Not available')}</small></button>

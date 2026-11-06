@@ -10,7 +10,7 @@ export const home = $state({
  devices:null as {address:string;name:string;connected:boolean;battery:number|null}[]|null,
  automatic:false,
  wifi:null as {radio_enabled:boolean; ethernet:string|null;ssid:string|null}|null,
- bluetooth:null as boolean|null,
+ bluetooth:null as "no-adapter"|"service-off"|"on"|"off"|null,
  night:null as Record<string,unknown>|null,
  power:null as {battery:[string,string][];power_source:string}|null,
  updates:null as {total:number; pacman:unknown[]; bakery:unknown[]; firmware:unknown[]; pacman_error:string|null; bakery_error:string|null}|null,
