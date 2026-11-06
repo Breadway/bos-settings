@@ -27,7 +27,7 @@
  </Group>
  <Group title="Apps">
  {#each Object.keys(prefs.apps).sort() as app (app)}<SelectField label={app} bind:value={prefs.apps[app]} options={['all','banners','history','off']} labels={{all:'Banners and sound',banners:'Banners',history:'Only in history',off:'Off'}}/>{/each}
- {#if !Object.keys(prefs.apps).length}<p>Apps appear here after sending a notification.</p>{/if}
+ {#if !Object.keys(prefs.apps).length}<p>No per-app settings yet. Apps appear here once the notification server records a setting for them. Your notification history is separate and still lists everything already sent.</p>{/if}
  </Group> {/if}
  <Group title="History and appearance"><Row label="Notification history"><button class="btn" onclick={history}>Open history</button></Row><Row label="Notification appearance"><button class="btn" onclick={()=>go('appearance','shelltheme')}>Choose a theme</button></Row></Group>
  {#if error}
