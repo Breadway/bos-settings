@@ -108,7 +108,7 @@
 				</select>
 			</Row>
 			<Row label="Morning reminders at" hint="For reminders like “tomorrow morning”.">
-				<input class="ui-input" style="width:90px" bind:value={cfg.reminders_default_morning} placeholder="7:00" />
+				<input class="ui-input" style="width:90px" bind:value={cfg.reminders_default_morning} placeholder="08:00" />
 			</Row>
 			<TagsField label="Snooze choices" bind:value={cfg.snooze_options} />
 			<details class="ui-disclosure">
