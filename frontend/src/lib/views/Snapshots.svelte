@@ -14,8 +14,14 @@
 		description: string;
 		kind?: string;
 	}
+	interface SnapshotAvailability {
+		state: "available" | "no-config" | "live-session" | "error";
+		live: boolean;
+		error: string | null;
+	}
 
 	let snapshots = $state<SnapshotRow[] | "loading">("loading");
+	let availability = $state<SnapshotAvailability | "loading">("loading");
 	let errorHint = $state<string | null>(null);
 	let picked = $state<SnapshotRow | null>(null);
 	let sheetError = $state("");
@@ -25,6 +31,20 @@
 
 	async function refresh() {
 		errorHint = null;
+		availability = "loading";
+		picked = null;
+		try {
+			const a = await invoke<SnapshotAvailability>("get_snapshot_availability");
+			availability = a;
+			if (a.state !== "available") {
+				snapshots = [];
+				return;
+			}
+		} catch (e) {
+			availability = { state: "error", live: false, error: `${e}` };
+			snapshots = [];
+			return;
+		}
 		try {
 			snapshots = await invoke<SnapshotRow[]>("get_snapshots");
 		} catch (e) {
@@ -38,8 +58,17 @@
 			}
 			snapshots = [];
 		}
-		picked = null;
 	}
+
+	let groupHint = $derived(
+		availability === "loading"
+			? "BOS saves the system before every update. If something breaks, go back to one of these."
+			: availability.state === "live-session"
+				? "Snapshots aren't available in a live session. They start after you install BOS."
+				: availability.state === "no-config"
+					? "Snapshots aren't set up on this system yet."
+					: "BOS saves the system before every update. If something breaks, go back to one of these.",
+	);
 
 	onMount(refresh);
 
@@ -78,8 +107,16 @@
 </script>
 
 <ViewScaffold title="Snapshots">
-	<Group title="System snapshots" hint="BOS saves the system before every update. If something breaks, go back to one of these.">
-		{#if snapshots === "loading"}
+	<Group title="System snapshots" hint={groupHint}>
+		{#if availability === "loading"}
+			<p class="muted">Loading…</p>
+		{:else if availability.state === "live-session"}
+			<p class="muted">Snapshots are not available in a live session. They start after you install BOS.</p>
+		{:else if availability.state === "no-config"}
+			<p class="muted">Snapshots aren't set up on this system yet. They start after you install BOS.</p>
+		{:else if availability.state === "error"}
+			<p class="muted bad">Couldn't read snapshots. {availability.error}</p>
+		{:else if snapshots === "loading"}
 			<p class="muted">Loading…</p>
 		{:else if errorHint}
 			<p class="muted bad">Couldn't read snapshots. {errorHint}</p>
@@ -98,16 +135,18 @@
 			</div>
 			{#if snapshots.length > 5 && !showAll}<button class="btn small ghost older" onclick={() => (showAll = true)}>Show {snapshots.length - 5} older</button>{/if}
 		{/if}
-		<details class="ui-disclosure">
-			<summary>More</summary>
-			<div class="ui-item">
-				<div class="lb"><b>Take a snapshot now</b><small>Handy before you change something by hand.</small></div>
-				<button class="btn small" disabled={restoring} onclick={takeSnapshot}>Take snapshot</button>
-			</div>
-			<div class="ui-item">
-				<div class="lb"><b>How many are kept</b><small>Up to 20 automatic snapshots and 10 important ones, fewer when the disk is getting full.</small></div>
-			</div>
-		</details>
+		{#if typeof availability !== "string" && availability.state === "available"}
+			<details class="ui-disclosure">
+				<summary>More</summary>
+				<div class="ui-item">
+					<div class="lb"><b>Take a snapshot now</b><small>Handy before you change something by hand.</small></div>
+					<button class="btn small" disabled={restoring} onclick={takeSnapshot}>Take snapshot</button>
+				</div>
+				<div class="ui-item">
+					<div class="lb"><b>How many are kept</b><small>Up to 20 automatic snapshots and 10 important ones, fewer when the disk is getting full.</small></div>
+				</div>
+			</details>
+		{/if}
 	</Group>
 </ViewScaffold>
 

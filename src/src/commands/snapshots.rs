@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::path::Path;
 use std::process::Stdio;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
@@ -64,6 +65,100 @@ fn parse_snapper_json(text: &str) -> Result<Vec<SnapshotRow>, String> {
             })
         })
         .collect())
+}
+
+/// What the Snapper-backed parts of the app can honestly promise.
+/// `LiveSession` and `NoConfig` are expected absences, not errors; only a
+/// real snapper failure lands in `Error`.
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SnapshotState {
+    Available,
+    NoConfig,
+    LiveSession,
+    Error,
+}
+
+#[derive(Serialize, Debug)]
+pub struct SnapshotAvailability {
+    state: SnapshotState,
+    live: bool,
+    error: Option<String>,
+}
+
+fn is_live_session(root: &Path) -> bool {
+    root.join("run/archiso").exists()
+}
+
+#[tauri::command]
+pub async fn get_snapshot_availability() -> SnapshotAvailability {
+    snapshot_availability_with(
+        "snapper",
+        &[],
+        Path::new("/etc/snapper/configs/root"),
+        is_live_session(Path::new("/")),
+    )
+    .await
+}
+
+/// A missing config is the normal live-session case, and the install sets
+/// one up, so it must not read as a snapper failure. A config that exists
+/// but whose snapper call fails is a real error and keeps its message.
+async fn snapshot_availability_with(
+    program: &str,
+    prefix: &[String],
+    config: &Path,
+    live: bool,
+) -> SnapshotAvailability {
+    if !config.is_file() {
+        return SnapshotAvailability {
+            state: if live {
+                SnapshotState::LiveSession
+            } else {
+                SnapshotState::NoConfig
+            },
+            live,
+            error: None,
+        };
+    }
+    let out = Command::new(program)
+        .args(prefix)
+        .args(["--jsonout", "list"])
+        .output()
+        .await;
+    match out {
+        Ok(output) if output.status.success() => {
+            match parse_snapper_json(&String::from_utf8_lossy(&output.stdout)) {
+                Ok(_) => SnapshotAvailability {
+                    state: SnapshotState::Available,
+                    live,
+                    error: None,
+                },
+                Err(error) => SnapshotAvailability {
+                    state: SnapshotState::Error,
+                    live,
+                    error: Some(error),
+                },
+            }
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            SnapshotAvailability {
+                state: SnapshotState::Error,
+                live,
+                error: Some(if stderr.is_empty() {
+                    format!("snapper list failed with status {}", output.status)
+                } else {
+                    stderr
+                }),
+            }
+        }
+        Err(error) => SnapshotAvailability {
+            state: SnapshotState::Error,
+            live,
+            error: Some(format!("couldn't run snapper: {error}")),
+        },
+    }
 }
 
 /// `Err` carries snapper's trimmed stderr; distinct from `Ok(vec![])`
@@ -163,6 +258,7 @@ mod tests {
     use super::*;
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// Verbatim `snapper --jsonout list` (snapper 0.13.1) from a BOS machine.
@@ -285,6 +381,93 @@ mod tests {
             format!("{}\n42\n", helper.display())
         );
         assert_eq!(fs::read_to_string(&input_file).unwrap(), "RESTORE 42\n");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    fn availability_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "bos-settings-snapshot-state-{}-{}-{tag}",
+            std::process::id(),
+            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn write_snapper_config(dir: &Path) -> PathBuf {
+        let config = dir.join("configs/root");
+        fs::create_dir_all(config.parent().unwrap()).unwrap();
+        fs::write(&config, "SUBVOLUME=\"/\"\n").unwrap();
+        config
+    }
+
+    fn fake_snapper(dir: &Path, body: &str) -> PathBuf {
+        let path = dir.join("snapper");
+        fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        path
+    }
+
+    #[tokio::test]
+    async fn missing_config_on_an_installed_system_is_no_config_not_an_error() {
+        let dir = availability_dir("no-config");
+        let availability =
+            snapshot_availability_with("snapper", &[], &dir.join("missing/configs/root"), false)
+                .await;
+        assert_eq!(availability.state, SnapshotState::NoConfig);
+        assert!(!availability.live);
+        assert!(availability.error.is_none());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn missing_config_on_a_live_medium_is_a_live_session() {
+        let dir = availability_dir("live");
+        let availability =
+            snapshot_availability_with("snapper", &[], &dir.join("missing/configs/root"), true)
+                .await;
+        assert_eq!(availability.state, SnapshotState::LiveSession);
+        assert!(availability.live);
+        assert!(availability.error.is_none());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn configured_snapper_with_snapshots_is_available() {
+        let dir = availability_dir("configured-ok");
+        let config = write_snapper_config(&dir);
+        let script = fake_snapper(&dir, &format!("cat <<'EOF'\n{REAL_JSON}\nEOF"));
+        let args = vec![script.to_string_lossy().into_owned()];
+        let availability = snapshot_availability_with("sh", &args, &config, false).await;
+        assert_eq!(availability.state, SnapshotState::Available);
+        assert!(availability.error.is_none());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn configured_snapper_failure_stays_an_error() {
+        let dir = availability_dir("configured-error");
+        let config = write_snapper_config(&dir);
+        let script = fake_snapper(&dir, "echo 'IO error: read failed' >&2; exit 1");
+        let args = vec![script.to_string_lossy().into_owned()];
+        let availability = snapshot_availability_with("sh", &args, &config, true).await;
+        assert_eq!(
+            availability.state,
+            SnapshotState::Error,
+            "a real snapper failure must not be masked as a live/no-config state"
+        );
+        assert!(availability
+            .error
+            .as_deref()
+            .is_some_and(|e| e.contains("IO error")));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn live_detection_uses_the_archiso_marker() {
+        let dir = availability_dir("live-marker");
+        assert!(!is_live_session(&dir));
+        fs::create_dir_all(dir.join("run/archiso")).unwrap();
+        assert!(is_live_session(&dir));
         fs::remove_dir_all(dir).unwrap();
     }
 }
