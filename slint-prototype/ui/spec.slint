@@ -1,0 +1,813 @@
+// Generic renderer for pages built from the shipping app's shared pieces:
+// ViewScaffold, Group, Row, Switch, SelectField, SliderField, ui-item,
+// dev-card, hero-card and chips. The page data comes from src/pagedata.rs.
+
+import { Theme, PageTitle, Lede, GroupBox, SettingRow, PillButton, Toggle, AccentSlider, VectorIcon } from "theme.slint";
+
+export struct SpecRow {
+    kind: string,
+    id: string,
+    label: string,
+    hint: string,
+    value: string,
+    detail: string,
+    icon: string,
+    action: string,
+    tag: string,
+    checked: bool,
+    primary: bool,
+    enabled: bool,
+    amount: float,
+    min: float,
+    max: float,
+    options: [string],
+    selected: int,
+}
+
+export struct SpecBlock {
+    kind: string,
+    title: string,
+    hint: string,
+    icon: string,
+    value: string,
+    action: string,
+    tag: string,
+    on: bool,
+    primary: bool,
+    amount: float,
+    rows: [SpecRow],
+    chips: [string],
+    chip: int,
+}
+
+// Native <select> look with the shipping field's auto width:
+// min-width 22ch, padding 6px 10px, radius 10, background --bg, no border.
+component SelectControl inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 32px;
+    width: max(128px, label.preferred-width + 42px);
+    border-radius: 10px;
+    background: Theme.bg;
+    opacity: enabled ? 1 : 0.5;
+    label := Text {
+        x: 10px;
+        y: (parent.height - self.height) / 2;
+        text: root.text;
+        font-family: Theme.body;
+        color: Theme.fg;
+        font-size: 13.5px;
+        vertical-alignment: center;
+    }
+    VectorIcon {
+        x: parent.width - 22px;
+        y: (parent.height - self.height) / 2;
+        icon-size: 12px;
+        commands: "M6 9 L12 15 L18 9";
+        tint: Theme.fg;
+    }
+    TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+}
+
+component SegControl inherits Rectangle {
+    in property <[string]> options;
+    in property <int> selected: 0;
+    callback picked(int);
+    height: 32px;
+    border-radius: 10px;
+    background: Theme.surface-2;
+    HorizontalLayout {
+        padding: 3px;
+        spacing: 2px;
+        for option[index] in root.options: Rectangle {
+            border-radius: 8px;
+            background: index == root.selected ? Theme.accent-soft : transparent;
+            border-width: index == root.selected ? 1px : 0px;
+            border-color: Theme.accent-line;
+            HorizontalLayout {
+                padding-left: 11px;
+                padding-right: 11px;
+                alignment: center;
+                Text {
+                    text: option;
+                    font-family: Theme.body;
+                    font-size: 12.5px;
+                    color: index == root.selected ? Theme.fg : Theme.muted;
+                    vertical-alignment: center;
+                }
+            }
+            TouchArea { clicked => { root.picked(index); } }
+        }
+    }
+}
+
+component InputBox inherits Rectangle {
+    in property <string> text;
+    in property <string> placeholder;
+    in property <length> box-width: 150px;
+    callback accepted();
+    height: 34px;
+    width: box-width;
+    border-radius: 9px;
+    background: Theme.bg;
+    border-width: 1px;
+    border-color: Theme.line;
+    TextInput {
+        x: 10px;
+        y: 0;
+        width: parent.width - 20px;
+        height: 100%;
+        text: root.text;
+        font-family: Theme.body;
+        color: Theme.fg;
+        font-size: 13px;
+        vertical-alignment: center;
+        single-line: true;
+    }
+    if root.text == "" && root.placeholder != "": Text {
+        x: 11px;
+        y: 0;
+        height: 100%;
+        text: root.placeholder;
+        font-family: Theme.body;
+        color: Theme.faint;
+        font-size: 13px;
+        vertical-alignment: center;
+    }
+    TouchArea { clicked => { root.accepted(); } }
+}
+
+component IconTile inherits Rectangle {
+    in property <string> icon;
+    in property <length> tile-size: 34px;
+    in property <length> tile-radius: 10px;
+    in property <length> glyph-size: 18px;
+    width: tile-size;
+    height: tile-size;
+    border-radius: tile-radius;
+    background: Theme.surface-2;
+    VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            VectorIcon { icon-size: glyph-size; commands: root.icon; tint: Theme.accent; }
+        }
+    }
+}
+
+component Chip inherits Rectangle {
+    in property <string> text;
+    in property <bool> on: false;
+    callback clicked();
+    height: 30px;
+    border-radius: 99px;
+    background: on ? Theme.accent-soft : transparent;
+    border-width: 1px;
+    border-color: on ? Theme.accent-line : Theme.line;
+    HorizontalLayout {
+        padding-left: 11px;
+        padding-right: 11px;
+        spacing: 6px;
+        alignment: center;
+        Text {
+            text: root.text;
+            font-family: Theme.body;
+            color: Theme.fg;
+            font-size: 12.5px;
+            vertical-alignment: center;
+        }
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+component HeroCard inherits Rectangle {
+    in property <string> icon;
+    in property <string> title;
+    in property <string> sub;
+    in property <string> action;
+    in property <string> action2;
+    in property <bool> action-primary: false;
+    in property <bool> toggle-visible: false;
+    in property <bool> on: false;
+    in property <float> ring: -1;
+    callback action-clicked();
+    callback action2-clicked();
+    callback toggled(bool);
+    border-radius: Theme.radius;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.line;
+    HorizontalLayout {
+        padding: 18px;
+        spacing: 16px;
+        VerticalLayout {
+            horizontal-stretch: 0;
+            alignment: center;
+            if root.ring >= 0: Rectangle {
+                width: 62px;
+                height: 62px;
+                border-radius: 31px;
+                background: Theme.surface-2;
+                border-width: 4px;
+                border-color: Theme.accent;
+                Text {
+                    text: round(root.ring) + "%";
+                    font-family: Theme.body;
+                    color: Theme.fg;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            if root.ring < 0: Rectangle {
+                width: 54px;
+                height: 54px;
+                border-radius: 16px;
+                background: Theme.accent-soft;
+                VerticalLayout {
+                    alignment: center;
+                    HorizontalLayout {
+                        alignment: center;
+                        VectorIcon { icon-size: 26px; commands: root.icon; tint: Theme.accent; }
+                    }
+                }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 3px;
+            Text {
+                text: root.title;
+                font-family: Theme.body;
+                color: Theme.fg;
+                font-size: 18px;
+                font-weight: 500;
+                horizontal-alignment: left;
+                wrap: word-wrap;
+            }
+            Text {
+                text: root.sub;
+                font-family: Theme.body;
+                color: Theme.muted;
+                font-size: 12.5px;
+                horizontal-alignment: left;
+                wrap: word-wrap;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 0;
+            alignment: center;
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: end;
+                VerticalLayout {
+                    alignment: end;
+                    spacing: 6px;
+                    if root.action != "": PillButton {
+                        text: root.action;
+                        primary: root.action-primary;
+                        clicked => { root.action-clicked(); }
+                    }
+                    if root.action2 != "": PillButton {
+                        text: root.action2;
+                        small: true;
+                        clicked => { root.action2-clicked(); }
+                    }
+                }
+                if root.toggle-visible: Toggle {
+                    checked: root.on;
+                    toggled(v) => { root.toggled(v); }
+                }
+            }
+        }
+    }
+}
+
+// One row inside a group. Row.svelte lays the label out on the left and the
+// control on the right; the root is a layout so the row reports its height.
+component SpecRowView inherits VerticalLayout {
+    in property <SpecRow> data;
+    in property <bool> first: false;
+    callback act(string);
+    width: 100%;
+    spacing: 0px;
+    alignment: start;
+
+    if !root.first: Rectangle { height: 1px; width: 100%; background: Theme.line; }
+
+    if data.kind == "item": HorizontalLayout {
+        width: 100%;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        padding-left: 2px;
+        padding-right: 2px;
+        spacing: 12px;
+        VerticalLayout {
+            horizontal-stretch: 0;
+            alignment: center;
+            IconTile { icon: data.icon; }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 1px;
+            Text {
+                text: data.label;
+                font-family: Theme.body;
+                color: Theme.fg;
+                font-size: 13.5px;
+                horizontal-alignment: left;
+                wrap: word-wrap;
+            }
+            if data.hint != "": Text {
+                text: data.hint;
+                font-family: Theme.body;
+                color: Theme.muted;
+                font-size: 12px;
+                horizontal-alignment: left;
+                wrap: word-wrap;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 0;
+            alignment: center;
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: end;
+                if data.action != "": PillButton {
+                    text: data.action;
+                    primary: data.primary;
+                    small: true;
+                    ghost: !data.primary;
+                    clicked => { root.act("action"); }
+                }
+                if data.tag == "toggle": Toggle {
+                    checked: data.checked;
+                    toggled(v) => { root.act("toggle"); }
+                }
+            }
+        }
+    }
+
+    if data.kind == "line" || data.kind == "detail": HorizontalLayout {
+        width: 100%;
+        padding-top: 11px;
+        padding-bottom: 11px;
+        padding-left: 2px;
+        padding-right: 2px;
+        spacing: 10px;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 1px;
+            Text {
+                text: data.label;
+                font-family: Theme.body;
+                color: Theme.fg;
+                font-size: 13.5px;
+                horizontal-alignment: left;
+                wrap: word-wrap;
+            }
+            if data.hint != "": Text {
+                text: data.hint;
+                font-family: Theme.body;
+                color: Theme.muted;
+                font-size: 12px;
+                horizontal-alignment: left;
+                wrap: word-wrap;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 0;
+            alignment: center;
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: end;
+                if data.action != "": PillButton {
+                    text: data.action;
+                    small: true;
+                    ghost: !data.primary;
+                    primary: data.primary;
+                    clicked => { root.act("action"); }
+                }
+                if data.tag == "toggle": Toggle {
+                    checked: data.checked;
+                    toggled(v) => { root.act("toggle"); }
+                }
+            }
+        }
+    }
+
+    if data.kind == "chips": HorizontalLayout {
+        width: 100%;
+        padding-top: 8px;
+        padding-bottom: 6px;
+        padding-left: 2px;
+        spacing: 6px;
+        alignment: start;
+        for option[option-index] in data.options: Chip {
+            text: option;
+            on: option-index == data.selected;
+            clicked => { root.act("chip:" + option-index); }
+        }
+    }
+
+    if data.kind == "bar": VerticalLayout {
+        width: 100%;
+        padding-top: 9px;
+        padding-bottom: 9px;
+        spacing: 7px;
+        alignment: start;
+        HorizontalLayout {
+            spacing: 10px;
+            Text {
+                text: data.label;
+                font-family: Theme.body;
+                color: Theme.fg;
+                font-size: 13.5px;
+                horizontal-stretch: 1;
+                horizontal-alignment: left;
+            }
+            Text {
+                text: data.value;
+                font-family: Theme.body;
+                color: Theme.muted;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+        }
+        Rectangle {
+            height: 8px;
+            border-radius: 99px;
+            background: Theme.surface-2;
+            Rectangle {
+                x: 0;
+                y: 0;
+                width: parent.width * root.data.amount;
+                height: 100%;
+                border-radius: 99px;
+                background: Theme.accent;
+            }
+        }
+    }
+
+    if data.kind != "item" && data.kind != "bar" && data.kind != "line" && data.kind != "detail" && data.kind != "hint" && data.kind != "disclosure" && data.kind != "leftbutton" && data.kind != "chips": HorizontalLayout {
+        width: 100%;
+        padding-top: 11px;
+        padding-bottom: 12px;
+        padding-right: 2px;
+        spacing: 14px;
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: data.label;
+                font-family: Theme.body;
+                color: Theme.fg;
+                font-size: 13.5px;
+                horizontal-alignment: left;
+                wrap: word-wrap;
+            }
+            if data.hint != "": Text {
+                text: data.hint;
+                font-family: Theme.body;
+                color: Theme.muted;
+                font-size: 12px;
+                horizontal-alignment: left;
+                wrap: word-wrap;
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 0;
+            alignment: center;
+            padding-right: 3px;
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                if data.kind == "toggle": Toggle {
+                    checked: data.checked;
+                    enabled: data.enabled;
+                    toggled(v) => { root.act("toggle"); }
+                }
+                if data.kind == "select": SelectControl {
+                    text: data.value;
+                    enabled: data.enabled;
+                    clicked => { root.act("select"); }
+                }
+                if data.kind == "seg": SegControl {
+                    options: data.options;
+                    selected: data.selected;
+                    picked(i) => { root.act("seg:" + i); }
+                }
+                if data.kind == "slider": AccentSlider {
+                    width: 180px;
+                    minimum: data.min;
+                    maximum: data.max;
+                    value: data.amount;
+                    changed(v) => { root.act("slider:" + round(v)); }
+                }
+                if data.kind == "slider" || data.kind == "value": Text {
+                    text: data.value;
+                    font-family: Theme.body;
+                    color: Theme.muted;
+                    font-size: 12px;
+                    width: 34px;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+                if data.kind == "text": Text {
+                    text: data.value;
+                    font-family: Theme.body;
+                    color: Theme.fg;
+                    font-size: 13.5px;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+                if data.kind == "button": PillButton {
+                    text: data.action;
+                    small: true;
+                    ghost: !data.primary;
+                    primary: data.primary;
+                    enabled: data.enabled;
+                    clicked => { root.act("action"); }
+                }
+                if data.kind == "tag": Rectangle {
+                    height: 18px;
+                    border-radius: 5px;
+                    background: Theme.surface-2;
+                    HorizontalLayout {
+                        padding-left: 6px;
+                        padding-right: 6px;
+                        alignment: center;
+                        Text {
+                            text: data.value;
+                            font-family: Theme.body;
+                            color: Theme.muted;
+                            font-size: 10.5px;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+                if data.kind == "input": InputBox {
+                    text: data.value;
+                    box-width: 200px;
+                    accepted => { root.act("input"); }
+                }
+            }
+        }
+    }
+
+    if data.kind == "leftbutton": HorizontalLayout {
+        width: 100%;
+        padding-top: 4px;
+        padding-bottom: 10px;
+        padding-left: 2px;
+        alignment: start;
+        PillButton {
+            text: data.action;
+            small: true;
+            primary: data.primary;
+            ghost: !data.primary;
+            clicked => { root.act("action"); }
+        }
+    }
+
+    if data.kind == "hint": HorizontalLayout {
+        width: 100%;
+        padding-top: 4px;
+        padding-bottom: 10px;
+        padding-left: 2px;
+        alignment: start;
+        Text {
+            text: data.label;
+            font-family: Theme.body;
+            color: Theme.muted;
+            font-size: 12px;
+            wrap: word-wrap;
+            horizontal-alignment: left;
+            horizontal-stretch: 1;
+        }
+    }
+
+    if data.kind == "disclosure": HorizontalLayout {
+        width: 100%;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        padding-left: 2px;
+        spacing: 8px;
+        alignment: start;
+        VerticalLayout {
+            horizontal-stretch: 0;
+            alignment: center;
+            Path {
+                width: 7px;
+                height: 9px;
+                viewbox-width: 1;
+                viewbox-height: 1;
+                commands: "M 0 0 L 1 0.5 L 0 1 Z";
+                fill: Theme.muted;
+            }
+        }
+        Text {
+            text: data.label;
+            font-family: Theme.body;
+            color: Theme.muted;
+            font-size: 13px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            horizontal-alignment: left;
+        }
+        if data.value != "": Text {
+            text: data.value;
+            font-family: Theme.body;
+            color: Theme.muted;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component DevCard inherits Rectangle {
+    in property <SpecRow> data;
+    callback row-action();
+    height: 116px;
+    border-radius: Theme.radius;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: data.checked ? Theme.accent-line : Theme.line;
+    VerticalLayout {
+        padding: 14px;
+        spacing: 10px;
+        alignment: start;
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: start;
+            VerticalLayout {
+                horizontal-stretch: 0;
+                alignment: start;
+                IconTile { icon: data.icon; tile-size: 36px; tile-radius: 11px; }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 1px;
+                Text {
+                    text: data.label;
+                    font-family: Theme.body;
+                    color: Theme.fg;
+                    font-size: 13.5px;
+                    horizontal-alignment: left;
+                    wrap: word-wrap;
+                }
+                Text {
+                    text: data.hint;
+                    font-family: Theme.body;
+                    color: Theme.muted;
+                    font-size: 12px;
+                    horizontal-alignment: left;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        VerticalLayout { vertical-stretch: 1; }
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            if data.action != "": PillButton {
+                text: data.action;
+                small: true;
+                primary: data.primary;
+                ghost: !data.primary;
+                clicked => { root.row-action(); }
+            }
+        }
+    }
+}
+
+export component SpecPage inherits VerticalLayout {
+    in property <string> crumb;
+    in property <string> title;
+    in property <string> lede;
+    in property <[SpecBlock]> blocks;
+    in property <bool> header: true;
+    callback act(int, int, string);
+    callback block-act(int, string);
+    callback chip(int, int);
+    spacing: 0px;
+    alignment: start;
+
+    page-header := VerticalLayout {
+        visible: root.header;
+        height: root.header ? page-header.preferred-height : 0px;
+        spacing: 0px;
+        alignment: start;
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            Text { text: root.crumb; font-family: Theme.body; color: Theme.faint; font-size: 12px; }
+            Text { text: "›"; font-family: Theme.body; color: Theme.faint; font-size: 12px; }
+            Text { text: root.title; font-family: Theme.body; color: Theme.muted; font-size: 12px; }
+        }
+        Rectangle { height: 8px; }
+        PageTitle { text: root.title; }
+        if root.lede != "": Rectangle { height: 6px; }
+        if root.lede != "": Lede { text: root.lede; }
+        Rectangle { height: 18px; }
+    }
+
+    VerticalLayout {
+        spacing: 14px;
+        alignment: start;
+        for block[index] in root.blocks: VerticalLayout {
+            spacing: 0px;
+            alignment: start;
+            width: 100%;
+
+            if block.kind == "group": GroupBox {
+                title: block.title;
+                hint: block.hint;
+                for row[row-index] in block.rows: SpecRowView {
+                    data: row;
+                    first: row-index == 0;
+                    act(a) => { root.act(index, row-index, a); }
+                }
+            }
+
+            if block.kind == "hero": HeroCard {
+                icon: block.icon;
+                title: block.title;
+                sub: block.hint;
+                action: block.action;
+                action2: block.value;
+                action-primary: block.primary;
+                action-clicked => { root.block-act(index, "action"); }
+                action2-clicked => { root.block-act(index, "again"); }
+                toggle-visible: block.tag == "toggle";
+                on: block.on;
+                ring: block.amount;
+                toggled(v) => { root.block-act(index, "toggle"); }
+            }
+
+            if block.kind == "chips": HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                for chip[chip-index] in block.chips: Chip {
+                    text: chip;
+                    on: chip-index == block.chip;
+                    clicked => { root.chip(index, chip-index); }
+                }
+            }
+
+            if block.kind == "devgrid": GridLayout {
+                spacing: 10px;
+                property <int> cols: max(1, Math.floor((root.width / 1px + 10) / 230));
+                property <length> card-width: (root.width - (cols - 1) * 10px) / cols;
+                for row[row-index] in block.rows: DevCard {
+                    data: row;
+                    row: Math.floor(row-index / cols);
+                    col: Math.mod(row-index, cols);
+                    width: card-width;
+                    row-action => { root.act(index, row-index, "action"); }
+                }
+            }
+
+            if block.kind == "note": Text {
+                text: block.value;
+                font-family: Theme.body;
+                color: Theme.muted;
+                font-size: 12.5px;
+                wrap: word-wrap;
+                horizontal-alignment: left;
+            }
+
+            if block.kind == "empty": VerticalLayout {
+                alignment: center;
+                spacing: 6px;
+                padding-top: 28px;
+                padding-bottom: 28px;
+                VectorIcon { icon-size: 40px; commands: block.icon; tint: Theme.muted; }
+                Text {
+                    text: block.title;
+                    font-family: Theme.body;
+                    color: Theme.muted;
+                    font-size: 13.5px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: block.hint;
+                    font-family: Theme.body;
+                    color: Theme.muted;
+                    font-size: 12px;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                    width: min(parent.width, 400px);
+                }
+            }
+        }
+    }
+}

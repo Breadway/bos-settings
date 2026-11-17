@@ -51,6 +51,23 @@ ICONS = {
     "moon": "moon",
     "zap": "zap",
     "plane": "plane",
+    "mic": "mic",
+    "headphones": "headphones",
+    "cable": "cable",
+    "speaker": "speaker",
+    "phone": "smartphone",
+    "gamepad": "gamepad-2",
+    "laptop": "laptop",
+    "watch": "watch",
+    "bt-off": "bluetooth-off",
+    "plus": "plus",
+    "check": "check",
+    "alert": "circle-alert",
+    "cpu": "cpu",
+    "volume-x": "volume-x",
+    "folder": "folder-open",
+    "sun": "sun",
+    "wrench": "wrench",
 }
 
 NODE_RE = re.compile(r"const iconNode = (\[.*?\]);", re.S)

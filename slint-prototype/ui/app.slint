@@ -3,8 +3,9 @@ import { Sidebar, NavItem } from "sidebar.slint";
 import { HomePage, QuickTile, AttentionRow } from "home.slint";
 import { AppearancePage, ThemeCard, WallpaperThumb } from "appearance.slint";
 import { AboutPage, AboutCheck } from "about.slint";
+import { SpecPage, SpecBlock, SpecRow } from "spec.slint";
 
-export { Theme, NavItem, QuickTile, AttentionRow, ThemeCard, WallpaperThumb, AboutCheck }
+export { Theme, NavItem, QuickTile, AttentionRow, ThemeCard, WallpaperThumb, AboutCheck, SpecBlock, SpecRow }
 
 export component AppWindow inherits Window {
     title: "BOS Settings";
@@ -80,6 +81,15 @@ export component AppWindow inherits Window {
     in property <[AboutCheck]> about-checks;
     in-out property <bool> about-details-open;
     in-out property <string> about-status;
+
+    in property <string> page-crumb;
+    in property <string> page-title;
+    in property <string> page-lede;
+    in property <[SpecBlock]> page-blocks;
+    in property <[SpecBlock]> about-blocks;
+    callback page-act(int, int, string);
+    callback page-block-act(int, string);
+    callback page-chip(int, int);
 
     callback tile-clicked(string);
     callback appearance-changed();
@@ -202,23 +212,24 @@ export component AppWindow inherits Window {
                                 run-checks => { root.run-checks(); }
                                 navigate(id) => { root.page = id; }
                             }
-                            if page != "home" && page != "appearance" && page != "about": VerticalLayout {
-                                spacing: 8px;
-                                alignment: start;
-                                Text {
-                                    text: "Not in this prototype";
-                                    font-family: Theme.display;
-                                    color: Theme.fg;
-                                    font-size: 26px;
-                                    font-weight: 500;
-                                }
-                                Text {
-                                    text: "Home, Appearance and About are the wired pages. The rest of the sidebar is here so the shell matches; nothing on those pages writes settings.";
-                                    font-family: Theme.body;
-                                    color: Theme.muted;
-                                    font-size: 14px;
-                                    wrap: word-wrap;
-                                }
+                            if page == "about": SpecPage {
+                                header: false;
+                                crumb: "";
+                                title: "";
+                                lede: "";
+                                blocks: root.about-blocks;
+                                act(b, r, a) => { root.page-act(b, r, a); }
+                                block-act(b, a) => { root.page-block-act(b, a); }
+                                chip(b, c) => { root.page-chip(b, c); }
+                            }
+                            if page != "home" && page != "appearance" && page != "about": SpecPage {
+                                crumb: root.page-crumb;
+                                title: root.page-title;
+                                lede: root.page-lede;
+                                blocks: root.page-blocks;
+                                act(b, r, a) => { root.page-act(b, r, a); }
+                                block-act(b, a) => { root.page-block-act(b, a); }
+                                chip(b, c) => { root.page-chip(b, c); }
                             }
                         }
                         Rectangle { horizontal-stretch: 1; min-width: 32px; }
