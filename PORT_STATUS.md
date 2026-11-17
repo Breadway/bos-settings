@@ -328,15 +328,15 @@ parity_check.py fails while any item is not [x].
 - [~] view `DesktopHub`
 
 ## Privacy and security
-- [ ] command `breadbug::apply_settings`
-- [ ] command `breadbug::breadbug_clear_queue`
+- [x] command `breadbug::apply_settings` -> slint-prototype/src/breadbug.rs
+- [x] command `breadbug::breadbug_clear_queue` -> slint-prototype/src/breadbug.rs
 - [ ] command `breadbug::breadbug_delete_report`
-- [ ] command `breadbug::breadbug_history`
-- [ ] command `breadbug::breadbug_wipe_local`
+- [x] command `breadbug::breadbug_history` -> slint-prototype/src/breadbug.rs
+- [x] command `breadbug::breadbug_wipe_local` -> slint-prototype/src/breadbug.rs
 - [ ] command `breadbug::clean_exclusions`
-- [ ] command `breadbug::get_breadbug_settings`
-- [ ] command `breadbug::open_breadbug`
-- [ ] command `breadbug::save_breadbug_settings`
+- [x] command `breadbug::get_breadbug_settings` -> slint-prototype/src/breadbug.rs
+- [x] command `breadbug::open_breadbug` -> slint-prototype/src/breadbug.rs
+- [x] command `breadbug::save_breadbug_settings` -> slint-prototype/src/breadbug.rs
 - [ ] command `firewall::add_firewall_rule`
 - [x] command `firewall::get_firewall_service_active` -> slint-prototype/src/firewall.rs
 - [x] command `firewall::get_firewall_status` -> slint-prototype/src/firewall.rs
@@ -344,7 +344,7 @@ parity_check.py fails while any item is not [x].
 - [ ] command `firewall::remove_firewall_rule`
 - [x] command `firewall::set_firewall_enabled` -> slint-prototype/src/firewall.rs
 - [~] view `Firewall`
-- [ ] view `PrivacyHub`
+- [~] view `PrivacyHub`
 
 ## About
 - [x] command `about::get_system_info` -> slint-prototype/src/data.rs

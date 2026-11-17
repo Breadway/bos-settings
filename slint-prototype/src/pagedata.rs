@@ -3884,23 +3884,68 @@ fn privacy() -> Page {
     p = p.push(contains);
 
     let mut mine = group("Your reports");
-    mine.rows = vec![Row {
-        kind: "hint".into(),
-        id: "bug-none".into(),
-        label: "You haven't sent any reports.".into(),
+    let reports = crate::breadbug::history();
+    if reports.is_empty() {
+        mine.rows = vec![Row {
+            kind: "hint".into(),
+            id: "bug-none".into(),
+            label: "You haven't sent any reports.".into(),
+            ..Row::default()
+        }];
+    } else {
+        mine.rows = reports
+            .into_iter()
+            .take(12)
+            .map(|report| {
+                let mut detail = vec![report.kind];
+                if !report.status.is_empty() {
+                    detail.push(report.status);
+                }
+                Row {
+                    kind: "value".into(),
+                    id: format!("bug-report-{}", report.when),
+                    label: report.app,
+                    hint: detail.join(" · "),
+                    value: unix_stamp(report.when),
+                    ..Row::default()
+                }
+            })
+            .collect();
+    }
+    let queued = crate::breadbug::queued();
+    mine.rows.push(Row {
+        kind: "line".into(),
+        id: "bug-clear".into(),
+        label: "Waiting to send".into(),
+        hint: if queued == 0 {
+            "Nothing is waiting.".into()
+        } else {
+            format!("{queued} report(s) wait for a connection.")
+        },
+        action: "Clear".into(),
         ..Row::default()
-    }];
+    });
     p = p.push(mine);
 
     let mut local = group("On this computer");
-    local.rows = vec![Row {
-        kind: "line".into(),
-        id: "bug-folder".into(),
-        label: "Saved reports".into(),
-        hint: "~/.local/share/breadbug".into(),
-        action: "Open".into(),
-        ..Row::default()
-    }];
+    local.rows = vec![
+        Row {
+            kind: "line".into(),
+            id: "bug-folder".into(),
+            label: "Saved reports".into(),
+            hint: "~/.local/state/bread/breadbug".into(),
+            action: "Open".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "line".into(),
+            id: "bug-wipe".into(),
+            label: "Delete what is stored here".into(),
+            hint: "Removes the captured logs and events. Reports already sent are not affected.".into(),
+            action: "Delete".into(),
+            ..Row::default()
+        },
+    ];
     p.push(local)
 }
 
@@ -4929,6 +4974,16 @@ fn systemctl_user(verb: &str, unit: &str) -> Result<(), String> {
     }
 }
 
+fn unix_stamp(seconds: u64) -> String {
+    Command::new("date")
+        .args(["-d", &format!("@{seconds}"), "+%Y-%m-%d %H:%M"])
+        .output()
+        .ok()
+        .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
+        .filter(|text| !text.is_empty())
+        .unwrap_or_else(|| format!("@{seconds}"))
+}
+
 fn privacy_action(id: &str, action: &str) -> Result<(), String> {
     if action == "toggle" {
         let key = match id {
@@ -4946,11 +5001,23 @@ fn privacy_action(id: &str, action: &str) -> Result<(), String> {
         return set_bug_flag(&path, key, !current);
     }
     if action == "action" && id == "bug-folder" {
+        let dir = crate::breadbug::state_dir();
+        let _ = std::fs::create_dir_all(&dir);
         return std::process::Command::new("xdg-open")
-            .arg(home_dir().join(".local/share/breadbug"))
+            .arg(dir)
             .spawn()
             .map(|_| ())
             .map_err(|error| error.to_string());
+    }
+    if action == "action" && id == "bug-clear" {
+        crate::breadbug::clear_queue();
+        return Ok(());
+    }
+    if action == "action" && id == "bug-wipe" {
+        return crate::breadbug::wipe_local();
+    }
+    if action == "action" && id == "bug-open" {
+        return crate::breadbug::open_reporter();
     }
     Ok(())
 }
