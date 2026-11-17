@@ -9,7 +9,9 @@
 //! anything.
 
 mod data;
+mod extra_icons;
 mod icons;
+mod pagedata;
 mod theme;
 
 use std::rc::Rc;
@@ -270,8 +272,126 @@ fn main() -> anyhow::Result<()> {
         });
     });
 
+    // ---- Pages built from the shared Group/Row pieces -------------------
+    // The sidebar owns `page`, so a timer notices a change the way the old
+    // router did, loads that page off the UI thread and applies it.
+    let loaded = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    let busy = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let page_timer = slint::Timer::default();
+    {
+        let weak = window.as_weak();
+        let loaded = loaded.clone();
+        let busy = busy.clone();
+        page_timer.start(
+            slint::TimerMode::Repeated,
+            std::time::Duration::from_millis(80),
+            move || {
+                let Some(window) = weak.upgrade() else {
+                    return;
+                };
+                let page = window.get_page().to_string();
+                if page == *loaded.lock().unwrap() || busy.load(std::sync::atomic::Ordering::SeqCst) {
+                    return;
+                }
+                if page == "about" && *loaded.lock().unwrap() != "about" {
+                    let data = pagedata::load("datetime");
+                    window.set_about_blocks(slint::ModelRc::new(slint::VecModel::from(
+                        pagedata::to_blocks(data),
+                    )));
+                }
+                if page == "home" || page == "appearance" || page == "about" {
+                    *loaded.lock().unwrap() = page.clone();
+                    return;
+                }
+                busy.store(true, std::sync::atomic::Ordering::SeqCst);
+                let load_weak = window.as_weak();
+                let loaded = loaded.clone();
+                let busy = busy.clone();
+                std::thread::spawn(move || {
+                    let data = pagedata::load(&page);
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(window) = load_weak.upgrade() {
+                            apply_page(&window, data);
+                        }
+                        *loaded.lock().unwrap() = page.clone();
+                        busy.store(false, std::sync::atomic::Ordering::SeqCst);
+                    });
+                });
+            },
+        );
+    }
+
+    let act_weak = window.as_weak();
+    window.on_page_act(move |block, row, action| {
+        let Some(window) = act_weak.upgrade() else {
+            return;
+        };
+        let page = window.get_page().to_string();
+        let action = action.to_string();
+        let weak = window.as_weak();
+        std::thread::spawn(move || {
+            let data = pagedata::apply_action(&page, block as usize, row as usize, &action);
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(window) = weak.upgrade() {
+                    apply_page(&window, data);
+                }
+            });
+        });
+    });
+
+    let block_weak = window.as_weak();
+    window.on_page_block_act(move |block, action| {
+        let Some(window) = block_weak.upgrade() else {
+            return;
+        };
+        let page = window.get_page().to_string();
+        let action = action.to_string();
+        let weak = window.as_weak();
+        std::thread::spawn(move || {
+            let data = pagedata::apply_block_action(&page, block as usize, &action);
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(window) = weak.upgrade() {
+                    apply_page(&window, data);
+                }
+            });
+        });
+    });
+
+    let chip_weak = window.as_weak();
+    window.on_page_chip(move |block, chip| {
+        let Some(window) = chip_weak.upgrade() else {
+            return;
+        };
+        let page = window.get_page().to_string();
+        let weak = window.as_weak();
+        std::thread::spawn(move || {
+            let data = pagedata::select_chip(&page, block as usize, chip as usize);
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(window) = weak.upgrade() {
+                    apply_page(&window, data);
+                }
+            });
+        });
+    });
+
     window.run()?;
     Ok(())
+}
+
+fn apply_page(window: &AppWindow, page: pagedata::Page) {
+    let pagedata::Page {
+        crumb,
+        title,
+        lede,
+        blocks,
+        ..
+    } = page;
+    window.set_page_crumb(crumb.into());
+    window.set_page_title(title.into());
+    window.set_page_lede(lede.into());
+    window.set_page_blocks(slint::ModelRc::new(slint::VecModel::from(
+        pagedata::spec_blocks(blocks),
+    )));
 }
 
 fn apply_palette(window: &AppWindow) {

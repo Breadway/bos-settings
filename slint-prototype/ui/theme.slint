@@ -157,7 +157,9 @@ export component PillButton inherits Rectangle {
     in property <bool> primary: false;
     in property <bool> ghost: false;
     in property <bool> small: false;
+    in property <bool> enabled: true;
     callback clicked;
+    opacity: enabled ? 1 : 0.5;
     height: small ? 28px : 34px;
     border-radius: small ? 8px : Theme.radius-sm;
     background: primary ? Theme.accent : (ghost ? transparent : Theme.surface-2);
@@ -176,11 +178,13 @@ export component PillButton inherits Rectangle {
             vertical-alignment: center;
         }
     }
-    TouchArea { clicked => { root.clicked(); } }
+    TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
 }
 
 export component Toggle inherits Rectangle {
     in-out property <bool> checked;
+    in property <bool> enabled: true;
+    opacity: enabled ? 1 : 0.5;
     callback toggled(bool);
     width: 42px;
     height: 24px;
@@ -197,6 +201,7 @@ export component Toggle inherits Rectangle {
         animate x { duration: 180ms; easing: ease-out; }
     }
     TouchArea {
+        enabled: root.enabled;
         clicked => {
             root.checked = !root.checked;
             root.toggled(root.checked);
