@@ -26,6 +26,7 @@ mod sound;
 mod nightlight;
 mod notifications;
 mod prefs;
+mod service;
 mod data;
 mod displays;
 mod firewall;
@@ -35,6 +36,7 @@ mod ime;
 mod pagedata;
 mod theme;
 mod updates;
+mod util;
 
 use slint::Model;
 use std::rc::Rc;

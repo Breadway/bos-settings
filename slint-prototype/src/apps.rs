@@ -240,7 +240,7 @@ pub fn install_optional(id: &str) -> Result<(), String> {
             }
             install("flatpak", "repository")
         }
-        "breadcast" => install("breadcast", "repository"),
+        "breadcast" => crate::updates::bakery_install("breadcast"),
         "office" => install("libreoffice-fresh", "repository"),
         "steam" => install("steam", "repository"),
         _ => Err("Unknown optional app".into()),

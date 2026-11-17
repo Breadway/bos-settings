@@ -492,39 +492,85 @@ fn power_state() -> (String, String, bool) {
     (current, detail.into(), automatic)
 }
 
-fn airplane_state() -> (bool, bool) {
-    let Ok(out) = Command::new("rfkill").args(["--json"]).output() else {
-        return (false, false);
-    };
-    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&out.stdout) else {
-        return (false, false);
-    };
-    let Some(rows) = value.get("rfkilldevices").and_then(|v| v.as_array()) else {
-        return (false, false);
-    };
-    let radios: Vec<_> = rows
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Radio {
+    pub id: u32,
+    pub kind: String,
+    pub blocked: bool,
+    pub hardware_blocked: bool,
+}
+
+pub fn radio_states() -> Result<Vec<Radio>, String> {
+    let out = Command::new("rfkill")
+        .arg("--json")
+        .env("LC_ALL", "C")
+        .output()
+        .map_err(|error| error.to_string())?;
+    if !out.status.success() {
+        return Err(crate::util::fail_output(&out, "Reading radio state"));
+    }
+    let value: serde_json::Value =
+        serde_json::from_slice(&out.stdout).map_err(|error| error.to_string())?;
+    let rows = value
+        .get("rfkilldevices")
+        .and_then(|v| v.as_array())
+        .ok_or("Invalid radio status")?;
+    Ok(rows
         .iter()
-        .filter(|row| {
-            matches!(
-                row.get("type").and_then(|v| v.as_str()),
-                Some("wlan" | "bluetooth" | "wwan")
-            )
+        .filter_map(|row| {
+            let kind = row.get("type")?.as_str()?;
+            if !["wlan", "bluetooth", "wwan"].contains(&kind) {
+                return None;
+            }
+            Some(Radio {
+                id: u32::try_from(row.get("id")?.as_u64()?).ok()?,
+                kind: kind.into(),
+                blocked: row.get("soft").and_then(|v| v.as_str()) == Some("blocked"),
+                hardware_blocked: row.get("hard").and_then(|v| v.as_str()) == Some("blocked"),
+            })
         })
-        .collect();
+        .collect())
+}
+
+fn block_radios(blocked: bool, ids: &[u32]) -> Result<(), String> {
+    for id in ids {
+        let out = Command::new("rfkill")
+            .arg(if blocked { "block" } else { "unblock" })
+            .arg(id.to_string())
+            .output()
+            .map_err(|error| error.to_string())?;
+        if !out.status.success() {
+            return Err(crate::util::fail_output(&out, "Changing airplane mode"));
+        }
+    }
+    Ok(())
+}
+
+pub fn restore_radios(radios: &[Radio]) -> Result<(), String> {
+    let current = radio_states()?;
+    for radio in radios {
+        if current
+            .iter()
+            .any(|entry| entry.id == radio.id && entry.kind == radio.kind)
+        {
+            block_radios(radio.blocked, &[radio.id])?;
+        }
+    }
+    Ok(())
+}
+
+fn airplane_state() -> (bool, bool) {
+    let Ok(radios) = radio_states() else {
+        return (false, false);
+    };
     if radios.is_empty() {
         return (false, false);
     }
     (
         true,
-        radios.iter().all(|row| {
-            row.get("soft")
-                .and_then(|v| v.as_str())
-                .is_some_and(|state| state == "blocked")
-                || row
-                    .get("hard")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|state| state == "blocked")
-        }),
+        radios
+            .iter()
+            .all(|radio| radio.blocked || radio.hardware_blocked),
     )
 }
 
@@ -585,41 +631,12 @@ pub fn set_power_mode(profile: &str) -> Result<(), String> {
 }
 
 pub fn set_airplane(enabled: bool) -> Result<(), String> {
-    let action = if enabled { "block" } else { "unblock" };
-    let ids = Command::new("rfkill")
-        .args(["--json"])
-        .output()
-        .map_err(|error| error.to_string())?;
-    let value: serde_json::Value =
-        serde_json::from_slice(&ids.stdout).map_err(|error| error.to_string())?;
-    let rows = value
-        .get("rfkilldevices")
-        .and_then(|v| v.as_array())
-        .ok_or("invalid radio status")?;
-    let mut ids = Vec::new();
-    for row in rows {
-        if matches!(
-            row.get("type").and_then(|v| v.as_str()),
-            Some("wlan" | "bluetooth" | "wwan")
-        ) {
-            if let Some(id) = row.get("id").and_then(|v| v.as_u64()) {
-                ids.push(id.to_string());
-            }
-        }
-    }
+    let radios = radio_states()?;
+    let ids: Vec<u32> = radios.iter().map(|radio| radio.id).collect();
     if ids.is_empty() {
         return Err("No wireless radios found".into());
     }
-    let out = Command::new("rfkill")
-        .arg(action)
-        .args(&ids)
-        .output()
-        .map_err(|error| error.to_string())?;
-    if out.status.success() {
-        Ok(())
-    } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
-    }
+    block_radios(enabled, &ids)
 }
 
 fn local_hour() -> u32 {

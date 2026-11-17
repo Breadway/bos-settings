@@ -163,6 +163,33 @@ pub fn update(kind: &str, name: &str) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
+pub fn pacman_install(packages: &[String]) -> Result<(), String> {
+    let allowed = crate::util::allowed_pacman_packages(packages)?;
+    Command::new("kitty")
+        .args(["-e", "pacman", "-S"])
+        .args(&allowed)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+pub fn bakery_install(name: &str) -> Result<(), String> {
+    crate::util::allowed_bakery_install(name)?;
+    Command::new("kitty")
+        .args(["-e", "bakery", "install", name])
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+pub fn firmware_refresh() -> Result<(), String> {
+    Command::new("kitty")
+        .args(["-e", "fwupdmgr", "refresh"])
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
 pub fn track() -> Result<String, String> {
     let (ok, body) = text("bakery", &["track", "show"])
         .ok_or_else(|| "couldn't run bakery".to_string())?;

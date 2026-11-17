@@ -7,10 +7,10 @@ Status: [ ] todo, [~] partial, [x] done. A [x] needs a working port in this tree
 parity_check.py fails while any item is not [x].
 
 ## Home
-- [ ] command `dashboard::get_current_account`
-- [ ] command `dashboard::get_radio_states`
-- [ ] command `dashboard::restore_radio_states`
-- [ ] command `dashboard::set_airplane_mode`
+- [x] command `dashboard::get_current_account` -> slint-prototype/src/data.rs
+- [x] command `dashboard::get_radio_states` -> slint-prototype/src/data.rs
+- [x] command `dashboard::restore_radio_states` -> slint-prototype/src/data.rs
+- [x] command `dashboard::set_airplane_mode` -> slint-prototype/src/data.rs
 - [~] view `Home`
 
 ## Appearance
@@ -179,7 +179,7 @@ parity_check.py fails while any item is not [x].
 
 ## Default apps
 - [x] command `defaults::get_default_apps` -> slint-prototype/src/pagedata.rs
-- [ ] command `defaults::list_startup_apps`
+- [x] command `defaults::list_startup_apps` -> slint-prototype/src/pagedata.rs
 - [x] command `defaults::save_default_apps` -> slint-prototype/src/pagedata.rs
 - [x] view `Defaults` -> slint-prototype/src/pagedata.rs
 
@@ -260,7 +260,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `datetime::get_datetime_info` -> slint-prototype/src/pagedata.rs
 - [x] command `datetime::set_ntp_enabled` -> slint-prototype/src/pagedata.rs
 - [x] command `datetime::set_timezone` -> slint-prototype/src/pagedata.rs
-- [ ] command `locale_settings::get_clock_format`
+- [x] command `locale_settings::get_clock_format` -> slint-prototype/src/pagedata.rs
 - [x] command `locale_settings::get_locale_info` -> slint-prototype/src/pagedata.rs
 - [x] command `locale_settings::save_locale_choice` -> slint-prototype/src/pagedata.rs
 - [x] command `locale_settings::set_clock_format` -> slint-prototype/src/pagedata.rs
@@ -377,34 +377,34 @@ parity_check.py fails while any item is not [x].
 - [x] command `config::set_str_or_remove` -> slint-prototype/src/config.rs
 - [ ] command `navigation::get_initial_page`
 - [x] command `service::get_service_status` -> slint-prototype/src/pagedata.rs
-- [ ] command `service::open_logs`
+- [x] command `service::open_logs` -> slint-prototype/src/service.rs
 - [x] command `service::service_action` -> slint-prototype/src/pagedata.rs
-- [ ] command `streaming::bakery_install`
-- [ ] command `streaming::bakery_list`
-- [ ] command `streaming::bakery_update`
-- [ ] command `streaming::bakery_update_all`
-- [ ] command `streaming::fwupd_refresh`
-- [ ] command `streaming::fwupd_update`
-- [ ] command `streaming::pacman_install`
-- [ ] command `streaming::pacman_system_update`
-- [ ] command `util::allowed_bakery_install`
-- [ ] command `util::allowed_pacman_packages`
-- [ ] command `util::bos_settings_dir`
-- [ ] command `util::command_exists`
-- [ ] command `util::ensure_hypr_source`
-- [ ] command `util::fail_output`
-- [ ] command `util::hypr_dir`
-- [ ] command `util::hypr_reload`
-- [ ] command `util::hyprland_conf`
-- [ ] command `util::pacman_installed`
-- [ ] command `util::remove_hypr_source`
-- [ ] command `util::run_with_stdin`
-- [ ] command `util::strip_ansi`
-- [ ] command `util::valid_nm_id`
-- [ ] command `util::valid_number_id`
-- [ ] command `util::valid_pkg_name`
-- [ ] command `util::valid_printer_name`
-- [ ] command `util::write_secure`
+- [x] command `streaming::bakery_install` -> slint-prototype/src/updates.rs
+- [x] command `streaming::bakery_list` -> slint-prototype/src/apps.rs
+- [x] command `streaming::bakery_update` -> slint-prototype/src/updates.rs
+- [x] command `streaming::bakery_update_all` -> slint-prototype/src/updates.rs
+- [x] command `streaming::fwupd_refresh` -> slint-prototype/src/updates.rs
+- [x] command `streaming::fwupd_update` -> slint-prototype/src/updates.rs
+- [x] command `streaming::pacman_install` -> slint-prototype/src/updates.rs
+- [x] command `streaming::pacman_system_update` -> slint-prototype/src/updates.rs
+- [x] command `util::allowed_bakery_install` -> slint-prototype/src/util.rs
+- [x] command `util::allowed_pacman_packages` -> slint-prototype/src/util.rs
+- [x] command `util::bos_settings_dir` -> slint-prototype/src/util.rs
+- [x] command `util::command_exists` -> slint-prototype/src/util.rs
+- [x] command `util::ensure_hypr_source` -> slint-prototype/src/util.rs
+- [x] command `util::fail_output` -> slint-prototype/src/util.rs
+- [x] command `util::hypr_dir` -> slint-prototype/src/util.rs
+- [x] command `util::hypr_reload` -> slint-prototype/src/util.rs
+- [x] command `util::hyprland_conf` -> slint-prototype/src/util.rs
+- [x] command `util::pacman_installed` -> slint-prototype/src/util.rs
+- [x] command `util::remove_hypr_source` -> slint-prototype/src/util.rs
+- [x] command `util::run_with_stdin` -> slint-prototype/src/util.rs
+- [x] command `util::strip_ansi` -> slint-prototype/src/util.rs
+- [x] command `util::valid_nm_id` -> slint-prototype/src/util.rs
+- [x] command `util::valid_number_id` -> slint-prototype/src/util.rs
+- [x] command `util::valid_pkg_name` -> slint-prototype/src/util.rs
+- [x] command `util::valid_printer_name` -> slint-prototype/src/util.rs
+- [x] command `util::write_secure` -> slint-prototype/src/util.rs
 - [ ] view `SystemHub`
 
 ## Other
