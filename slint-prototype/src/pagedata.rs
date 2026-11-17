@@ -426,10 +426,21 @@ fn notifications() -> Page {
             ];
             if prefs.schedule {
                 rows.push(Row {
-                    kind: "text".into(),
-                    id: "quiet".into(),
-                    label: "Quiet hours".into(),
-                    value: format!("{} to {}", prefs.start, prefs.end),
+                    kind: "input".into(),
+                    id: "notif-start".into(),
+                    label: "Quiet hours start".into(),
+                    hint: "24-hour time, like 22:00.".into(),
+                    value: prefs.start.clone(),
+                    action: "Set".into(),
+                    ..Row::default()
+                });
+                rows.push(Row {
+                    kind: "input".into(),
+                    id: "notif-end".into(),
+                    label: "Quiet hours end".into(),
+                    hint: "24-hour time, like 07:00.".into(),
+                    value: prefs.end.clone(),
+                    action: "Set".into(),
                     ..Row::default()
                 });
             }
@@ -4533,6 +4544,22 @@ fn storage_action(id: &str, action: &str) -> Result<(), String> {
 }
 
 fn notifications_action(id: &str, action: &str) -> Result<(), String> {
+    if action.starts_with("input:") && (id == "notif-start" || id == "notif-end") {
+        let value = action.trim_start_matches("input:").trim();
+        let valid = value.len() == 5
+            && value.as_bytes()[2] == b':'
+            && value[..2].parse::<u32>().is_ok_and(|hour| hour < 24)
+            && value[3..].parse::<u32>().is_ok_and(|minute| minute < 60);
+        if !valid {
+            return Err("use 24-hour time like 22:00".into());
+        }
+        let mut prefs = crate::notifications::load()?;
+        let key = if id == "notif-start" { "start" } else { "end" };
+        if let Some(object) = prefs.as_object_mut() {
+            object.insert(key.into(), serde_json::Value::String(value.into()));
+        }
+        return crate::notifications::save(&prefs);
+    }
     if action.starts_with("input:") && id == "new-startup" {
         return startup_add(action.trim_start_matches("input:"));
     }
