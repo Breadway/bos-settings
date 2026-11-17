@@ -21,6 +21,7 @@ pub struct Row {
     pub icon: String,
     pub action: String,
     pub tag: String,
+    pub avatar: String,
     pub checked: bool,
     pub primary: bool,
     pub enabled: bool,
@@ -43,6 +44,7 @@ impl Default for Row {
             icon: String::new(),
             action: String::new(),
             tag: String::new(),
+            avatar: String::new(),
             checked: false,
             primary: false,
             // Rows are enabled unless a page says otherwise; a plain derive
@@ -69,6 +71,8 @@ pub struct Block {
     pub on: bool,
     pub primary: bool,
     pub amount: f32,
+    pub chart: String,
+    pub chart_area: String,
     pub rows: Vec<Row>,
     pub chips: Vec<String>,
     pub chip: i32,
@@ -1098,7 +1102,7 @@ fn users() -> Page {
             sub.push("you".into());
         }
         let mut row = Row {
-            kind: "item".into(),
+            kind: "user".into(),
             id: format!("user:{username}"),
             label: if full_name.is_empty() { username.clone() } else { full_name.clone() },
             hint: sub.join(" · "),
@@ -1106,10 +1110,17 @@ fn users() -> Page {
             ..Row::default()
         };
         row.tag = if username == current { "".into() } else { "Remove".into() };
+        let shown = if full_name.is_empty() { &username } else { &full_name };
+        row.avatar = shown
+            .chars()
+            .next()
+            .map(|c| c.to_uppercase().to_string())
+            .unwrap_or_default();
         rows.push(row);
     }
-    let mut add = item("add-user", "", "Add a person", "");
-    add.action = "Add".into();
+    let mut add = row("leftbutton", "");
+    add.id = "add-user".into();
+    add.action = "Add a person".into();
     rows.push(add);
     p.rows("", rows)
 }
@@ -1368,6 +1379,9 @@ fn power() -> Page {
     let info = data_battery();
     let mut h = hero(&info.headline, &info.detail);
     h.amount = info.percent.unwrap_or(-1.0);
+    let (chart, area) = battery_chart();
+    h.chart = chart;
+    h.chart_area = area;
     p = p.push(h);
     let mut performance = group("Performance");
     performance.rows = vec![
@@ -1513,6 +1527,69 @@ struct BatteryInfo {
     headline: String,
     detail: String,
     percent: Option<f32>,
+}
+
+// The shipping hero draws the last 24 hours from UPower's charge history.
+fn battery_chart() -> (String, String) {
+    let Some(devices) = run("upower", &["-e"]) else {
+        return (String::new(), String::new());
+    };
+    let Some(device) = devices.lines().find(|l| l.contains("battery_")) else {
+        return (String::new(), String::new());
+    };
+    let Some(text) = run(
+        "busctl",
+        &[
+            "--system",
+            "--json=short",
+            "call",
+            "org.freedesktop.UPower",
+            device.trim(),
+            "org.freedesktop.UPower.Device",
+            "GetHistory",
+            "suu",
+            "charge",
+            "86400",
+            "100",
+        ],
+    ) else {
+        return (String::new(), String::new());
+    };
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return (String::new(), String::new());
+    };
+    let Some(rows) = json
+        .get("data")
+        .and_then(|d| d.get(0))
+        .and_then(|d| d.as_array())
+    else {
+        return (String::new(), String::new());
+    };
+    let mut points: Vec<(f64, f64)> = rows
+        .iter()
+        .filter_map(|row| {
+            let t = row.get(0)?.as_f64()?;
+            let pct = row.get(1)?.as_f64()?;
+            Some((t, pct))
+        })
+        .collect();
+    points.sort_by(|a, b| a.0.total_cmp(&b.0));
+    if points.len() < 2 {
+        return (String::new(), String::new());
+    }
+    let (t0, t1) = (points[0].0, points[points.len() - 1].0);
+    let span = (t1 - t0).max(1.0);
+    let mut line = String::new();
+    for (i, (t, pct)) in points.iter().enumerate() {
+        let x = (t - t0) / span * 200.0;
+        let y = 48.0 - pct * 0.48;
+        line.push_str(&format!(
+            "{}{x:.1} {y:.1}",
+            if i == 0 { "M" } else { " L" }
+        ));
+    }
+    let area = format!("{line} L200 48 L0 48 Z");
+    (line, area)
 }
 
 fn data_battery() -> BatteryInfo {
@@ -2147,10 +2224,6 @@ fn updates() -> Page {
         .iter()
         .any(|name| name == "linux" || name.starts_with("linux-"));
     let firmware = firmware_devices();
-    let track = run("bakery", &["track", "show"])
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "stable".into());
     let mut h = hero(
         match count {
             0 => "You're up to date",
@@ -2214,6 +2287,17 @@ fn updates() -> Page {
         },
     ];
     p = p.push(what);
+    p = p.rows(
+        "If an update breaks something",
+        vec![Row {
+            kind: "line".into(),
+            id: "rollback".into(),
+            label: "Go back to before the update".into(),
+            hint: "Every update takes a snapshot first. Pick it from the boot menu, or choose it in Backup & restore.".into(),
+            action: "Open".into(),
+            ..Row::default()
+        }],
+    );
     if !firmware.is_empty() {
         let mut devices = group("Device firmware");
         devices.hint = "Updates for the computer itself: the BIOS, camera, dock and other parts that support it.".into();
@@ -2229,28 +2313,7 @@ fn updates() -> Page {
             .collect();
         p = p.push(devices);
     }
-    let mut channel = group("Channel");
-    channel.hint = "Beta and dev builds get changes before stable. Switch back any time.".into();
-    channel.rows = vec![Row {
-        kind: "select".into(),
-        id: "track".into(),
-        label: "Channel".into(),
-        value: track,
-        options: vec!["Stable".into(), "Beta".into(), "Dev".into()],
-        ..Row::default()
-    }];
-    p = p.push(channel);
-    p.rows(
-        "If an update breaks something",
-        vec![Row {
-            kind: "line".into(),
-            id: "rollback".into(),
-            label: "Go back to before the update".into(),
-            hint: "Every update takes a snapshot first. Pick it from the boot menu, or choose it in Backup & restore.".into(),
-            action: "Open".into(),
-            ..Row::default()
-        }],
-    )
+    p
 }
 
 fn firmware_devices() -> Vec<(String, String)> {
@@ -2263,7 +2326,7 @@ fn firmware_devices() -> Vec<(String, String)> {
     let Some(devices) = json.get("Devices").and_then(|d| d.as_array()) else {
         return Vec::new();
     };
-    devices
+    let mut devices: Vec<(bool, String, String)> = devices
         .iter()
         .filter(|d| {
             d.get("Flags")
@@ -2271,13 +2334,41 @@ fn firmware_devices() -> Vec<(String, String)> {
                 .map(|flags| flags.iter().any(|f| f.as_str() == Some("updatable")))
                 .unwrap_or(false)
         })
-        .map(|d| {
-            (
-                d.get("Name").and_then(|v| v.as_str()).unwrap_or("Device").into(),
-                d.get("Version").and_then(|v| v.as_str()).unwrap_or("-").into(),
-            )
+        .filter_map(|d| {
+            let name = d.get("Name")?.as_str()?.to_string();
+            let security = is_security_database(d);
+            Some((
+                security,
+                name,
+                d.get("Version")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("-")
+                    .to_string(),
+            ))
         })
+        .collect();
+    // The shipping firmware list shows hardware first and keeps the Secure Boot
+    // databases last; fwupd's own order interleaves them.
+    devices.sort_by_key(|(security, _, _)| *security);
+    devices
+        .into_iter()
+        .map(|(_, name, version)| (name, version))
         .collect()
+}
+
+fn is_security_database(device: &serde_json::Value) -> bool {
+    let name = device
+        .get("Name")
+        .and_then(|n| n.as_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    name.contains("uefi dbx")
+        || name.contains("uefi ca")
+        || name.contains("kek ca")
+        || device
+            .get("Plugin")
+            .and_then(|n| n.as_str())
+            .is_some_and(|p| ["uefi-dbx", "uefi-kek", "uefi-db", "uefi-pk"].contains(&p))
 }
 
 // --------------------------------------------------------------------- restore
@@ -2360,109 +2451,133 @@ fn snapshot_rows() -> Vec<Row> {
 // ---------------------------------------------------------------------- memory
 
 fn memory() -> Page {
-    let mut p = page(
-        "memory",
-        "System",
-        "Memory",
-        "The memory daemon, and what it may do on its own.",
-    );
+    let mut p = page("memory", "System", "Memory", "");
     let running = run("pgrep", &["-x", "breadram"])
         .map(|s| !s.trim().is_empty())
         .unwrap_or(false);
-    let mut daemon = group("Memory daemon");
-    daemon.rows = vec![
-        Row {
-            kind: "line".into(),
-            id: "daemon".into(),
-            label: "breadram".into(),
-            hint: if running {
-                "Running.".into()
-            } else {
-                "Not running. It starts on demand when memory gets tight.".into()
-            },
-            action: if running { "Stop".into() } else { "Start now".into() },
-            ..Row::default()
+
+    let mut right = group("Right now");
+    right.hint =
+        "What the memory daemon is doing. Nothing here needs the daemon running to open this page."
+            .into();
+    right.rows = vec![Row {
+        kind: "value".into(),
+        id: "daemon".into(),
+        label: "Daemon".into(),
+        hint: if running {
+            "breadram is running.".into()
+        } else {
+            "breadram is not running. Settings below still open and save.".into()
         },
-        toggle("daemon-login", "Start on login", "", true),
-        Row {
-            kind: "line".into(),
-            id: "daemon-config".into(),
-            label: "Settings file".into(),
-            hint: "~/.config/breadram/config.toml".into(),
-            action: "Edit".into(),
-            ..Row::default()
-        },
-    ];
-    p = p.push(daemon);
+        value: if running { "Running".into() } else { "Unavailable".into() },
+        ..Row::default()
+    }];
+    p = p.push(right);
+
+    let mut start = group("Starting point");
+    start.hint =
+        "Named setups that fill in the settings below. You can still change anything afterwards."
+            .into();
+    start.rows = vec![Row {
+        kind: "seg".into(),
+        id: "profile".into(),
+        label: "Profile".into(),
+        hint: "Monitor watches only. The other two act automatically with different caution."
+            .into(),
+        options: vec![
+            "Monitor".into(),
+            "Desktop".into(),
+            "Headless server".into(),
+        ],
+        selected: 0,
+        tag: "plain".into(),
+        ..Row::default()
+    }];
+    p = p.push(start);
 
     let mut automation = group("Automation");
+    automation.hint =
+        "What the daemon may do on its own. Unticked actions never run automatically.".into();
     automation.rows = vec![
         Row {
-            kind: "seg".into(),
+            kind: "select".into(),
             id: "mode".into(),
             label: "Mode".into(),
-            options: vec!["Automatic".into(), "Ask first".into(), "Off".into()],
-            selected: 0,
+            hint: "Monitor watches and explains. Automatic acts within the ticked actions.".into(),
+            value: "Automatic".into(),
+            options: vec!["Monitor".into(), "Automatic".into()],
             ..Row::default()
         },
-        toggle("act-restart-app", "Restart an app that is stuck", "", true),
-        toggle("act-clear-cache", "Clear app caches", "", true),
-        toggle("act-reduce-workers", "Reduce job workers", "", false),
-        toggle("act-delay-jobs", "Delay background jobs", "", false),
-        toggle("act-restart-session", "Restart the session", "", false),
-        toggle("act-reboot", "Restart the computer", "", false),
+        Row {
+            kind: "check".into(),
+            id: "soft-limits".into(),
+            label: "Soft memory limits".into(),
+            hint: "Allowed.".into(),
+            checked: true,
+            ..Row::default()
+        },
+        Row {
+            kind: "check".into(),
+            id: "reclaim".into(),
+            label: "Reclaim protection".into(),
+            hint: "Allowed.".into(),
+            checked: true,
+            ..Row::default()
+        },
+        Row {
+            kind: "check".into(),
+            id: "unload".into(),
+            label: "Unload idle models".into(),
+            hint: "Allowed.".into(),
+            checked: true,
+            ..Row::default()
+        },
+        Row {
+            kind: "check".into(),
+            id: "sleep-model".into(),
+            label: "Sleep model backends".into(),
+            hint: "Allowed.".into(),
+            checked: true,
+            ..Row::default()
+        },
+        Row {
+            kind: "check".into(),
+            id: "workers".into(),
+            label: "Reduce job workers".into(),
+            hint: "Off. The daemon will not do this.".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "check".into(),
+            id: "background".into(),
+            label: "Delay background jobs".into(),
+            hint: "Off. The daemon will not do this.".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "tags".into(),
+            id: "never-touch".into(),
+            label: "Never touch".into(),
+            options: vec!["exeHyprland".into(), "units-systemd-logind.service".into()],
+            ..Row::default()
+        },
     ];
-    automation.rows.push(Row {
-        kind: "chips".into(),
-        id: "never-touch".into(),
-        options: vec![
-            "exeHyprland".into(),
-            "units-systemd-logind.service".into(),
-            "+ Never touch".into(),
-        ],
-        selected: -1,
-        ..Row::default()
-    });
     p = p.push(automation);
 
     let mut backends = group("Model backends");
-    backends.rows = vec![
-        Row {
-            kind: "line".into(),
-            id: "backend-llama".into(),
-            label: "llama-server".into(),
-            hint: "127.0.0.1:8081 · chat models".into(),
-            action: "Edit".into(),
-            ..Row::default()
-        },
-        Row {
-            kind: "leftbutton".into(),
-            id: "backend-add".into(),
-            action: "Add a backend".into(),
-            ..Row::default()
-        },
-    ];
-    p = p.push(backends);
-
-    let mut log = group("Log");
-    log.rows = vec![Row {
-        kind: "line".into(),
-        id: "open-log".into(),
-        label: "What the daemon did".into(),
-        hint: "Kept for the last seven days.".into(),
-        action: "Open log".into(),
+    backends.hint = "Extra programs the daemon may ask to release memory. Each one only watches the workload scope you name.".into();
+    backends.rows = vec![Row {
+        kind: "provider".into(),
+        id: "backend-llama".into(),
+        label: "llma-server".into(),
+        hint: "http://127.0.0.1:7301".into(),
+        value: "127.0.0.1:7301".into(),
+        detail: "unit:llamacpp.service".into(),
+        action: "Remove".into(),
+        checked: true,
         ..Row::default()
     }];
-    p = p.push(log);
-
-    let mut changes = group("Recent changes");
-    changes.rows = vec![Row {
-        kind: "hint".into(),
-        id: "no-changes".into(),
-        label: "Nothing yet.".into(),
-        ..Row::default()
-    }];
-    p.push(changes)
+    p.push(backends)
 }
 
 // --------------------------------------------------------------------- getapps
@@ -3043,6 +3158,8 @@ pub fn spec_blocks(blocks: Vec<Block>) -> Vec<crate::SpecBlock> {
                 on: block.on,
                 primary: block.primary,
                 amount: block.amount,
+                chart: block.chart.into(),
+                chart_area: block.chart_area.into(),
                 rows: slint::ModelRc::new(slint::VecModel::from(
                     block
                         .rows
@@ -3057,6 +3174,7 @@ pub fn spec_blocks(blocks: Vec<Block>) -> Vec<crate::SpecBlock> {
                             icon: r.icon.into(),
                             action: r.action.into(),
                             tag: r.tag.into(),
+                            avatar: r.avatar.into(),
                             checked: r.checked,
                             primary: r.primary,
                             enabled: r.enabled,

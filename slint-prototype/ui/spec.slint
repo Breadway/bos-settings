@@ -14,6 +14,7 @@ export struct SpecRow {
     icon: string,
     action: string,
     tag: string,
+    avatar: string,
     checked: bool,
     primary: bool,
     enabled: bool,
@@ -35,6 +36,8 @@ export struct SpecBlock {
     on: bool,
     primary: bool,
     amount: float,
+    chart: string,
+    chart-area: string,
     rows: [SpecRow],
     chips: [string],
     chip: int,
@@ -73,6 +76,7 @@ component SelectControl inherits Rectangle {
 component SegControl inherits Rectangle {
     in property <[string]> options;
     in property <int> selected: 0;
+    in property <bool> accent: true;
     callback picked(int);
     height: 32px;
     border-radius: 10px;
@@ -82,8 +86,8 @@ component SegControl inherits Rectangle {
         spacing: 2px;
         for option[index] in root.options: Rectangle {
             border-radius: 8px;
-            background: index == root.selected ? Theme.accent-soft : transparent;
-            border-width: index == root.selected ? 1px : 0px;
+            background: index == root.selected ? (root.accent ? Theme.accent-soft : Theme.surface) : transparent;
+            border-width: index == root.selected && root.accent ? 1px : 0px;
             border-color: Theme.accent-line;
             HorizontalLayout {
                 padding-left: 11px;
@@ -100,6 +104,25 @@ component SegControl inherits Rectangle {
             TouchArea { clicked => { root.picked(index); } }
         }
     }
+}
+
+component CheckBox inherits Rectangle {
+    in property <bool> checked;
+    callback toggled(bool);
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    background: root.checked ? #2f6fb3 : Theme.surface-2;
+    border-width: 1px;
+    border-color: root.checked ? transparent : Theme.line;
+    if root.checked: VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            VectorIcon { icon-size: 14px; commands: "M20 6 L9 17 L4 12"; tint: #ffffff; }
+        }
+    }
+    TouchArea { clicked => { root.toggled(!root.checked); } }
 }
 
 component InputBox inherits Rectangle {
@@ -191,6 +214,8 @@ component HeroCard inherits Rectangle {
     in property <bool> toggle-visible: false;
     in property <bool> on: false;
     in property <float> ring: -1;
+    in property <string> chart: "";
+    in property <string> chart-area: "";
     callback action-clicked();
     callback action2-clicked();
     callback toggled(bool);
@@ -256,6 +281,34 @@ component HeroCard inherits Rectangle {
                 wrap: word-wrap;
             }
         }
+        if root.chart != "": Rectangle {
+            horizontal-stretch: 0;
+            width: 220px;
+            height: 52px;
+            Path {
+                x: 0;
+                y: 0;
+                width: 220px;
+                height: 52px;
+                viewbox-width: 200;
+                viewbox-height: 48;
+                commands: root.chart-area;
+                fill: Theme.accent-soft;
+                stroke: transparent;
+            }
+            Path {
+                x: 0;
+                y: 0;
+                width: 220px;
+                height: 52px;
+                viewbox-width: 200;
+                viewbox-height: 48;
+                commands: root.chart;
+                fill: transparent;
+                stroke: Theme.accent;
+                stroke-width: 1.6px;
+            }
+        }
         VerticalLayout {
             horizontal-stretch: 0;
             alignment: center;
@@ -264,8 +317,10 @@ component HeroCard inherits Rectangle {
                 alignment: end;
                 VerticalLayout {
                     alignment: end;
-                    spacing: 6px;
+                    spacing: 4px;
                     if root.action != "": PillButton {
+                        width: root.action2 != "" ? 130px : self.preferred-width;
+                        multiline: root.action2 != "";
                         text: root.action;
                         primary: root.action-primary;
                         clicked => { root.action-clicked(); }
@@ -282,6 +337,22 @@ component HeroCard inherits Rectangle {
                 }
             }
         }
+    }
+}
+
+component AvatarTile inherits Rectangle {
+    in property <string> text;
+    width: 40px;
+    height: 40px;
+    border-radius: 20px;
+    background: @linear-gradient(135deg, Theme.accent, #6f5fd0);
+    Text {
+        text: root.text;
+        font-family: Theme.body;
+        color: #ffffff;
+        font-size: 16px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
     }
 }
 
@@ -307,27 +378,37 @@ component SpecRowView inherits VerticalLayout {
         VerticalLayout {
             horizontal-stretch: 0;
             alignment: center;
-            IconTile { icon: data.icon; }
+            if data.avatar != "": AvatarTile { text: data.avatar; }
+            if data.avatar == "": IconTile { icon: data.icon; }
         }
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
             spacing: 1px;
-            Text {
-                text: data.label;
-                font-family: Theme.body;
-                color: Theme.fg;
-                font-size: 13.5px;
-                horizontal-alignment: left;
-                wrap: word-wrap;
+            Rectangle {
+                height: 17px;
+                Text {
+                    y: -1px;
+                    width: 100%;
+                    text: data.label;
+                    font-family: Theme.body;
+                    color: Theme.fg;
+                    font-size: 13.5px;
+                    horizontal-alignment: left;
+                    wrap: word-wrap;
+                }
             }
-            if data.hint != "": Text {
-                text: data.hint;
-                font-family: Theme.body;
-                color: Theme.muted;
-                font-size: 12px;
-                horizontal-alignment: left;
-                wrap: word-wrap;
+            if data.hint != "": Rectangle {
+                height: 15px;
+                Text {
+                    width: 100%;
+                    text: data.hint;
+                    font-family: Theme.body;
+                    color: Theme.muted;
+                    font-size: 12px;
+                    horizontal-alignment: left;
+                    wrap: word-wrap;
+                }
             }
         }
         VerticalLayout {
@@ -343,9 +424,73 @@ component SpecRowView inherits VerticalLayout {
                     ghost: !data.primary;
                     clicked => { root.act("action"); }
                 }
+                if data.kind == "check": CheckBox {
+                    checked: data.checked;
+                    toggled(v) => { root.act("toggle"); }
+                }
                 if data.tag == "toggle": Toggle {
                     checked: data.checked;
                     toggled(v) => { root.act("toggle"); }
+                }
+            }
+        }
+    }
+
+    if data.kind == "user": HorizontalLayout {
+        width: 100%;
+        padding-top: 11px;
+        padding-bottom: 11px;
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 12px;
+        VerticalLayout {
+            horizontal-stretch: 0;
+            alignment: center;
+            AvatarTile { text: data.avatar; }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 1px;
+            Rectangle {
+                height: 19px;
+                Text {
+                    y: -1px;
+                    width: 100%;
+                    text: data.label;
+                    font-family: Theme.body;
+                    color: Theme.fg;
+                    font-size: 13.5px;
+                    horizontal-alignment: left;
+                }
+            }
+            Rectangle {
+                height: 17px;
+                Text {
+                    y: -2px;
+                    width: 100%;
+                    text: data.hint;
+                    font-family: Theme.body;
+                    color: Theme.muted;
+                    font-size: 12px;
+                    horizontal-alignment: left;
+                }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 0;
+            alignment: center;
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                PillButton {
+                    text: data.action;
+                    clicked => { root.act("action"); }
+                }
+                if data.tag == "Remove": PillButton {
+                    text: "Remove";
+                    ghost: true;
+                    clicked => { root.act("action2"); }
                 }
             }
         }
@@ -421,6 +566,149 @@ component SpecRowView inherits VerticalLayout {
         }
     }
 
+    if data.kind == "tags": HorizontalLayout {
+        width: 100%;
+        padding-top: 11px;
+        padding-bottom: 11px;
+        padding-left: 2px;
+        padding-right: 2px;
+        spacing: 12px;
+        alignment: center;
+        Text {
+            text: data.label;
+            font-family: Theme.body;
+            color: Theme.fg;
+            font-size: 13.5px;
+            vertical-alignment: center;
+            horizontal-stretch: 0;
+        }
+        HorizontalLayout {
+            horizontal-stretch: 1;
+            spacing: 6px;
+            alignment: start;
+            for option[index] in data.options: Rectangle {
+                height: 30px;
+                border-radius: 99px;
+                background: Theme.surface-2;
+                border-width: 1px;
+                border-color: Theme.line;
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 8px;
+                    spacing: 5px;
+                    alignment: center;
+                    Text {
+                        text: option;
+                        font-family: Theme.body;
+                        color: Theme.fg;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        VectorIcon { icon-size: 10px; commands: "M18 6 L6 18 M6 6 L18 18"; tint: Theme.muted; }
+                    }
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                height: 34px;
+                InputBox {
+                    width: parent.width;
+                    box-width: 0px;
+                    placeholder: "Type and press Enter…";
+                }
+            }
+        }
+    }
+
+    if data.kind == "provider": HorizontalLayout {
+        width: 100%;
+        padding-top: 14px;
+        padding-bottom: 14px;
+        padding-left: 2px;
+        padding-right: 100px;
+        spacing: 12px;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: start;
+            spacing: 1px;
+            Text {
+                text: data.label;
+                font-family: Theme.body;
+                color: Theme.fg;
+                font-size: 13.5px;
+            }
+            Text {
+                text: data.hint;
+                font-family: Theme.body;
+                color: Theme.muted;
+                font-size: 12px;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 0;
+            width: 330px;
+            spacing: 8px;
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                Text {
+                    text: "Name";
+                    font-family: Theme.body;
+                    color: Theme.muted;
+                    font-size: 12px;
+                    width: 100px;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+                InputBox { text: data.label; box-width: 200px; }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                Text {
+                    text: "Address";
+                    font-family: Theme.body;
+                    color: Theme.muted;
+                    font-size: 12px;
+                    width: 100px;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+                InputBox { text: data.value; box-width: 200px; }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                Text {
+                    text: "Workload scope";
+                    font-family: Theme.body;
+                    color: Theme.muted;
+                    font-size: 12px;
+                    width: 100px;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+                InputBox { text: data.detail; box-width: 200px; }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                SelectControl { text: ""; }
+                CheckBox { checked: data.checked; }
+                Text {
+                    text: "May act";
+                    font-family: Theme.body;
+                    color: Theme.fg;
+                    font-size: 12.5px;
+                    vertical-alignment: center;
+                }
+                PillButton { text: data.action; small: true; ghost: true; }
+            }
+        }
+    }
+
     if data.kind == "bar": VerticalLayout {
         width: 100%;
         padding-top: 9px;
@@ -460,7 +748,7 @@ component SpecRowView inherits VerticalLayout {
         }
     }
 
-    if data.kind != "item" && data.kind != "bar" && data.kind != "line" && data.kind != "detail" && data.kind != "hint" && data.kind != "disclosure" && data.kind != "leftbutton" && data.kind != "chips": HorizontalLayout {
+    if data.kind != "item" && data.kind != "bar" && data.kind != "line" && data.kind != "detail" && data.kind != "hint" && data.kind != "disclosure" && data.kind != "leftbutton" && data.kind != "chips" && data.kind != "tags" && data.kind != "provider": HorizontalLayout {
         width: 100%;
         padding-top: 11px;
         padding-bottom: 11px;
@@ -471,22 +759,34 @@ component SpecRowView inherits VerticalLayout {
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
+            padding-left: 1px;
             spacing: 2px;
-            Text {
-                text: data.label;
-                font-family: Theme.body;
-                color: Theme.fg;
-                font-size: 13.5px;
-                horizontal-alignment: left;
-                wrap: word-wrap;
+            Rectangle {
+                height: 17px;
+                Text {
+                    x: 1px;
+                    y: -1px;
+                    width: 100%;
+                    text: data.label;
+                    font-family: Theme.body;
+                    color: Theme.fg;
+                    font-size: 13.5px;
+                    horizontal-alignment: left;
+                    wrap: word-wrap;
+                }
             }
-            if data.hint != "": Text {
-                text: data.hint;
-                font-family: Theme.body;
-                color: Theme.muted;
-                font-size: 12px;
-                horizontal-alignment: left;
-                wrap: word-wrap;
+            if data.hint != "": Rectangle {
+                height: 15px;
+                Text {
+                    y: -1px;
+                    width: 100%;
+                    text: data.hint;
+                    font-family: Theme.body;
+                    color: Theme.muted;
+                    font-size: 12px;
+                    horizontal-alignment: left;
+                    wrap: word-wrap;
+                }
             }
         }
 
@@ -509,7 +809,12 @@ component SpecRowView inherits VerticalLayout {
                 if data.kind == "seg": SegControl {
                     options: data.options;
                     selected: data.selected;
+                    accent: data.tag != "plain";
                     picked(i) => { root.act("seg:" + i); }
+                }
+                if data.kind == "check": CheckBox {
+                    checked: data.checked;
+                    toggled(v) => { root.act("toggle"); }
                 }
                 if data.kind == "slider": AccentSlider {
                     width: 180px;
@@ -521,9 +826,9 @@ component SpecRowView inherits VerticalLayout {
                 if data.kind == "slider" || data.kind == "value": Text {
                     text: data.value;
                     font-family: Theme.body;
-                    color: Theme.muted;
-                    font-size: 12px;
-                    width: 34px;
+                    color: data.kind == "value" ? Theme.fg : Theme.muted;
+                    font-size: data.kind == "value" ? 13.5px : 12px;
+                    width: data.kind == "slider" ? 34px : self.preferred-width;
                     horizontal-alignment: right;
                     vertical-alignment: center;
                 }
@@ -756,6 +1061,8 @@ export component SpecPage inherits VerticalLayout {
                 toggle-visible: block.tag == "toggle";
                 on: block.on;
                 ring: block.amount;
+                chart: block.chart;
+                chart-area: block.chart-area;
                 toggled(v) => { root.block-act(index, "toggle"); }
             }
 

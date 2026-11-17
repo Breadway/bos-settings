@@ -35,6 +35,23 @@ this threshold, so the difference masks on text-heavy pages show letter edges,
 not displaced rows. Cards, controls, spacing and icons are compared the same way
 and are expected to line up.
 
+### The one-pixel text baseline
+
+Slint's 13.5px and 12px line boxes place the glyph tops one pixel lower than
+WebKit does for the same row geometry. Wrapping those labels in fixed 17px and
+15px boxes and offsetting the text by 1px moves the glyph bounding box onto the
+shipping pixels exactly (checked against "Inactive workspaces" at 1920: both
+ends read 323..352, 740..959). This is a real correction, not a blur hack, and
+it removes a systematic error on every page.
+
+It does not make the 1% limit reachable at 960 or 860. Once the text sits on the
+same pixels, the remaining difference is glyph antialiasing: the same letters are
+drawn with different edge coverage by the two rasterizers. That error is
+proportional to the amount of text, not to its placement, so the changed-pixel
+fraction roughly doubles when the same page is measured at half the width. A
+page with this much small text cannot pass the strict check at 860 without
+using WebKit's rasterizer; the check stays strict and reports those pages.
+
 ## Deliberate divergences
 
 These are choices, not missing work. Everything else aims to match the shipping

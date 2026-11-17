@@ -158,9 +158,10 @@ export component PillButton inherits Rectangle {
     in property <bool> ghost: false;
     in property <bool> small: false;
     in property <bool> enabled: true;
+    in property <bool> multiline: false;
     callback clicked;
     opacity: enabled ? 1 : 0.5;
-    height: small ? 28px : 34px;
+    height: root.multiline ? 46px : (small ? 28px : 34px);
     border-radius: small ? 8px : Theme.radius-sm;
     background: primary ? Theme.accent : (ghost ? transparent : Theme.surface-2);
     border-width: primary ? 0px : 1px;
@@ -175,6 +176,7 @@ export component PillButton inherits Rectangle {
             color: primary ? Theme.on-accent : Theme.fg;
             font-size: small ? 12.5px : 13px;
             font-weight: primary ? 600 : 400;
+            wrap: root.multiline ? word-wrap : no-wrap;
             vertical-alignment: center;
         }
     }
