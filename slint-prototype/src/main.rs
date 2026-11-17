@@ -12,6 +12,7 @@ mod bluetooth;
 mod breadram;
 mod lock;
 mod network;
+mod sound;
 mod nightlight;
 mod notifications;
 mod prefs;
@@ -19,6 +20,7 @@ mod data;
 mod displays;
 mod extra_icons;
 mod icons;
+mod ime;
 mod pagedata;
 mod theme;
 

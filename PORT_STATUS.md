@@ -110,16 +110,16 @@ parity_check.py fails while any item is not [x].
 - [~] view `NightLight`
 
 ## Sound
-- [ ] command `sound::get_app_streams`
-- [ ] command `sound::get_sound_section`
-- [ ] command `sound::open_mixer`
-- [ ] command `sound::set_app_stream_mute`
-- [ ] command `sound::set_app_stream_volume`
-- [ ] command `sound::set_default_sound_device`
-- [ ] command `sound::set_sound_mute`
-- [ ] command `sound::set_sound_volume`
+- [x] command `sound::get_app_streams` -> slint-prototype/src/sound.rs
+- [x] command `sound::get_sound_section` -> slint-prototype/src/sound.rs
+- [x] command `sound::open_mixer` -> slint-prototype/src/sound.rs
+- [x] command `sound::set_app_stream_mute` -> slint-prototype/src/sound.rs
+- [x] command `sound::set_app_stream_volume` -> slint-prototype/src/sound.rs
+- [x] command `sound::set_default_sound_device` -> slint-prototype/src/sound.rs
+- [x] command `sound::set_sound_mute` -> slint-prototype/src/sound.rs
+- [x] command `sound::set_sound_volume` -> slint-prototype/src/sound.rs
 - [ ] command `sound::watch_sound`
-- [ ] view `Sound`
+- [x] view `Sound` -> slint-prototype/src/pagedata.rs
 
 ## Power
 - [ ] command `power::get_battery_history`
@@ -136,8 +136,8 @@ parity_check.py fails while any item is not [x].
 - [ ] command `power_settings::save_power_settings`
 - [ ] command `power_settings::set_automatic_power_mode`
 - [ ] command `power_settings::set_power_mode`
-- [ ] view `Power`
-- [ ] view `PowerMenu`
+- [~] view `Power`
+- [~] view `PowerMenu`
 
 ## Mouse
 - [ ] command `desktop_preferences::get_desktop_preferences`
@@ -145,23 +145,23 @@ parity_check.py fails while any item is not [x].
 - [ ] view `Mouse`
 
 ## Keyboard
-- [ ] command `ime::get_ime_status`
-- [ ] command `ime::open_fcitx_config`
-- [ ] command `ime::set_ime_enabled`
-- [ ] command `keybinds::get_keybinds`
+- [x] command `ime::get_ime_status` -> slint-prototype/src/ime.rs
+- [x] command `ime::open_fcitx_config` -> slint-prototype/src/ime.rs
+- [x] command `ime::set_ime_enabled` -> slint-prototype/src/ime.rs
+- [x] command `keybinds::get_keybinds` -> slint-prototype/src/pagedata.rs
 - [ ] command `keybinds::save_keybinds`
-- [ ] view `InputHub`
-- [ ] view `InputMethod`
-- [ ] view `Keybinds`
-- [ ] view `KeyboardHub`
-- [ ] view `KeyboardLayout`
+- [~] view `InputHub`
+- [~] view `InputMethod`
+- [~] view `Keybinds`
+- [~] view `KeyboardHub`
+- [x] view `KeyboardLayout` -> slint-prototype/src/pagedata.rs
 
 ## Printers
 - [ ] command `printing::add_ipp_printer`
-- [ ] command `printing::get_printers`
-- [ ] command `printing::open_printer_settings`
-- [ ] command `printing::set_default_printer`
-- [ ] view `Printing`
+- [x] command `printing::get_printers` -> slint-prototype/src/pagedata.rs
+- [x] command `printing::open_printer_settings` -> slint-prototype/src/pagedata.rs
+- [x] command `printing::set_default_printer` -> slint-prototype/src/pagedata.rs
+- [~] view `Printing`
 
 ## Lock screen
 - [ ] command `breadlock::breadlock_example_path`
