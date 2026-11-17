@@ -304,11 +304,11 @@ parity_check.py fails while any item is not [x].
 - [ ] command `breadhelp::open_breadhelp`
 - [ ] command `breadpad::get_breadpad_config`
 - [ ] command `breadpad::save_breadpad_config`
-- [ ] command `breadpaper::get_current_wallpaper`
-- [ ] command `breadpaper::get_wallpapers_by_output`
+- [x] command `breadpaper::get_current_wallpaper` -> slint-prototype/src/data.rs
+- [x] command `breadpaper::get_wallpapers_by_output` -> slint-prototype/src/data.rs
 - [ ] command `breadpaper::list_wallpaper_library`
-- [ ] command `breadpaper::set_wallpaper`
-- [ ] command `breadpaper::set_wallpaper_on`
+- [x] command `breadpaper::set_wallpaper` -> slint-prototype/src/data.rs
+- [x] command `breadpaper::set_wallpaper_on` -> slint-prototype/src/data.rs
 - [ ] command `breadpaper::wallpaper_library_dir`
 - [ ] command `breadpaper::wallpaper_library_dir_display`
 - [ ] command `breadsearch::get_breadsearch_config`
@@ -322,10 +322,10 @@ parity_check.py fails while any item is not [x].
 - [ ] view `Breadclip`
 - [ ] view `Breadhelp`
 - [ ] view `Breadpad`
-- [ ] view `Breadpaper`
+- [x] view `Breadpaper` -> slint-prototype/ui/appearance.slint
 - [ ] view `Breadsearch`
 - [ ] view `Breadshot`
-- [ ] view `DesktopHub`
+- [~] view `DesktopHub`
 
 ## Privacy and security
 - [ ] command `breadbug::apply_settings`
@@ -347,11 +347,11 @@ parity_check.py fails while any item is not [x].
 - [ ] view `PrivacyHub`
 
 ## About
-- [ ] command `about::get_system_info`
-- [ ] command `about::run_health_checks`
+- [x] command `about::get_system_info` -> slint-prototype/src/data.rs
+- [x] command `about::run_health_checks` -> slint-prototype/src/data.rs
 - [ ] command `about::set_hostname`
-- [ ] view `About`
-- [ ] view `AboutHub`
+- [~] view `About`
+- [~] view `AboutHub`
 
 ## System
 - [ ] command `breadcrumbs::get_breadcrumbs_config`
