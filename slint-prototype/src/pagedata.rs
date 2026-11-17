@@ -5016,6 +5016,26 @@ fn breadsearch_set_scope(everything: bool) -> Result<(), String> {
 }
 
 fn desktop_action(id: &str, action: &str) -> Result<(), String> {
+    if id == "shot-notify" && action == "toggle" {
+        let mut shot = crate::breadshot::load();
+        shot.silent = !shot.silent;
+        return crate::breadshot::save(&shot);
+    }
+    if id == "shot-freeze" && action == "toggle" {
+        let mut shot = crate::breadshot::load();
+        shot.freeze = !shot.freeze;
+        return crate::breadshot::save(&shot);
+    }
+    if id == "shot-dir" {
+        if let Some(text) = action.strip_prefix("input:") {
+            let mut shot = crate::breadshot::load();
+            shot.save_dir = text.trim().to_string();
+            return crate::breadshot::save(&shot);
+        }
+    }
+    if id == "shot-now" && action == "action" {
+        return crate::breadshot::region_to_clipboard();
+    }
     if id == "search-index" && action == "toggle" {
         return breadsearch_set_enabled(!breadsearch_enabled());
     }
@@ -5771,34 +5791,34 @@ fn desktop() -> Page {
     p = p.push(launcher);
 
     let mut shots = group("Screenshots");
+    let shot = crate::breadshot::load();
     shots.rows = vec![
         Row {
-            kind: "line".into(),
-            id: "save-to".into(),
+            kind: "input".into(),
+            id: "shot-dir".into(),
             label: "Save to".into(),
-            hint: "~/Pictures/Screenshots".into(),
-            action: "Change".into(),
+            value: shot.save_dir.clone(),
+            action: "Save".into(),
             ..Row::default()
         },
         toggle(
             "shot-notify",
             "Show a notification",
             "With a preview after each screenshot.",
-            true,
+            !shot.silent,
         ),
         toggle(
             "shot-freeze",
             "Freeze the screen while selecting",
             "Handy for menus and videos that would change.",
-            false,
+            shot.freeze,
         ),
         Row {
             kind: "line".into(),
-            id: "shot-shortcuts".into(),
-            label: "Shortcuts".into(),
-            hint: "I set up. Change them in Keyboard.".into(),
-            action: "Open".into(),
-            value: "Take one now".into(),
+            id: "shot-now".into(),
+            label: "Take a screenshot".into(),
+            hint: "Select a region and copy it to the clipboard.".into(),
+            action: "Take one".into(),
             ..Row::default()
         },
         Row {

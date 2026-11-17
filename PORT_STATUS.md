@@ -313,10 +313,10 @@ parity_check.py fails while any item is not [x].
 - [ ] command `breadpaper::wallpaper_library_dir_display`
 - [ ] command `breadsearch::get_breadsearch_config`
 - [ ] command `breadsearch::save_breadsearch_config`
-- [ ] command `breadshot::breadshot_region_clipboard`
+- [x] command `breadshot::breadshot_region_clipboard` -> slint-prototype/src/breadshot.rs
 - [ ] command `breadshot::get_breadshot_binds`
-- [ ] command `breadshot::get_breadshot_config`
-- [ ] command `breadshot::save_breadshot_config`
+- [x] command `breadshot::get_breadshot_config` -> slint-prototype/src/breadshot.rs
+- [x] command `breadshot::save_breadshot_config` -> slint-prototype/src/breadshot.rs
 - [ ] view `Breadbar`
 - [ ] view `Breadbox`
 - [ ] view `Breadclip`
@@ -324,7 +324,7 @@ parity_check.py fails while any item is not [x].
 - [ ] view `Breadpad`
 - [x] view `Breadpaper` -> slint-prototype/ui/appearance.slint
 - [ ] view `Breadsearch`
-- [ ] view `Breadshot`
+- [~] view `Breadshot`
 - [~] view `DesktopHub`
 
 ## Privacy and security

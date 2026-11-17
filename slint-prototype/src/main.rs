@@ -14,6 +14,7 @@ mod bluetooth;
 mod bread;
 mod breadram;
 mod breadbug;
+mod breadshot;
 mod config;
 mod lock;
 mod network;
