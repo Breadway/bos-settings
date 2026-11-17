@@ -149,7 +149,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `ime::open_fcitx_config` -> slint-prototype/src/ime.rs
 - [x] command `ime::set_ime_enabled` -> slint-prototype/src/ime.rs
 - [x] command `keybinds::get_keybinds` -> slint-prototype/src/pagedata.rs
-- [ ] command `keybinds::save_keybinds`
+- [x] command `keybinds::save_keybinds` -> slint-prototype/src/pagedata.rs
 - [~] view `InputHub`
 - [~] view `InputMethod`
 - [~] view `Keybinds`
@@ -157,7 +157,7 @@ parity_check.py fails while any item is not [x].
 - [x] view `KeyboardLayout` -> slint-prototype/src/pagedata.rs
 
 ## Printers
-- [ ] command `printing::add_ipp_printer`
+- [x] command `printing::add_ipp_printer` -> slint-prototype/src/pagedata.rs
 - [x] command `printing::get_printers` -> slint-prototype/src/pagedata.rs
 - [x] command `printing::open_printer_settings` -> slint-prototype/src/pagedata.rs
 - [x] command `printing::set_default_printer` -> slint-prototype/src/pagedata.rs
@@ -314,7 +314,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `breadsearch::get_breadsearch_config` -> slint-prototype/src/breadsearch.rs
 - [x] command `breadsearch::save_breadsearch_config` -> slint-prototype/src/breadsearch.rs
 - [x] command `breadshot::breadshot_region_clipboard` -> slint-prototype/src/breadshot.rs
-- [ ] command `breadshot::get_breadshot_binds`
+- [x] command `breadshot::get_breadshot_binds` -> slint-prototype/src/breadshot.rs
 - [x] command `breadshot::get_breadshot_config` -> slint-prototype/src/breadshot.rs
 - [x] command `breadshot::save_breadshot_config` -> slint-prototype/src/breadshot.rs
 - [x] view `Breadbar` -> slint-prototype/src/pagedata.rs
@@ -375,7 +375,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `config::set_str` -> slint-prototype/src/config.rs
 - [x] command `config::set_str_list` -> slint-prototype/src/config.rs
 - [x] command `config::set_str_or_remove` -> slint-prototype/src/config.rs
-- [ ] command `navigation::get_initial_page`
+- [x] command `navigation::get_initial_page` -> slint-prototype/src/main.rs
 - [x] command `service::get_service_status` -> slint-prototype/src/pagedata.rs
 - [x] command `service::open_logs` -> slint-prototype/src/service.rs
 - [x] command `service::service_action` -> slint-prototype/src/pagedata.rs

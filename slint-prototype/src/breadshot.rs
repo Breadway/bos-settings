@@ -38,6 +38,91 @@ pub fn save(cfg: &Config) -> Result<(), String> {
     config::save_doc(&path, &doc)
 }
 
+/// breadshot exec binds from binds.json, or the documented defaults when no
+/// binds are defined.
+pub fn binds() -> Vec<(String, String)> {
+    let path = config::config_dir().join("hypr/binds.json");
+    let mut found = Vec::new();
+    if let Ok(text) = std::fs::read_to_string(path) {
+        if let Ok(root) = serde_json::from_str::<serde_json::Value>(&text) {
+            let default_mods: Vec<String> = root
+                .get("default_mods")
+                .and_then(|value| value.as_array())
+                .map(|mods| {
+                    mods.iter()
+                        .filter_map(|entry| entry.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let mut lists: Vec<&Vec<serde_json::Value>> = Vec::new();
+            for key in ["bindings", "globals", "common"] {
+                if let Some(list) = root.get(key).and_then(|value| value.as_array()) {
+                    lists.push(list);
+                }
+            }
+            if let Some(layouts) = root.get("layouts").and_then(|value| value.as_object()) {
+                for list in layouts.values().filter_map(|value| value.as_array()) {
+                    lists.push(list);
+                }
+            }
+            for list in lists {
+                for bind in list {
+                    if bind.get("action").and_then(|value| value.as_str()) != Some("exec") {
+                        continue;
+                    }
+                    let Some(command) = bind.get("command").and_then(|value| value.as_str()) else {
+                        continue;
+                    };
+                    if command
+                        .split_whitespace()
+                        .next()
+                        .is_none_or(|bin| bin != "breadshot" && !bin.ends_with("/breadshot"))
+                    {
+                        continue;
+                    }
+                    let mods: Vec<String> = bind
+                        .get("mods")
+                        .and_then(|value| value.as_array())
+                        .map(|mods| {
+                            mods.iter()
+                                .filter_map(|entry| entry.as_str().map(str::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_else(|| default_mods.clone());
+                    let mut parts: Vec<String> = mods
+                        .iter()
+                        .map(|modifier| match modifier.to_ascii_uppercase().as_str() {
+                            "SUPER" | "MOD4" => "Super".into(),
+                            "SHIFT" => "Shift".into(),
+                            "CTRL" | "CONTROL" => "Ctrl".into(),
+                            "ALT" | "MOD1" => "Alt".into(),
+                            other => other.to_string(),
+                        })
+                        .collect();
+                    if let Some(key) = bind.get("key").and_then(|value| value.as_str()) {
+                        if !key.is_empty() {
+                            parts.push(key.to_string());
+                        }
+                    }
+                    found.push((parts.join("+"), command.to_string()));
+                }
+            }
+        }
+    }
+    if found.is_empty() {
+        vec![
+            ("Super+Shift+S".into(), "breadshot region".into()),
+            (
+                "Super+Shift+C".into(),
+                "breadshot region --clipboard-only".into(),
+            ),
+            ("Super+Shift+P".into(), "breadshot active-output".into()),
+        ]
+    } else {
+        found
+    }
+}
+
 pub fn region_to_clipboard() -> Result<(), String> {
     Command::new("breadshot")
         .args(["region", "--clipboard-only"])
