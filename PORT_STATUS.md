@@ -175,7 +175,7 @@ parity_check.py fails while any item is not [x].
 ## Notifications
 - [x] command `notification_settings::get_notification_preferences` -> slint-prototype/src/notifications.rs
 - [x] command `notification_settings::save_notification_preferences` -> slint-prototype/src/notifications.rs
-- [~] view `Notifications`
+- [x] view `Notifications` -> slint-prototype/src/pagedata.rs
 
 ## Default apps
 - [x] command `defaults::get_default_apps` -> slint-prototype/src/pagedata.rs
