@@ -304,6 +304,7 @@ fn apply_extra(window: &AppWindow, extra: &data::Extra) {
         .map(|theme| ThemeCard {
             id: theme.id.clone().into(),
             name: theme.name.clone().into(),
+            preview: theme.preview.clone().into(),
             sub: if theme.custom {
                 "Custom theme".into()
             } else {

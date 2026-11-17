@@ -3,6 +3,7 @@ import { Theme, PageTitle, Lede, GroupBox, SettingRow, Toggle, AccentSlider, Sel
 export struct ThemeCard {
     id: string,
     name: string,
+    preview: string,
     sub: string,
 }
 
@@ -12,23 +13,93 @@ export struct WallpaperThumb {
     image: image,
 }
 
-// The per-theme mini preview from ShellTheme.svelte's CSS: a gradient wash,
-// the bar shape the theme uses, and a mini window on top.
+// A mini screen per theme: the bar where that theme actually puts it, at
+// its own proportions, over the wallpaper wash. Derived from each
+// theme.toml's [bar.window] (spotlight is a centred pill, liquid-motion a
+// wide floating bar, glass-workbench flush, daylight a bottom dock, loaf a
+// floating island). Custom themes inherit the look they `extends`.
 component ThemePreview inherits Rectangle {
-    in property <string> theme-id;
-    property <bool> special:
-        theme-id == "console" || theme-id == "strata" || theme-id == "kuro"
-        || theme-id == "glass-workbench" || theme-id == "liquid-motion"
-        || theme-id == "daylight" || theme-id == "loaf" || theme-id == "spotlight";
+    in property <string> look;
+    property <bool> light: look == "daylight";
     clip: true;
     border-radius: 8px;
     background: @linear-gradient(140deg, Theme.accent-soft 0%, Theme.bg 100%);
 
-    if theme-id == "daylight": Rectangle {
-        width: 100%; height: 100%;
+    if light: Rectangle {
+        width: 100%;
+        height: 100%;
         background: @linear-gradient(140deg, #e8dccb 0%, #c9b8a0 100%);
     }
-    if !special: Rectangle {
+
+    // Bars, in screen order.
+    if look == "spotlight": Rectangle {
+        x: parent.width * 0.31;
+        y: 5px;
+        width: parent.width * 0.38;
+        height: 10px;
+        border-radius: 5px;
+        background: #0a0c0ee6;
+        border-width: 1px;
+        border-color: #ffffff1a;
+    }
+    if look == "liquid-motion": Rectangle {
+        x: 5px;
+        y: 4px;
+        width: parent.width - 10px;
+        height: 11px;
+        border-radius: 5px;
+        background: #ffffff38;
+    }
+    if look == "glass-workbench": Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 7px;
+        background: #ffffff2e;
+        border-width: 1px;
+        border-color: #ffffff4d;
+    }
+    if look == "daylight": Rectangle {
+        x: 0;
+        y: parent.height - 15px;
+        width: 100%;
+        height: 11px;
+        background: #f2efe8;
+    }
+    if look == "loaf": Rectangle {
+        x: parent.width * 0.09;
+        y: 5px;
+        width: parent.width * 0.82;
+        height: 10px;
+        border-radius: 5px;
+        background: #d9a066;
+    }
+    if look == "strata": Rectangle {
+        x: 0;
+        y: 0;
+        width: 11px;
+        height: 100%;
+        background: Theme.accent;
+    }
+    if look == "console": Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 9px;
+        background: #0b0d0b;
+    }
+    if look == "kuro": Rectangle {
+        x: 0;
+        y: parent.height - 9px;
+        width: 100%;
+        height: 9px;
+        background: #000000;
+    }
+    property <bool> known:
+        look == "spotlight" || look == "liquid-motion" || look == "glass-workbench"
+        || look == "daylight" || look == "loaf" || look == "strata"
+        || look == "console" || look == "kuro";
+    if !known: Rectangle {
         x: 8px;
         y: 6px;
         width: parent.width - 16px;
@@ -36,56 +107,12 @@ component ThemePreview inherits Rectangle {
         border-radius: 5px;
         background: Theme.accent;
     }
-    if theme-id == "console": Rectangle {
-        x: 0; y: 0; width: 100%; height: 8px; background: #0b0d0b;
-    }
-    if theme-id == "strata": Rectangle {
-        x: 0; y: 0; width: 12px; height: 100%; background: Theme.accent;
-    }
-    if theme-id == "kuro": Rectangle {
-        x: 0; y: parent.height - 8px; width: 100%; height: 8px; background: #000000;
-    }
-    if theme-id == "glass-workbench": Rectangle {
-        x: 8px;
-        y: 6px;
-        width: parent.width - 16px;
-        height: 8px;
-        border-radius: 5px;
-        background: #ffffff2e;
-        border-width: 1px;
-        border-color: #ffffff4d;
-    }
-    if theme-id == "liquid-motion": Rectangle {
-        x: parent.width * 0.2;
-        y: parent.height - 15px;
-        width: parent.width * 0.6;
-        height: 10px;
-        background: #ffffff33;
-    }
-    if theme-id == "daylight": Rectangle {
-        x: 0; y: 0; width: 100%; height: 8px; background: #f2efe8;
-    }
-    if theme-id == "loaf": Rectangle {
-        x: parent.width * 0.3;
-        y: 6px;
-        width: parent.width * 0.4;
-        height: 8px;
-        border-radius: 4px;
-        background: #d9a066;
-    }
-    if theme-id == "spotlight": Rectangle {
-        x: parent.width * 0.38;
-        y: 6px;
-        width: parent.width * 0.24;
-        height: 7px;
-        border-radius: 4px;
-        background: #0a0c0ed9;
-    }
+
     Rectangle {
         x: 16px;
-        y: 22px;
+        y: 24px;
         width: parent.width - 32px;
-        height: parent.height - 38px;
+        height: parent.height - 40px;
         border-radius: 6px;
         border-width: 1px;
         border-color: Theme.line;
@@ -167,7 +194,7 @@ export component AppearancePage inherits VerticalLayout {
                     alignment: start;
                     ThemePreview {
                         height: 72px;
-                        theme-id: card.id;
+                        look: card.preview;
                         horizontal-stretch: 1;
                     }
                     VerticalLayout {
