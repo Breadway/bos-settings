@@ -11,7 +11,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `dashboard::get_radio_states` -> slint-prototype/src/data.rs
 - [x] command `dashboard::restore_radio_states` -> slint-prototype/src/data.rs
 - [x] command `dashboard::set_airplane_mode` -> slint-prototype/src/data.rs
-- [~] view `Home`
+- [x] view `Home` -> slint-prototype/src/main.rs
 
 ## Appearance
 - [x] command `appearance::get_appearance` -> slint-prototype/src/data.rs
@@ -107,7 +107,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `nvidia::read_nvidia_offer` -> slint-prototype/src/nvidia.rs
 - [~] view `Display`
 - [x] view `DisplaysHub` -> slint-prototype/src/pagedata.rs
-- [~] view `NightLight`
+- [x] view `NightLight` -> slint-prototype/src/pagedata.rs
 
 ## Sound
 - [x] command `sound::get_app_streams` -> slint-prototype/src/sound.rs
@@ -151,8 +151,8 @@ parity_check.py fails while any item is not [x].
 - [x] command `keybinds::get_keybinds` -> slint-prototype/src/pagedata.rs
 - [x] command `keybinds::save_keybinds` -> slint-prototype/src/pagedata.rs
 - [x] view `InputHub` -> slint-prototype/src/pagedata.rs
-- [~] view `InputMethod`
-- [~] view `Keybinds`
+- [x] view `InputMethod` -> slint-prototype/src/pagedata.rs
+- [x] view `Keybinds` -> slint-prototype/src/pagedata.rs
 - [x] view `KeyboardHub` -> slint-prototype/src/pagedata.rs
 - [x] view `KeyboardLayout` -> slint-prototype/src/pagedata.rs
 

@@ -40,6 +40,8 @@ pub struct Home {
     pub airplane_on: bool,
     pub connected: String,
     pub backup_ready: bool,
+    /// Package cache, app cache and Trash together, when they can be read.
+    pub cache_bytes: Option<u64>,
 }
 
 pub fn load_home() -> Home {
@@ -115,6 +117,20 @@ pub fn load_home() -> Home {
         airplane_on,
         connected: bluetooth.connected.join(", "),
         backup_ready,
+        cache_bytes: {
+            let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+            let package = crate::pagedata::dir_size(&std::path::PathBuf::from("/var/cache/pacman/pkg"));
+            let app = home
+                .as_ref()
+                .and_then(|home| crate::pagedata::dir_size(&home.join(".cache")));
+            let trash = home
+                .as_ref()
+                .and_then(|home| crate::pagedata::dir_size(&home.join(".local/share/Trash")));
+            match (package, app, trash) {
+                (None, None, None) => None,
+                (package, app, trash) => Some(package.unwrap_or(0) + app.unwrap_or(0) + trash.unwrap_or(0)),
+            }
+        },
     }
 }
 

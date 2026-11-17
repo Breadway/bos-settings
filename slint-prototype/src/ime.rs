@@ -37,6 +37,37 @@ fn running() -> bool {
         .unwrap_or(false)
 }
 
+/// The packages fcitx5 needs on a BOS desktop, in the order the page lists
+/// them.
+pub const PACKAGES: [&str; 4] = [
+    "fcitx5-im",
+    "fcitx5-gtk",
+    "fcitx5-qt",
+    "fcitx5-chinese-addons",
+];
+
+/// Each needed package and whether it is installed.
+pub fn packages() -> Vec<(&'static str, bool)> {
+    PACKAGES
+        .into_iter()
+        .map(|name| (name, installed(name)))
+        .collect()
+}
+
+/// Installs every missing package, plus the fcitx5 group when the split
+/// packages are not there yet.
+pub fn install_missing() -> Result<(), String> {
+    let missing: Vec<String> = packages()
+        .into_iter()
+        .filter(|(_, installed)| !installed)
+        .map(|(name, _)| name.to_string())
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    crate::updates::pacman_install(&missing)
+}
+
 pub fn status() -> Status {
     Status {
         enabled: env_path().is_file(),
@@ -64,6 +95,16 @@ pub fn set_enabled(enabled: bool) -> Result<(), String> {
     let temp = path.with_extension("tmp");
     std::fs::write(&temp, body).map_err(|error| error.to_string())?;
     std::fs::rename(&temp, &path).map_err(|error| error.to_string())?;
+    let fragment = config_dir().join("hypr/bos-settings-input-method.conf");
+    if let Some(parent) = fragment.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    std::fs::write(
+        &fragment,
+        "env = XMODIFIERS,@im=fcitx\nenv = GTK_IM_MODULE,fcitx\nenv = QT_IM_MODULE,fcitx\nenv = SDL_IM_MODULE,fcitx\nexec-once = fcitx5 -d\n",
+    )
+    .map_err(|error| error.to_string())?;
+    let _ = crate::util::ensure_hypr_source("bos-settings-input-method.conf");
     Command::new("fcitx5")
         .arg("-d")
         .spawn()

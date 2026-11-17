@@ -899,7 +899,11 @@ fn apply_home(window: &AppWindow, home: &data::Home) {
     window.set_tiles(slint::ModelRc::new(slint::VecModel::from(tiles)));
     let attention = vec![
         AttentionRow {
-            label: "Review disk space".into(),
+            label: match home.cache_bytes {
+                Some(bytes) => format!("{:.1} GiB in caches and Trash", bytes as f64 / 1024_f64.powi(3)),
+                None => "Review disk space".into(),
+            }
+            .into(),
             hint: "Package cleanup keeps the newest versions. Review totals before deleting.".into(),
             action: "Manage".into(),
             primary: false,

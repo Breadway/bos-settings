@@ -271,6 +271,8 @@ pub fn load(id: &str) -> Page {
         "keyboardhub" => keyboard(),
         "desktophub" => desktop(),
         "power-menu" => power_menu(),
+        "nightlight" => nightlight(),
+        "ime" => ime_page(),
         "desktop" => desktop(),
         "keyboard" => keyboard(),
         other => page(other, "", other, ""),
@@ -1853,7 +1855,7 @@ fn disk_usage(path: &str) -> (u64, u64) {
     (0, 0)
 }
 
-fn dir_size(path: &PathBuf) -> Option<u64> {
+pub(crate) fn dir_size(path: &PathBuf) -> Option<u64> {
     let out = Command::new("du").args(["-sb"]).arg(path).output().ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     text.split_whitespace().next()?.parse().ok()
@@ -4667,6 +4669,222 @@ fn updates_action(id: &str, action: &str) -> Result<(), String> {
 
 // --------------------------------------------------------------------- restore
 
+fn ime_page() -> Page {
+    let mut p = page(
+        "ime",
+        "Devices",
+        "Input method",
+        "Type Japanese, Chinese or Korean with an input method.",
+    );
+    let status = crate::ime::status();
+    let mut block = group("fcitx5");
+    block.hint = "Starts fcitx5. Running apps need a logout.".into();
+    block.rows.push(toggle(
+        "ime-enabled",
+        "Enable fcitx5 for this session",
+        if status.running {
+            "fcitx5 is running."
+        } else if status.installed {
+            "fcitx5 is installed but not running."
+        } else {
+            "fcitx5 is not installed yet."
+        },
+        status.enabled,
+    ));
+    block.rows.push(Row {
+        kind: "line".into(),
+        id: "ime-config".into(),
+        label: "Open fcitx5 config".into(),
+        action: "Open".into(),
+        ..Row::default()
+    });
+    p = p.push(block);
+    let packages = crate::ime::packages();
+    let missing: Vec<String> = packages
+        .iter()
+        .filter(|(_, installed)| !installed)
+        .map(|(name, _)| (*name).to_string())
+        .collect();
+    let mut package_rows: Vec<Row> = packages
+        .into_iter()
+        .map(|(name, installed)| Row {
+            kind: "value".into(),
+            id: format!("ime-package-{name}"),
+            label: name.into(),
+            value: if installed { "Installed" } else { "Missing" }.into(),
+            ..Row::default()
+        })
+        .collect();
+    if !missing.is_empty() {
+        package_rows.push(Row {
+            kind: "line".into(),
+            id: "ime-install".into(),
+            label: "Install missing".into(),
+            hint: missing.join(", "),
+            action: "Install".into(),
+            primary: true,
+            ..Row::default()
+        });
+    }
+    p.rows("Packages", package_rows)
+}
+
+fn nightlight() -> Page {
+    let status = crate::nightlight::status();
+    let mut p = page(
+        "nightlight",
+        "Displays",
+        "Night light",
+        "A warmer screen after dark helps you wind down.",
+    );
+    if !status.installed {
+        let mut block = group("Night light");
+        block.rows.push(Row {
+            kind: "hint".into(),
+            id: "night-missing".into(),
+            label: "hyprsunset is not installed.".into(),
+            ..Row::default()
+        });
+        block.rows.push(Row {
+            kind: "line".into(),
+            id: "night-install".into(),
+            label: "Install hyprsunset".into(),
+            action: "Install".into(),
+            primary: true,
+            ..Row::default()
+        });
+        return p.push(block);
+    }
+    let mut block = group("Night light");
+    block.rows.push(toggle(
+        "night-enabled",
+        "Night light",
+        if status.running {
+            "Running now."
+        } else {
+            "Starts at login and now."
+        },
+        status.enabled,
+    ));
+    if status.enabled {
+        let selected = match status.mode.as_str() {
+            "sunset" => 1,
+            "custom" => 2,
+            _ => 0,
+        };
+        block.rows.push(Row {
+            kind: "seg".into(),
+            id: "night-mode".into(),
+            label: "When".into(),
+            options: vec![
+                "Always on".into(),
+                "Sunset to sunrise".into(),
+                "Custom hours".into(),
+            ],
+            selected,
+            ..Row::default()
+        });
+        match selected {
+            1 => block.rows.push(Row {
+                kind: "hint".into(),
+                id: "night-sun".into(),
+                label: match crate::nightlight::todays_sun() {
+                    Some(sun) => format!(
+                        "Today in {}: on at {}, off at {}. Times come from your time zone.",
+                        sun.zone, sun.sunset, sun.sunrise
+                    ),
+                    None => "Can't work out sunset for this time zone. Use custom hours."
+                        .into(),
+                },
+                ..Row::default()
+            }),
+            2 => {
+                block.rows.push(Row {
+                    kind: "input".into(),
+                    id: "night-start".into(),
+                    label: "From".into(),
+                    hint: "24-hour time, like 21:00".into(),
+                    value: status.start.clone(),
+                    action: "Save".into(),
+                    ..Row::default()
+                });
+                block.rows.push(Row {
+                    kind: "input".into(),
+                    id: "night-end".into(),
+                    label: "To".into(),
+                    hint: "24-hour time, like 07:00".into(),
+                    value: status.end.clone(),
+                    action: "Save".into(),
+                    ..Row::default()
+                });
+            }
+            _ => {}
+        }
+        block.rows.push(Row {
+            kind: "slider".into(),
+            id: "night-warmth".into(),
+            label: "Warmth".into(),
+            hint: "Less warm on the left, more warm on the right.".into(),
+            amount: status.temperature as f32,
+            min: 1000.0,
+            max: 6500.0,
+            value: format!("{}K", status.temperature),
+            ..Row::default()
+        });
+    }
+    p.push(block)
+}
+
+fn nightlight_action(id: &str, action: &str) -> Result<(), String> {
+    if id == "night-install" && action == "action" {
+        return crate::updates::pacman_install(&["hyprsunset".into()]);
+    }
+    let mut cfg = crate::nightlight::load();
+    if id == "night-enabled" && action == "toggle" {
+        cfg.enabled = !cfg.enabled;
+        return crate::nightlight::save(&cfg);
+    }
+    if id == "night-mode" && action.starts_with("seg:") {
+        let index = action
+            .trim_start_matches("seg:")
+            .parse::<usize>()
+            .unwrap_or(0);
+        cfg.mode = ["always", "sunset", "custom"][index.min(2)].into();
+        return crate::nightlight::save(&cfg);
+    }
+    let valid_time = |text: &str| {
+        let mut parts = text.split(':');
+        let hours: u32 = parts.next().and_then(|v| v.parse().ok()).unwrap_or(99);
+        let minutes: u32 = parts.next().and_then(|v| v.parse().ok()).unwrap_or(99);
+        parts.next().is_none() && hours < 24 && minutes < 60
+    };
+    if id == "night-start" && action.starts_with("input:") {
+        let value = action.trim_start_matches("input:").trim();
+        if !valid_time(value) {
+            return Err("Use a time like 21:00".into());
+        }
+        cfg.start = value.into();
+        return crate::nightlight::save(&cfg);
+    }
+    if id == "night-end" && action.starts_with("input:") {
+        let value = action.trim_start_matches("input:").trim();
+        if !valid_time(value) {
+            return Err("Use a time like 07:00".into());
+        }
+        cfg.end = value.into();
+        return crate::nightlight::save(&cfg);
+    }
+    if id == "night-warmth" && action.starts_with("slider:") {
+        let value: f32 = action
+            .trim_start_matches("slider:")
+            .parse()
+            .map_err(|_| "That warmth is not a number".to_string())?;
+        cfg.temperature = crate::nightlight::clamp_temp(value as u32);
+        return crate::nightlight::save(&cfg);
+    }
+    Ok(())
+}
+
 fn power_menu() -> Page {
     let mut p = page("power-menu", "Power", "Power", "Choose what happens next.");
     let mut block = group("Power");
@@ -5686,7 +5904,83 @@ fn next_layout(current: &str) -> &'static str {
     KEYBOARD_LAYOUTS[(index + 1) % KEYBOARD_LAYOUTS.len()].0
 }
 
+fn edit_binds(mut change: impl FnMut(&mut serde_json::Value) -> Result<(), String>) -> Result<(), String> {
+    let path = config_dir().join("hypr/binds.json");
+    let text = std::fs::read_to_string(&path).map_err(|error| error.to_string())?;
+    let mut root: serde_json::Value =
+        serde_json::from_str(&text).map_err(|error| error.to_string())?;
+    change(&mut root)?;
+    let body = serde_json::to_string_pretty(&root).map_err(|error| error.to_string())?;
+    crate::config::atomic_write(&path, &body).map_err(|error| error.to_string())?;
+    crate::util::hypr_reload();
+    Ok(())
+}
+
 fn keyboard_action(id: &str, action: &str, checked: bool) -> Result<(), String> {
+    if let Some(label) = id.strip_prefix("bind-mods:") {
+        if action.starts_with("input:") {
+            let mods: Vec<String> = action
+                .trim_start_matches("input:")
+                .split_whitespace()
+                .map(|modifier| modifier.to_uppercase())
+                .collect();
+            if mods.iter().any(|modifier| {
+                !["SUPER", "SHIFT", "CTRL", "ALT"].contains(&modifier.as_str())
+            }) {
+                return Err("Modifiers are SUPER, SHIFT, CTRL and ALT".into());
+            }
+            return edit_binds(|root| {
+                let binds = root
+                    .get_mut("bindings")
+                    .and_then(|value| value.as_array_mut())
+                    .ok_or("binds.json has no bindings list")?;
+                let bind = binds
+                    .iter_mut()
+                    .find(|bind| bind.get("label").and_then(|v| v.as_str()) == Some(label))
+                    .ok_or("that shortcut is no longer in the file")?;
+                bind["mods"] = serde_json::Value::Array(
+                    mods.iter().map(|m| serde_json::Value::String(m.clone())).collect(),
+                );
+                Ok(())
+            });
+        }
+    }
+    if let Some(label) = id.strip_prefix("bind-remove:") {
+        if action == "action" {
+            return edit_binds(|root| {
+                let binds = root
+                    .get_mut("bindings")
+                    .and_then(|value| value.as_array_mut())
+                    .ok_or("binds.json has no bindings list")?;
+                binds.retain(|bind| bind.get("label").and_then(|v| v.as_str()) != Some(label));
+                Ok(())
+            });
+        }
+    }
+    if id == "bind-add" && action.starts_with("input:") {
+        let text = action.trim_start_matches("input:");
+        let mut parts = text.split('|').map(str::trim);
+        let label = parts.next().unwrap_or("");
+        let key = parts.next().unwrap_or("");
+        let command = parts.next().unwrap_or("");
+        if label.is_empty() || key.is_empty() || command.is_empty() {
+            return Err("Use Label | KEY | command".into());
+        }
+        return edit_binds(|root| {
+            let binds = root
+                .get_mut("bindings")
+                .and_then(|value| value.as_array_mut())
+                .ok_or("binds.json has no bindings list")?;
+            binds.push(serde_json::json!({
+                "action": "exec",
+                "command": command,
+                "key": key,
+                "label": label,
+                "category": "apps",
+            }));
+            Ok(())
+        });
+    }
     if let Some(label) = id.strip_prefix("bind-key:") {
         if let Some(key) = action.strip_prefix("input:") {
             let key = key.trim();
@@ -5751,8 +6045,8 @@ fn keyboard_action(id: &str, action: &str, checked: bool) -> Result<(), String> 
     if action == "toggle" && id == "ime-enabled" {
         return crate::ime::set_enabled(!checked);
     }
-    if action == "action" && id == "ime-package" {
-        return Err("install fcitx5 from Get apps first".into());
+    if action == "action" && id == "ime-install" {
+        return crate::ime::install_missing();
     }
     Ok(())
 }
@@ -7701,6 +7995,15 @@ fn keyboard() -> Page {
         ..Row::default()
     })
     .chain(keybind_rows())
+    .chain(std::iter::once(Row {
+        kind: "input".into(),
+        id: "bind-add".into(),
+        label: "Add a shortcut".into(),
+        hint: "Label | KEY | command, like Files | SUPER E | breadbox".into(),
+        value: String::new(),
+        action: "Add".into(),
+        ..Row::default()
+    }))
     .collect();
     p = p.push(keys);
 
@@ -7730,21 +8033,36 @@ fn keyboard() -> Page {
         },
     ];
     p = p.push(ime);
+    let packages = crate::ime::packages();
+    let missing: Vec<String> = packages
+        .iter()
+        .filter(|(_, installed)| !installed)
+        .map(|(name, _)| (*name).to_string())
+        .collect();
+    let mut package_rows: Vec<Row> = packages
+        .into_iter()
+        .map(|(name, installed)| Row {
+            kind: "value".into(),
+            id: format!("ime-package-{name}"),
+            label: name.into(),
+            value: if installed { "Installed" } else { "Missing" }.into(),
+            ..Row::default()
+        })
+        .collect();
+    if !missing.is_empty() {
+        package_rows.push(Row {
+            kind: "line".into(),
+            id: "ime-install".into(),
+            label: "Install missing".into(),
+            hint: missing.join(", "),
+            action: "Install".into(),
+            primary: true,
+            ..Row::default()
+        });
+    }
     p.rows(
         "Packages",
-        vec![Row {
-            kind: "line".into(),
-            id: "ime-package".into(),
-            label: "Fcitx5".into(),
-            hint: if ime_status.installed {
-                "Installed"
-            } else {
-                "Not installed"
-            }
-            .into(),
-            action: "Install".into(),
-            ..Row::default()
-        }],
+        package_rows,
     )
 }
 
@@ -7793,16 +8111,36 @@ fn keybind_rows() -> Vec<Row> {
                 })
                 .unwrap_or_default();
             let keys = format!("{mods} {key}").trim().to_uppercase();
-            Some(Row {
-                kind: "input".into(),
-                id: format!("bind-key:{label}"),
-                label: label.into(),
-                hint: format!("{keys} · type a new key and press Enter"),
-                value: key.to_string(),
-                action: "Set".into(),
-                ..Row::default()
-            })
+            Some((
+                label.to_string(),
+                Row {
+                    kind: "input".into(),
+                    id: format!("bind-key:{label}"),
+                    label: label.into(),
+                    hint: format!("{keys} · type a new key and press Enter"),
+                    value: key.to_string(),
+                    action: "Set".into(),
+                    ..Row::default()
+                },
+                Row {
+                    kind: "input".into(),
+                    id: format!("bind-mods:{label}"),
+                    label: "Modifiers".into(),
+                    hint: "SUPER, SUPER SHIFT, or empty for none.".into(),
+                    value: mods.to_uppercase(),
+                    action: "Save".into(),
+                    ..Row::default()
+                },
+                Row {
+                    kind: "line".into(),
+                    id: format!("bind-remove:{label}"),
+                    label: "Remove shortcut".into(),
+                    action: "Remove".into(),
+                    ..Row::default()
+                },
+            ))
         })
+        .flat_map(|(_, key, mods, remove)| [key, mods, remove])
         .collect()
 }
 
@@ -8141,7 +8479,7 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
         }
         return reloaded;
     }
-    if page == "keyboard" {
+    if matches!(page, "keyboard" | "ime") {
         let id = current
             .blocks
             .get(block)
@@ -8334,6 +8672,20 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
             }
             _ => None,
         };
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = message;
+        }
+        return reloaded;
+    }
+    if page == "nightlight" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = nightlight_action(&id, action).err();
         let mut reloaded = load(page);
         if let Some(message) = error {
             reloaded.status = message;
