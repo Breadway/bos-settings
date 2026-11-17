@@ -36,8 +36,12 @@ fn config_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(".config"))
 }
 
+fn dir_path() -> PathBuf {
+    config_dir().join("bos-settings")
+}
+
 pub fn config_path() -> PathBuf {
-    config_dir().join("bos-settings/backup.toml")
+    dir_path().join("backup.toml")
 }
 
 pub fn load() -> Config {
@@ -89,6 +93,16 @@ pub fn save(repo: &str, password: Option<&str>) -> Result<(), String> {
     };
     std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     std::fs::write(&path, doc.to_string()).map_err(|error| error.to_string())?;
+    let saved = load();
+    if !saved.password.is_empty() {
+        let pass = dir_path().join("restic.pass");
+        std::fs::write(&pass, &saved.password).map_err(|error| error.to_string())?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&pass, std::fs::Permissions::from_mode(0o600));
+        }
+    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -253,7 +267,14 @@ pub fn set_schedule(value: &str) -> Result<(), String> {
     }
     let dir = config_dir().join("systemd/user");
     std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    let service = "[Unit]\nDescription=BOS personal file backup\n[Service]\nType=oneshot\nNice=10\nExecStart=/usr/bin/restic backup\n";
+    let repo = config.repo.replace('\\', "\\\\").replace('"', "\\\"");
+    let pass = dir_path().join("restic.pass");
+    let service = format!(
+        "[Unit]\nDescription=BOS personal file backup\n[Service]\nType=oneshot\nNice=10\nEnvironment=RESTIC_PASSWORD_FILE={}\nExecStart=/usr/bin/restic --repo \"{}\" backup {}\n",
+        pass.display(),
+        repo,
+        home().display()
+    );
     let timer = format!(
         "[Unit]\nDescription=Scheduled BOS personal file backup\n[Timer]\nOnCalendar={value}\nPersistent=true\nRandomizedDelaySec=15m\n[Install]\nWantedBy=timers.target\n"
     );

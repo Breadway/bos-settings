@@ -1057,6 +1057,87 @@ struct LocaleInfo {
     region: String,
 }
 
+fn datetime_action(id: &str, action: &str, checked: bool) -> Result<(), String> {
+    if id == "ntp" && action == "toggle" {
+        let out = Command::new("timedatectl")
+            .args(["set-ntp", if checked { "false" } else { "true" }])
+            .output()
+            .map_err(|error| error.to_string())?;
+        return if out.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        };
+    }
+    if id == "tz" && action == "select" {
+        let zones: Vec<String> = run("timedatectl", &["list-timezones"])
+            .map(|text| text.lines().map(str::to_string).collect())
+            .unwrap_or_default();
+        if zones.is_empty() {
+            return Err("no time zones are available".into());
+        }
+        let current = run("timedatectl", &["show", "--property=Timezone"])
+            .unwrap_or_default()
+            .trim()
+            .trim_start_matches("Timezone=")
+            .to_string();
+        let index = zones
+            .iter()
+            .position(|zone| zone == &current)
+            .map(|index| (index + 1) % zones.len())
+            .unwrap_or(0);
+        let out = Command::new("timedatectl")
+            .args(["set-timezone", &zones[index]])
+            .output()
+            .map_err(|error| error.to_string())?;
+        return if out.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        };
+    }
+    if id == "clock" && action.starts_with("seg:") {
+        let index = action.strip_prefix("seg:").unwrap_or("0");
+        let format = if index == "1" { "12h" } else { "24h" };
+        let out = Command::new("gsettings")
+            .args(["set", "org.gnome.desktop.interface", "clock-format", format])
+            .output()
+            .map_err(|error| error.to_string())?;
+        return if out.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        };
+    }
+    if (id == "language" || id == "region") && action == "select" {
+        let Some(locale) = locale_info() else {
+            return Err("locale information is unavailable".into());
+        };
+        let current = if id == "language" {
+            &locale.language
+        } else {
+            &locale.region
+        };
+        let index = locale
+            .locales
+            .iter()
+            .position(|name| name == current)
+            .map(|index| (index + 1) % locale.locales.len())
+            .unwrap_or(0);
+        let key = if id == "language" { "LANG" } else { "LC_TIME" };
+        let out = Command::new("localectl")
+            .args(["set-locale", &format!("{key}={}", locale.locales[index])])
+            .output()
+            .map_err(|error| error.to_string())?;
+        return if out.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        };
+    }
+    Ok(())
+}
+
 fn locale_info() -> Option<LocaleInfo> {
     let out = run("localectl", &["status"])?;
     let mut language = String::new();
@@ -6151,6 +6232,26 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
         let mut reloaded = load(page);
         if let Some(message) = error {
             reloaded.status = format!("Could not change the backup: {message}");
+        }
+        return reloaded;
+    }
+    if page == "datetime" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let checked = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.checked)
+            .unwrap_or(false);
+        let error = datetime_action(&id, action, checked).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not change the date or language: {message}");
         }
         return reloaded;
     }
