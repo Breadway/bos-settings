@@ -1371,6 +1371,16 @@ fn users() -> Page {
             ..Row::default()
         };
         row.tag = if username == current { "".into() } else { "Remove".into() };
+        if username != current {
+            rows.push(Row {
+                kind: "line".into(),
+                id: format!("user-remove:{username}"),
+                label: format!("Remove {username}"),
+                hint: "Deletes the account and its home folder. Needs your password.".into(),
+                action: "Remove".into(),
+                ..Row::default()
+            });
+        }
         let shown = if full_name.is_empty() { &username } else { &full_name };
         row.avatar = shown
             .chars()
@@ -1385,6 +1395,28 @@ fn users() -> Page {
     add.icon = crate::icons::commands("plus").into();
     rows.push(add);
     p.rows("", rows)
+}
+
+fn users_action(id: &str, action: &str) -> Result<(), String> {
+    if action != "action" {
+        return Ok(());
+    }
+    if let Some(name) = id.strip_prefix("user-remove:") {
+        return crate::users::remove(name);
+    }
+    if id == "add-user" {
+        return Command::new("kitty")
+            .args([
+                "-e",
+                "sh",
+                "-c",
+                "printf 'Username: '; read u; pkexec useradd -m -s /bin/bash -- \"$u\"; pkexec passwd \"$u\"",
+            ])
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+    }
+    Ok(())
 }
 
 // --------------------------------------------------------------------- startup
@@ -4372,9 +4404,16 @@ fn restore() -> Page {
             for snapshot in rows {
                 snaps.rows.push(Row {
                     kind: "line".into(),
-                    id: format!("snap:{}", snapshot.number),
+                    id: format!("snap-restore:{}", snapshot.number),
                     label: snapshot.description,
-                    hint: snapshot.date,
+                    hint: snapshot.date.clone(),
+                    action: "Restore".into(),
+                    ..Row::default()
+                });
+                snaps.rows.push(Row {
+                    kind: "line".into(),
+                    id: format!("snap:{}", snapshot.number),
+                    label: format!("Delete snapshot {}", snapshot.number),
                     action: "Delete".into(),
                     ..Row::default()
                 });
@@ -4393,6 +4432,12 @@ fn restore() -> Page {
             ..Row::default()
         }),
     }
+    snaps.rows.push(Row {
+        kind: "leftbutton".into(),
+        id: "snap-create".into(),
+        action: "Take a snapshot now".into(),
+        ..Row::default()
+    });
     p = p.push(snaps);
 
     let cfg = crate::backup::load();
@@ -4504,6 +4549,15 @@ fn backup_action(id: &str, action: &str) -> Result<(), String> {
     }
     if id == "backup-init" && action == "action" {
         return crate::backup::restic_init();
+    }
+    if id == "snap-create" && action == "action" {
+        crate::backup::create_manual_snapshot()?;
+        return Ok(());
+    }
+    if let Some(number) = id.strip_prefix("snap-restore:") {
+        if action == "action" {
+            return crate::backup::restore_snapshot(number);
+        }
     }
     if let Some(number) = id.strip_prefix("snap:") {
         if action == "action" {

@@ -238,22 +238,22 @@ parity_check.py fails while any item is not [x].
 - [x] command `backup::set_backup_schedule` -> slint-prototype/src/backup.rs
 - [x] command `backup::valid_repo` -> slint-prototype/src/backup.rs
 - [x] command `backup::valid_restore_target` -> slint-prototype/src/backup.rs
-- [ ] command `snapshots::create_manual_snapshot`
-- [ ] command `snapshots::create_update_snapshot`
+- [x] command `snapshots::create_manual_snapshot` -> slint-prototype/src/backup.rs
+- [x] command `snapshots::create_update_snapshot` -> slint-prototype/src/backup.rs
 - [x] command `snapshots::delete_snapshot` -> slint-prototype/src/backup.rs
 - [x] command `snapshots::get_snapshot_availability` -> slint-prototype/src/backup.rs
 - [x] command `snapshots::get_snapshots` -> slint-prototype/src/backup.rs
 - [x] command `snapshots::reboot_system` -> slint-prototype/src/backup.rs
-- [ ] command `snapshots::restore_snapshot`
+- [x] command `snapshots::restore_snapshot` -> slint-prototype/src/backup.rs
 - [~] view `Backup`
 - [ ] view `RestoreHub`
 - [~] view `Snapshots`
 
 ## Users
-- [ ] command `users::add_user`
-- [ ] command `users::change_password`
+- [x] command `users::add_user` -> slint-prototype/src/users.rs
+- [x] command `users::change_password` -> slint-prototype/src/users.rs
 - [x] command `users::get_users_info` -> slint-prototype/src/pagedata.rs
-- [ ] command `users::remove_user`
+- [x] command `users::remove_user` -> slint-prototype/src/users.rs
 - [~] view `Users`
 
 ## Date and time
