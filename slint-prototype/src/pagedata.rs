@@ -805,7 +805,17 @@ fn printers() -> Page {
     add.action = "Open".into();
     add.primary = true;
     let mut add_block = group("Add a printer");
-    add_block.rows = vec![add];
+    add_block.rows = vec![
+        add,
+        Row {
+            kind: "line".into(),
+            id: "printer-settings".into(),
+            label: "Printer settings".into(),
+            hint: "Queues, drivers and options.".into(),
+            action: "Open".into(),
+            ..Row::default()
+        },
+    ];
     p.push(add_block)
 }
 
@@ -1342,21 +1352,167 @@ fn sound() -> Page {
         "Sound",
         "Where sound goes, what it picks up, and how loud each app is.",
     );
-    let mut output = group("Output");
-    output.rows = pactl_devices("sink");
-    p = p.push(output);
-    let mut input = group("Input");
-    input.rows = pactl_devices("source");
-    p = p.push(input);
+    for (kind, title) in [("sinks", "Output"), ("sources", "Input")] {
+        let devices = crate::sound::devices(kind);
+        let default = crate::sound::default_device(kind);
+        if devices.is_empty() {
+            p = p.rows(
+                title,
+                vec![Row {
+                    kind: "hint".into(),
+                    id: format!("none:{kind}"),
+                    label: "No devices found.".into(),
+                    ..Row::default()
+                }],
+            );
+            continue;
+        }
+        let mut block = group(title);
+        block.hint = "Pick where the sound goes.".into();
+        for device in &devices {
+            let selected = default.as_deref() == Some(device.name.as_str());
+            block.rows.push(Row {
+                kind: "line".into(),
+                id: format!("pick:{kind}:{}", device.name),
+                label: device.description.clone(),
+                hint: if selected {
+                    format!(
+                        "In use · {}{}",
+                        if device.mute {
+                            "muted".into()
+                        } else {
+                            format!("{}%", device.percent)
+                        },
+                        if device.virtual_device {
+                            " · virtual"
+                        } else {
+                            ""
+                        }
+                    )
+                } else {
+                    device.name.clone()
+                },
+                action: "Use".into(),
+                checked: selected,
+                primary: !selected,
+                ..Row::default()
+            });
+        }
+        if let Some(current) = devices
+            .iter()
+            .find(|device| default.as_deref() == Some(device.name.as_str()))
+            .or_else(|| devices.first())
+        {
+            block.rows.push(Row {
+                kind: "slider".into(),
+                id: format!("vol:{kind}"),
+                label: format!("{} volume", title),
+                value: if current.mute {
+                    "Muted".into()
+                } else {
+                    format!("{}%", current.percent)
+                },
+                amount: current.percent as f32,
+                min: 0.0,
+                max: 150.0,
+                ..Row::default()
+            });
+            block.rows.push(toggle(
+                &format!("mute:{kind}"),
+                &format!("Mute {title}"),
+                "",
+                current.mute,
+            ));
+        }
+        p = p.push(block);
+    }
+    let streams = crate::sound::streams();
     let mut apps = group("Apps");
-    apps.hint = "Apps that play sound show up here.".into();
-    apps.rows = vec![Row {
+    apps.hint = if streams.is_empty() {
+        "Apps that play sound show up here.".into()
+    } else {
+        "Volume for each app that is playing sound right now.".into()
+    };
+    for stream in &streams {
+        apps.rows.push(Row {
+            kind: "slider".into(),
+            id: format!("stream:{}", stream.index),
+            label: stream.app.clone(),
+            hint: stream.title.clone(),
+            value: if stream.mute {
+                "Muted".into()
+            } else {
+                format!("{}%", stream.percent)
+            },
+            amount: stream.percent as f32,
+            min: 0.0,
+            max: 150.0,
+            ..Row::default()
+        });
+        apps.rows.push(toggle(
+            &format!("stream-mute:{}", stream.index),
+            &format!("Mute {}", stream.app),
+            "",
+            stream.mute,
+        ));
+    }
+    apps.rows.push(Row {
         kind: "leftbutton".into(),
         id: "mixer".into(),
         action: "Open full mixer".into(),
         ..Row::default()
-    }];
+    });
     p.push(apps)
+}
+
+fn sound_action(id: &str, action: &str, checked: bool) -> Result<(), String> {
+    if id == "mixer" && action == "action" {
+        return crate::sound::open_mixer();
+    }
+    if let Some(rest) = id.strip_prefix("pick:") {
+        if action == "action" {
+            if let Some((kind, name)) = rest.split_once(':') {
+                return crate::sound::set_default(kind, name);
+            }
+        }
+        return Ok(());
+    }
+    if let Some(kind) = id.strip_prefix("vol:") {
+        if let Some(percent) = action.strip_prefix("slider:") {
+            let name = crate::sound::default_device(kind)
+                .ok_or_else(|| "no default device".to_string())?;
+            let value: u32 = percent
+                .parse()
+                .map_err(|_| "volume must be a number".to_string())?;
+            return crate::sound::set_volume(kind, &name, value);
+        }
+        return Ok(());
+    }
+    if let Some(kind) = id.strip_prefix("mute:") {
+        if action == "toggle" {
+            let name = crate::sound::default_device(kind)
+                .ok_or_else(|| "no default device".to_string())?;
+            return crate::sound::set_mute(kind, &name, !checked);
+        }
+        return Ok(());
+    }
+    if let Some(index) = id.strip_prefix("stream:") {
+        if let Some(percent) = action.strip_prefix("slider:") {
+            let index: u32 = index.parse().map_err(|_| "bad stream".to_string())?;
+            let value: u32 = percent
+                .parse()
+                .map_err(|_| "volume must be a number".to_string())?;
+            return crate::sound::set_stream_volume(index, value);
+        }
+        return Ok(());
+    }
+    if let Some(index) = id.strip_prefix("stream-mute:") {
+        if action == "toggle" {
+            let index: u32 = index.parse().map_err(|_| "bad stream".to_string())?;
+            return crate::sound::set_stream_mute(index, !checked);
+        }
+    }
+    Ok(())
 }
 
 // ----------------------------------------------------------------------- power
@@ -4049,7 +4205,7 @@ fn next_layout(current: &str) -> &'static str {
     KEYBOARD_LAYOUTS[(index + 1) % KEYBOARD_LAYOUTS.len()].0
 }
 
-fn keyboard_action(id: &str, action: &str) -> Result<(), String> {
+fn keyboard_action(id: &str, action: &str, checked: bool) -> Result<(), String> {
     if id == "layout" && action == "select" {
         let live = run("hyprctl", &["getoption", "input:kb_layout"])
             .and_then(|text| {
@@ -4083,6 +4239,12 @@ fn keyboard_action(id: &str, action: &str) -> Result<(), String> {
             .spawn()
             .map(|_| ())
             .map_err(|error| error.to_string());
+    }
+    if action == "toggle" && id == "ime-enabled" {
+        return crate::ime::set_enabled(!checked);
+    }
+    if action == "action" && id == "ime-package" {
+        return Err("install fcitx5 from Get apps first".into());
     }
     Ok(())
 }
@@ -4903,10 +5065,22 @@ fn keyboard() -> Page {
     .collect();
     p = p.push(keys);
 
+    let ime_status = crate::ime::status();
     let mut ime = group("Input method");
     ime.hint = "Type Japanese, Chinese or Korean with an input method.".into();
     ime.rows = vec![
-        toggle("ime-enabled", "Use an input method", "", false),
+        toggle(
+            "ime-enabled",
+            "Use an input method",
+            if ime_status.running {
+                "fcitx5 is running."
+            } else if ime_status.installed {
+                "fcitx5 is installed but not running."
+            } else {
+                "fcitx5 is not installed yet."
+            },
+            ime_status.enabled,
+        ),
         Row {
             kind: "line".into(),
             id: "ime-config".into(),
@@ -4923,7 +5097,12 @@ fn keyboard() -> Page {
             kind: "line".into(),
             id: "ime-package".into(),
             label: "Fcitx5".into(),
-            hint: "Not installed".into(),
+            hint: if ime_status.installed {
+                "Installed"
+            } else {
+                "Not installed"
+            }
+            .into(),
             action: "Install".into(),
             ..Row::default()
         }],
@@ -5215,6 +5394,82 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
         }
         return reloaded;
     }
+    if page == "printers" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let action_name = action.to_string();
+        let error = (|| -> Result<(), String> {
+            if let Some(name) = id.strip_prefix("printer:") {
+                if action_name == "action" {
+                    let out = Command::new("lpoptions")
+                        .args(["-d", name])
+                        .output()
+                        .map_err(|error| error.to_string())?;
+                    if !out.status.success() {
+                        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+                    }
+                }
+                return Ok(());
+            }
+            if (id == "find" || id == "printer-settings") && action_name == "action" {
+                Command::new("system-config-printer")
+                    .spawn()
+                    .map(|_| ())
+                    .map_err(|error| error.to_string())?;
+            }
+            Ok(())
+        })()
+        .err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not change the printer: {message}");
+        }
+        return reloaded;
+    }
+    if page == "keyboard" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let checked = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.checked)
+            .unwrap_or(false);
+        let error = keyboard_action(&id, action, checked).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not change the keyboard: {message}");
+        }
+        return reloaded;
+    }
+    if page == "sound" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let checked = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.checked)
+            .unwrap_or(false);
+        let error = sound_action(&id, action, checked).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not change the sound: {message}");
+        }
+        return reloaded;
+    }
     if page == "sharing" {
         let id = current
             .blocks
@@ -5271,20 +5526,6 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
             .map(|r| r.checked)
             .unwrap_or(false);
         let error = bluetooth_action(&id, action, checked).err();
-        let mut reloaded = load(page);
-        if let Some(message) = error {
-            reloaded.status = format!("Could not apply that setting: {message}");
-        }
-        return reloaded;
-    }
-    if page == "keyboard" {
-        let id = current
-            .blocks
-            .get(block)
-            .and_then(|b| b.rows.get(row))
-            .map(|r| r.id.clone())
-            .unwrap_or_default();
-        let error = keyboard_action(&id, action).err();
         let mut reloaded = load(page);
         if let Some(message) = error {
             reloaded.status = format!("Could not apply that setting: {message}");
