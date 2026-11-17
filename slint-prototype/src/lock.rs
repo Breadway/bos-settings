@@ -7,14 +7,20 @@ use toml_edit::{value, DocumentMut, Item, Table};
 #[derive(Clone, Debug, PartialEq)]
 pub struct Config {
     pub background_mode: String,
+    pub background_path: String,
+    pub background_blur: bool,
     pub clock_format: String,
     pub font_family: String,
+    pub fail_timeout_ms: i64,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             background_mode: "color".into(),
+            background_path: String::new(),
+            background_blur: false,
+            fail_timeout_ms: 800,
             clock_format: "%H:%M".into(),
             font_family: "Varela Round".into(),
         }
@@ -59,8 +65,27 @@ pub fn load_from(path: &Path) -> Result<Config, String> {
     if let Some(format) = get_string(&doc, "clock", "format") {
         cfg.clock_format = format;
     }
+    if let Some(path) = get_string(&doc, "background", "path") {
+        cfg.background_path = path;
+    }
+    if let Some(blur) = doc
+        .get("background")
+        .and_then(Item::as_table)
+        .and_then(|table| table.get("blur"))
+        .and_then(Item::as_bool)
+    {
+        cfg.background_blur = blur;
+    }
     if let Some(font) = get_string(&doc, "font", "family") {
         cfg.font_family = font;
+    }
+    if let Some(timeout) = doc
+        .get("security")
+        .and_then(Item::as_table)
+        .and_then(|table| table.get("fail_timeout_ms"))
+        .and_then(Item::as_integer)
+    {
+        cfg.fail_timeout_ms = timeout;
     }
     Ok(cfg)
 }
@@ -80,11 +105,13 @@ pub fn save_to(path: &Path, cfg: &Config) -> Result<(), String> {
     } else {
         "color"
     };
-    let background = table_with(
+    let mut background = table_with(
         doc.get("background").and_then(Item::as_table),
         "mode",
         value(mode),
     );
+    background.insert("path", value(cfg.background_path.clone()));
+    background.insert("blur", value(cfg.background_blur));
     let clock = table_with(
         doc.get("clock").and_then(Item::as_table),
         "format",
@@ -98,6 +125,12 @@ pub fn save_to(path: &Path, cfg: &Config) -> Result<(), String> {
     doc.insert("background", Item::Table(background));
     doc.insert("clock", Item::Table(clock));
     doc.insert("font", Item::Table(font));
+    let security = table_with(
+        doc.get("security").and_then(Item::as_table),
+        "fail_timeout_ms",
+        value(cfg.fail_timeout_ms),
+    );
+    doc.insert("security", Item::Table(security));
     write_atomic(path, &doc.to_string())
 }
 

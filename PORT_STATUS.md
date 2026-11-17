@@ -164,13 +164,13 @@ parity_check.py fails while any item is not [x].
 - [~] view `Printing`
 
 ## Lock screen
-- [ ] command `breadlock::breadlock_example_path`
-- [ ] command `breadlock::get_breadlock_config`
-- [ ] command `breadlock::lock_session`
-- [ ] command `breadlock::open_breadlock_config`
-- [ ] command `breadlock::open_breadlock_example`
-- [ ] command `breadlock::save_breadlock_config`
-- [ ] view `Breadlock`
+- [x] command `breadlock::breadlock_example_path` -> slint-prototype/src/lock.rs
+- [x] command `breadlock::get_breadlock_config` -> slint-prototype/src/lock.rs
+- [x] command `breadlock::lock_session` -> slint-prototype/src/lock.rs
+- [x] command `breadlock::open_breadlock_config` -> slint-prototype/src/lock.rs
+- [x] command `breadlock::open_breadlock_example` -> slint-prototype/src/lock.rs
+- [x] command `breadlock::save_breadlock_config` -> slint-prototype/src/lock.rs
+- [x] view `Breadlock` -> slint-prototype/src/pagedata.rs
 
 ## Notifications
 - [ ] command `notification_settings::get_notification_preferences`

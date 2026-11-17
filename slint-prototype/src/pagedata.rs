@@ -3326,32 +3326,93 @@ fn lock() -> Page {
         "What you see when the screen locks.",
     );
     let cfg = breadlock_conf();
+    let mut rows = vec![
+        Row {
+            kind: "seg".into(),
+            id: "background".into(),
+            label: "Background".into(),
+            options: vec!["Picture".into(), "Colour".into()],
+            selected: if cfg.background_mode == "color" { 1 } else { 0 },
+            ..Row::default()
+        },
+    ];
+    if cfg.background_mode != "color" {
+        rows.push(Row {
+            kind: "input".into(),
+            id: "background-path".into(),
+            label: "Picture file".into(),
+            hint: "A PNG on this computer.".into(),
+            value: cfg.background_path.clone(),
+            action: "Set".into(),
+            ..Row::default()
+        });
+        rows.push(toggle(
+            "background-blur",
+            "Blur the picture",
+            "",
+            cfg.background_blur,
+        ));
+    }
+    rows.push(Row {
+        kind: "seg".into(),
+        id: "clock".into(),
+        label: "Clock".into(),
+        options: vec!["24-hour".into(), "12-hour".into()],
+        selected: if cfg.clock_format.contains("%I") { 1 } else { 0 },
+        ..Row::default()
+    });
+    rows.push(toggle(
+        "seconds",
+        "Show seconds",
+        "",
+        cfg.clock_format.contains("%S"),
+    ));
+    rows.push(Row {
+        kind: "select".into(),
+        id: "font".into(),
+        label: "Font".into(),
+        value: cfg.font_family.clone(),
+        options: LOCK_FONTS.iter().map(|font| font.to_string()).collect(),
+        ..Row::default()
+    });
+    let waits = ["Don't wait", "1 second", "2 seconds"];
+    rows.push(Row {
+        kind: "seg".into(),
+        id: "fail-timeout".into(),
+        label: "After a wrong password, wait".into(),
+        options: waits.iter().map(|wait| wait.to_string()).collect(),
+        selected: match cfg.fail_timeout_ms {
+            0 => 0,
+            2000 => 2,
+            _ => 1,
+        },
+        ..Row::default()
+    });
+    p = p.rows("Look", rows);
     p = p.rows(
-        "Look",
+        "Advanced",
         vec![
             Row {
-                kind: "seg".into(),
-                id: "background".into(),
-                label: "Background".into(),
-                options: vec!["Picture".into(), "Colour".into()],
-                selected: if cfg.background_mode == "color" { 1 } else { 0 },
+                kind: "line".into(),
+                id: "lock-now".into(),
+                label: "Lock now to preview".into(),
+                action: "Lock".into(),
                 ..Row::default()
             },
             Row {
-                kind: "seg".into(),
-                id: "clock".into(),
-                label: "Clock".into(),
-                options: vec!["24-hour".into(), "12-hour".into()],
-                selected: if cfg.clock_format.contains("%I") { 1 } else { 0 },
+                kind: "line".into(),
+                id: "open-lock-config".into(),
+                label: "Settings file".into(),
+                hint: "Every lock screen option, in a text editor.".into(),
+                action: "Open".into(),
                 ..Row::default()
             },
-            toggle("seconds", "Show seconds", "", cfg.clock_format.contains("%S")),
             Row {
-                kind: "select".into(),
-                id: "font".into(),
-                label: "Font".into(),
-                value: cfg.font_family.clone(),
-                options: LOCK_FONTS.iter().map(|font| font.to_string()).collect(),
+                kind: "line".into(),
+                id: "open-lock-example".into(),
+                label: "Example settings file".into(),
+                hint: "The full set of options.".into(),
+                action: "Open".into(),
                 ..Row::default()
             },
         ],
@@ -4356,6 +4417,16 @@ fn startup_action(id: &str, action: &str) -> Result<(), String> {
     std::fs::write(path, lines.join("\n") + "\n").map_err(|error| error.to_string())
 }
 
+fn spawn_editor(path: &std::path::Path) -> Result<(), String> {
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "nano".into());
+    Command::new("kitty")
+        .args(["-e", &editor])
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
 fn lock_action(id: &str, action: &str) -> Result<(), String> {
     let mut cfg = crate::lock::load()?;
     if let Some(index) = action.strip_prefix("seg:").and_then(|v| v.parse::<usize>().ok()) {
@@ -4377,6 +4448,48 @@ fn lock_action(id: &str, action: &str) -> Result<(), String> {
         let seconds = !cfg.clock_format.contains("%S");
         cfg.clock_format = crate::lock::clock_format(twelve, seconds).into();
         return crate::lock::save(&cfg);
+    }
+    if action == "seg:" {
+        return Ok(());
+    }
+    if let Some(index) = action.strip_prefix("seg:").and_then(|v| v.parse::<usize>().ok()) {
+        if id == "fail-timeout" {
+            cfg.fail_timeout_ms = match index {
+                0 => 0,
+                2 => 2000,
+                _ => 1000,
+            };
+            return crate::lock::save(&cfg);
+        }
+    }
+    if action == "toggle" && id == "background-blur" {
+        cfg.background_blur = !cfg.background_blur;
+        return crate::lock::save(&cfg);
+    }
+    if action.starts_with("input:") && id == "background-path" {
+        cfg.background_path = action.trim_start_matches("input:").trim().to_string();
+        return crate::lock::save(&cfg);
+    }
+    if action == "action" && id == "lock-now" {
+        let _ = Command::new("loginctl").arg("lock-session").spawn();
+        return Ok(());
+    }
+    if action == "action" && id == "open-lock-config" {
+        return spawn_editor(&crate::lock::path());
+    }
+    if action == "action" && id == "open-lock-example" {
+        let candidates = [
+            "/usr/share/doc/breadlock/breadlock.example.toml",
+            "/usr/share/breadlock/breadlock.example.toml",
+            "/usr/share/doc/breadlock/examples/breadlock.example.toml",
+        ];
+        if let Some(path) = candidates
+            .iter()
+            .find(|path| std::path::Path::new(path).is_file())
+        {
+            return spawn_editor(std::path::Path::new(path));
+        }
+        return Err("no example file is installed".into());
     }
     if action == "select" && id == "font" {
         let current = LOCK_FONTS
