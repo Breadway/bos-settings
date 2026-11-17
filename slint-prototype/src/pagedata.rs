@@ -4878,6 +4878,57 @@ fn set_bug_flag(path: &std::path::Path, key: &str, value: bool) -> Result<(), St
     std::fs::write(path, doc.to_string()).map_err(|error| error.to_string())
 }
 
+fn desktop_action(id: &str, action: &str) -> Result<(), String> {
+    if action != "action" {
+        return Ok(());
+    }
+    match id {
+        "clip-history" => Command::new("breadclip")
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| error.to_string()),
+        "notes-folder" => {
+            let dir = home_dir().join("Documents/Notes");
+            let _ = std::fs::create_dir_all(&dir);
+            Command::new("xdg-open")
+                .arg(dir)
+                .spawn()
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        }
+        "clip-service" => {
+            let active = service_active("breadclipd.service");
+            systemctl_user(if active { "stop" } else { "start" }, "breadclipd.service")
+        }
+        _ => Ok(()),
+    }
+}
+
+fn service_active(unit: &str) -> bool {
+    Command::new("systemctl")
+        .args(["--user", "is-active", "--quiet", unit])
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false)
+}
+
+fn systemctl_user(verb: &str, unit: &str) -> Result<(), String> {
+    let out = Command::new("systemctl")
+        .args(["--user", verb, unit])
+        .output()
+        .map_err(|error| error.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        Err(if stderr.is_empty() {
+            format!("systemctl --user {verb} {unit} failed")
+        } else {
+            stderr
+        })
+    }
+}
+
 fn privacy_action(id: &str, action: &str) -> Result<(), String> {
     if action == "toggle" {
         let key = match id {
@@ -5606,8 +5657,16 @@ fn desktop() -> Page {
             kind: "line".into(),
             id: "clip-service".into(),
             label: "Keep clipboard history".into(),
-            hint: "Stopped · doesn't start at login".into(),
-            action: "Start".into(),
+            hint: if service_active("breadclipd.service") {
+                "Running.".into()
+            } else {
+                "Stopped. Start it to keep what you copy.".into()
+            },
+            action: if service_active("breadclipd.service") {
+                "Stop".into()
+            } else {
+                "Start".into()
+            },
             value: "Logs".into(),
             ..Row::default()
         },
@@ -6319,6 +6378,20 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
         let mut reloaded = load(page);
         if let Some(message) = error {
             reloaded.status = format!("Could not apply that setting: {message}");
+        }
+        return reloaded;
+    }
+    if page == "desktop" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = desktop_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not open that: {message}");
         }
         return reloaded;
     }
