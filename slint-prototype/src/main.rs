@@ -26,6 +26,7 @@ mod sound;
 mod nightlight;
 mod notifications;
 mod nvidia;
+mod power_settings;
 mod prefs;
 mod service;
 mod data;
