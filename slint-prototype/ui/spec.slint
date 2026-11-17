@@ -646,6 +646,13 @@ component SpecRowView inherits VerticalLayout {
                         VectorIcon { icon-size: 10px; commands: "M18 6 L6 18 M6 6 L18 18"; tint: Theme.muted; }
                     }
                 }
+                TouchArea {
+                    x: 0;
+                    y: 0;
+                    width: 100%;
+                    height: 100%;
+                    clicked => { root.act("tag-remove:" + index); }
+                }
             }
             Rectangle {
                 horizontal-stretch: 1;
@@ -749,7 +756,12 @@ component SpecRowView inherits VerticalLayout {
                     vertical-alignment: center;
                 }
                 Rectangle { width: 12px; height: 1px; }
-                PillButton { text: data.action; small: true; ghost: true; }
+                PillButton {
+                    text: data.action;
+                    small: true;
+                    ghost: true;
+                    clicked => { root.act("action"); }
+                }
             }
         }
     }
