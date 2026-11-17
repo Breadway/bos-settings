@@ -175,6 +175,22 @@ fn run(program: &str, args: &[&str]) -> Option<String> {
     Some(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
+fn write(program: &str, args: &[&str]) -> Result<(), String> {
+    let out = Command::new(program)
+        .args(args)
+        .output()
+        .map_err(|e| format!("{program}: {e}"))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let message = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    Err(if message.is_empty() {
+        format!("{program} exited with {}", out.status)
+    } else {
+        message
+    })
+}
+
 fn command_exists(program: &str) -> bool {
     Command::new("sh")
         .args(["-c", &format!("command -v {program}")])
@@ -2354,7 +2370,7 @@ fn updates() -> Page {
             kind: "line".into(),
             id: "rollback".into(),
             label: "Go back to before the update".into(),
-            hint: "Every update takes a snapshot first. Pick it from the boot menu, or choose it in Backup & restore.".into(),
+            hint: "Every update takes a snapshot first. Restart and pick it from the boot menu, or choose it in Backup & restore.".into(),
             action: "Open".into(),
             ..Row::default()
         }],
@@ -3291,14 +3307,246 @@ pub fn spec_blocks(blocks: Vec<Block>) -> Vec<crate::SpecBlock> {
 // Filled in page by page; a page reload always reflects what the write left
 // on disk, the same way the shipping views re-read after a command.
 
-pub fn apply_action(page: &str, _block: usize, _row: usize, _action: &str) -> Page {
-    load(page)
+#[derive(Debug, PartialEq)]
+struct Planned {
+    program: &'static str,
+    args: Vec<String>,
 }
 
-pub fn apply_block_action(page: &str, _block: usize, _action: &str) -> Page {
-    load(page)
+fn planned_row(page: &str, id: &str, checked: bool, action: &str) -> Option<Planned> {
+    match page {
+        "sound" if action == "action" => {
+            let (kind, name) = id.split_once(':')?;
+            let target = match kind {
+                "sink" => "set-default-sink",
+                "source" => "set-default-source",
+                _ => return None,
+            };
+            Some(Planned {
+                program: "pactl",
+                args: vec![target.to_string(), name.to_string()],
+            })
+        }
+        "bluetooth" => {
+            let address = id.strip_prefix("bt:")?;
+            let command = match action {
+                "action2" => "remove",
+                _ if checked => "disconnect",
+                _ => "connect",
+            };
+            Some(Planned {
+                program: "bluetoothctl",
+                args: vec![command.to_string(), address.to_string()],
+            })
+        }
+        "network" if action == "toggle" => {
+            let name = id.strip_prefix("vpn:")?;
+            Some(Planned {
+                program: "nmcli",
+                args: ["connection", if checked { "down" } else { "up" }, "id", name]
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+            })
+        }
+        "power" if id == "brightness" && action.starts_with("slider:") => {
+            let percent = action.strip_prefix("slider:")?.parse::<u32>().ok()?;
+            Some(Planned {
+                program: "brightnessctl",
+                args: vec!["set".into(), format!("{percent}%")],
+            })
+        }
+        "power" if id == "power-mode" && action.starts_with("seg:") => {
+            let index = action.strip_prefix("seg:")?.parse::<usize>().ok()?;
+            let profile = match index {
+                0 => "power-saver",
+                2 => "performance",
+                _ => "balanced",
+            };
+            Some(Planned {
+                program: "powerprofilesctl",
+                args: vec!["set".into(), profile.into()],
+            })
+        }
+        _ => None,
+    }
+}
+
+fn planned_block(page: &str, on: bool) -> Option<Planned> {
+    match page {
+        "network" => Some(Planned {
+            program: "nmcli",
+            args: vec!["radio".into(), "wifi".into(), if on { "off" } else { "on" }.into()],
+        }),
+        "bluetooth" => Some(Planned {
+            program: "bluetoothctl",
+            args: vec!["power".into(), if on { "off" } else { "on" }.into()],
+        }),
+        _ => None,
+    }
+}
+
+fn run_planned(planned: Option<Planned>) -> Result<(), String> {
+    let Some(planned) = planned else {
+        return Ok(());
+    };
+    let args: Vec<&str> = planned.args.iter().map(String::as_str).collect();
+    write(planned.program, &args)
+}
+
+/// Runs the write behind one row control, then reloads the page so the shown
+/// state comes from the system again. Errors are returned in Page.status.
+pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page {
+    let current = load(page);
+    let planned = current
+        .blocks
+        .get(block)
+        .and_then(|b| b.rows.get(row))
+        .and_then(|r| planned_row(page, &r.id, r.checked, action));
+    let error = run_planned(planned).err();
+    let mut reloaded = load(page);
+    if let Some(message) = error {
+        reloaded.status = format!("Could not apply that setting: {message}");
+    }
+    reloaded
+}
+
+/// Hero toggles change radio state rather than a row, so they look at the
+/// block's current value to decide which way to switch.
+pub fn apply_block_action(page: &str, block: usize, _action: &str) -> Page {
+    let current = load(page);
+    let planned = current
+        .blocks
+        .get(block)
+        .and_then(|b| planned_block(page, b.on));
+    let error = run_planned(planned).err();
+    let mut reloaded = load(page);
+    if let Some(message) = error {
+        reloaded.status = format!("Could not apply that setting: {message}");
+    }
+    reloaded
 }
 
 pub fn select_chip(page: &str, _block: usize, _chip: usize) -> Page {
     load(page)
+}
+
+#[cfg(test)]
+mod action_tests {
+    use super::{planned_block, planned_row, Planned};
+
+    fn plan(page: &str, id: &str, checked: bool, action: &str) -> Option<Planned> {
+        planned_row(page, id, checked, action)
+    }
+
+    #[test]
+    fn sound_use_switches_the_default_device() {
+        assert_eq!(
+            plan("sound", "sink:alsa_output.hdmi", false, "action"),
+            Some(Planned {
+                program: "pactl",
+                args: vec!["set-default-sink".into(), "alsa_output.hdmi".into()],
+            })
+        );
+        assert_eq!(
+            plan("sound", "source:alsa_input.mic", false, "action"),
+            Some(Planned {
+                program: "pactl",
+                args: vec!["set-default-source".into(), "alsa_input.mic".into()],
+            })
+        );
+        assert_eq!(plan("sound", "mixer", false, "action"), None);
+    }
+
+    #[test]
+    fn bluetooth_actions_use_the_address() {
+        assert_eq!(
+            plan("bluetooth", "bt:AC:80:0A:C9:E6", true, "action"),
+            Some(Planned {
+                program: "bluetoothctl",
+                args: vec!["disconnect".into(), "AC:80:0A:C9:E6".into()],
+            })
+        );
+        assert_eq!(
+            plan("bluetooth", "bt:AC:80:0A:C9:E6", false, "action"),
+            Some(Planned {
+                program: "bluetoothctl",
+                args: vec!["connect".into(), "AC:80:0A:C9:E6".into()],
+            })
+        );
+        assert_eq!(
+            plan("bluetooth", "bt:AC:80:0A:C9:E6", true, "action2"),
+            Some(Planned {
+                program: "bluetoothctl",
+                args: vec!["remove".into(), "AC:80:0A:C9:E6".into()],
+            })
+        );
+    }
+
+    #[test]
+    fn vpn_toggle_reflects_the_shown_state() {
+        assert_eq!(
+            plan("network", "vpn:wg0", true, "toggle"),
+            Some(Planned {
+                program: "nmcli",
+                args: vec!["connection".into(), "down".into(), "id".into(), "wg0".into()],
+            })
+        );
+        assert_eq!(
+            plan("network", "vpn:wg0", false, "toggle"),
+            Some(Planned {
+                program: "nmcli",
+                args: vec!["connection".into(), "up".into(), "id".into(), "wg0".into()],
+            })
+        );
+    }
+
+    #[test]
+    fn power_slider_and_profile_map_to_their_tools() {
+        assert_eq!(
+            plan("power", "brightness", false, "slider:42"),
+            Some(Planned {
+                program: "brightnessctl",
+                args: vec!["set".into(), "42%".into()],
+            })
+        );
+        assert_eq!(
+            plan("power", "power-mode", false, "seg:0"),
+            Some(Planned {
+                program: "powerprofilesctl",
+                args: vec!["set".into(), "power-saver".into()],
+            })
+        );
+        assert_eq!(
+            plan("power", "power-mode", false, "seg:2"),
+            Some(Planned {
+                program: "powerprofilesctl",
+                args: vec!["set".into(), "performance".into()],
+            })
+        );
+    }
+
+    #[test]
+    fn write_reports_a_missing_command() {
+        assert!(super::write("bos-no-such-command", &[]).is_err());
+    }
+
+    #[test]
+    fn radios_toggle_against_the_shown_state() {
+        assert_eq!(
+            planned_block("network", true),
+            Some(Planned {
+                program: "nmcli",
+                args: vec!["radio".into(), "wifi".into(), "off".into()],
+            })
+        );
+        assert_eq!(
+            planned_block("bluetooth", false),
+            Some(Planned {
+                program: "bluetoothctl",
+                args: vec!["power".into(), "on".into()],
+            })
+        );
+        assert_eq!(planned_block("updates", false), None);
+    }
 }

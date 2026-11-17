@@ -1,8 +1,8 @@
 # BOS Settings, Slint prototype
 
 A Slint version of the settings window, built page for page against the
-shipping app. It reads the same files and commands the shipping app reads; it
-does not write to them yet.
+shipping app. It reads the same files and commands the shipping app reads, and
+it writes back through those commands on the pages listed under write coverage.
 
 ```sh
 cargo build --offline
@@ -61,9 +61,16 @@ app at the pixel level.
   `ui/spec.slint` with the shipping app's Group, Row, Hero, chip and device
   pieces, instead of one Svelte component per view. Shared geometry is therefore
   identical across pages, and a shipping layout change is a data change here.
-- **Read-only.** Toggles, selects, sliders and chips remember their position in
-  `~/.local/state/bos-settings-slint/state.toml`, but no system command runs.
-  The shipping app's write paths are still to be ported.
+- **Write coverage.** These controls now run the shipping command and reload the
+  page from the system: Network (Wi-Fi radio, VPN up/down), Bluetooth (power,
+  connect, disconnect, forget), Sound (default output and input) and Power
+  (brightness on release, power profile). Every other toggle, select, slider and
+  chip still only remembers its position in
+  `~/.local/state/bos-settings-slint/state.toml`. Failures appear under the page
+  lede instead of being swallowed.
+- **Svelte stays.** `frontend/` remains the shipping UI until every page has the
+  same write paths and dialogs here. Deleting it before then would drop
+  capabilities, so the port lands page by page.
 - **Icons.** `@lucide/svelte` is not installed on this machine, so a checked
   subset of Lucide paths lives in `src/extra_icons.rs` and misses nothing the
   prototype uses. An icon the subset does not know renders blank rather than

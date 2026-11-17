@@ -162,7 +162,7 @@ export component PillButton inherits Rectangle {
     in property <string> icon: "";
     callback clicked;
     opacity: enabled ? 1 : 0.5;
-    height: root.multiline ? 46px : (small ? 28px : 34px);
+    height: root.multiline ? 50px : (small ? 28px : 34px);
     border-radius: small ? 8px : Theme.radius-sm;
     background: primary ? Theme.accent : (ghost ? transparent : Theme.surface-2);
     border-width: primary ? 0px : 1px;
@@ -254,8 +254,13 @@ export component AccentSlider inherits Rectangle {
     TouchArea {
         moved => { if (self.pressed) { root.apply(self.mouse-x); } }
         pointer-event(event) => {
-            if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+            if (event.button != PointerEventButton.left) { return; }
+            if (event.kind == PointerEventKind.down) {
                 root.apply(self.mouse-x);
+            }
+            // The setting is written on release, not on every drag update.
+            if (event.kind == PointerEventKind.up) {
+                root.changed(value);
             }
         }
     }
@@ -263,7 +268,6 @@ export component AccentSlider inherits Rectangle {
         if (self.width <= 0px) { return; }
         fraction = max(0, min(1, x / self.width));
         value = minimum + fraction * span;
-        root.changed(value);
     }
 }
 

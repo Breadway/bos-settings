@@ -237,7 +237,7 @@ component HeroCard inherits Rectangle {
     border-width: 1px;
     border-color: Theme.line;
     HorizontalLayout {
-        padding: 18px;
+        padding: root.ring >= 0 ? 19px : 18px;
         spacing: 16px;
         VerticalLayout {
             horizontal-stretch: 0;
@@ -352,7 +352,7 @@ component HeroCard inherits Rectangle {
                 alignment: end;
                 VerticalLayout {
                     alignment: end;
-                    spacing: 4px;
+                    spacing: 8px;
                     if root.action != "": PillButton {
                         width: root.action2 != "" ? 130px : self.preferred-width;
                         multiline: root.action2 != "";
@@ -1079,7 +1079,7 @@ component SpecRowView inherits VerticalLayout {
 
 component DevCard inherits Rectangle {
     in property <SpecRow> data;
-    callback row-action();
+    callback row-action(string);
     height: 116px;
     border-radius: Theme.radius;
     background: Theme.surface;
@@ -1127,13 +1127,13 @@ component DevCard inherits Rectangle {
                 small: true;
                 primary: data.primary;
                 ghost: !data.primary;
-                clicked => { root.row-action(); }
+                clicked => { root.row-action("action"); }
             }
             if data.value != "": PillButton {
                 text: data.value;
                 small: true;
                 ghost: true;
-                clicked => { root.row-action(); }
+                clicked => { root.row-action("action2"); }
             }
         }
     }
@@ -1143,6 +1143,7 @@ export component SpecPage inherits VerticalLayout {
     in property <string> crumb;
     in property <string> title;
     in property <string> lede;
+    in property <string> status;
     in property <[SpecBlock]> blocks;
     in property <bool> header: true;
     callback act(int, int, string);
@@ -1167,6 +1168,14 @@ export component SpecPage inherits VerticalLayout {
         PageTitle { text: root.title; }
         if root.lede != "": Rectangle { height: 6px; }
         if root.lede != "": Lede { text: root.lede; }
+        if root.status != "": Rectangle { height: 8px; }
+        if root.status != "": Text {
+            text: root.status;
+            font-family: Theme.body;
+            color: Theme.red;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
         Rectangle { height: 18px; }
     }
 
@@ -1227,7 +1236,7 @@ export component SpecPage inherits VerticalLayout {
                     row: Math.floor(row-index / cols);
                     col: Math.mod(row-index, cols);
                     width: card-width;
-                    row-action => { root.act(index, row-index, "action"); }
+                    row-action(a) => { root.act(index, row-index, a); }
                 }
             }
 
