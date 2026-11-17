@@ -4923,7 +4923,69 @@ fn set_bug_flag(path: &std::path::Path, key: &str, value: bool) -> Result<(), St
     std::fs::write(path, doc.to_string()).map_err(|error| error.to_string())
 }
 
+fn breadsearch_path() -> PathBuf {
+    config_dir().join("breadsearch/config.toml")
+}
+
+fn breadsearch_enabled() -> bool {
+    std::fs::read_to_string(breadsearch_path())
+        .ok()
+        .and_then(|text| text.parse::<toml::Value>().ok())
+        .and_then(|value| value.get("power")?.get("enabled")?.as_bool())
+        .unwrap_or(true)
+}
+
+fn breadsearch_set_enabled(enabled: bool) -> Result<(), String> {
+    let path = breadsearch_path();
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut doc: toml_edit::DocumentMut = text.parse().map_err(|error| format!("{error}"))?;
+    doc["power"]["enabled"] = toml_edit::value(enabled);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    std::fs::write(&path, doc.to_string()).map_err(|error| error.to_string())
+}
+
+fn breadsearch_scope() -> usize {
+    let everything = std::fs::read_to_string(breadsearch_path())
+        .ok()
+        .and_then(|text| text.parse::<toml::Value>().ok())
+        .and_then(|value| {
+            value
+                .get("index")?
+                .get("roots")?
+                .as_array()?
+                .iter()
+                .any(|root| root.as_str() == Some("/"))
+                .then_some(())
+        })
+        .is_some();
+    usize::from(everything)
+}
+
+fn breadsearch_set_scope(everything: bool) -> Result<(), String> {
+    let path = breadsearch_path();
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut doc: toml_edit::DocumentMut = text.parse().map_err(|error| format!("{error}"))?;
+    let home = home_dir().display().to_string();
+    let mut roots = toml_edit::Array::new();
+    roots.push(if everything { "/" } else { home.as_str() });
+    doc["index"]["roots"] = toml_edit::value(roots);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    std::fs::write(&path, doc.to_string()).map_err(|error| error.to_string())
+}
+
 fn desktop_action(id: &str, action: &str) -> Result<(), String> {
+    if id == "search-index" && action == "toggle" {
+        return breadsearch_set_enabled(!breadsearch_enabled());
+    }
+    if id == "search-scope" {
+        if let Some(index) = action.strip_prefix("seg:").and_then(|v| v.parse::<usize>().ok()) {
+            return breadsearch_set_scope(index == 1);
+        }
+    }
     if action != "action" {
         return Ok(());
     }
@@ -5774,11 +5836,21 @@ fn desktop() -> Page {
             kind: "select".into(),
             id: "search-scope".into(),
             label: "Search".into(),
-            value: "My files".into(),
+            value: if breadsearch_scope() == 1 {
+                "Everything".into()
+            } else {
+                "My files".into()
+            },
             options: vec!["My files".into(), "Everything".into()],
+            selected: breadsearch_scope() as i32,
             ..Row::default()
         },
-        toggle("search-index", "Keep the index up to date", "", true),
+        toggle(
+            "search-index",
+            "Keep the index up to date",
+            "",
+            breadsearch_enabled(),
+        ),
         Row {
             kind: "line".into(),
             id: "search-rebuild".into(),
