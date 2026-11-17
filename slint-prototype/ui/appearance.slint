@@ -1,9 +1,13 @@
-import { Theme, PageTitle, Lede, GroupBox, SettingRow, Toggle, AccentSlider, Segment } from "theme.slint";
+import { Theme, PageTitle, Lede, GroupBox, SettingRow, Toggle, AccentSlider, SelectBox, ValueText } from "theme.slint";
 
 export component AppearancePage inherits VerticalLayout {
     in-out property <float> gaps-in;
     in-out property <float> gaps-out;
     in-out property <float> border-size;
+    in-out property <color> active-border;
+    in-out property <float> active-border-alpha;
+    in-out property <color> inactive-border;
+    in-out property <float> inactive-border-alpha;
     in-out property <float> rounding;
     in-out property <bool> blur;
     in-out property <float> blur-size;
@@ -14,80 +18,155 @@ export component AppearancePage inherits VerticalLayout {
     in-out property <int> layout-index;
     in-out property <string> status;
     callback changed();
-    spacing: 14px;
+    // Same rhythm as the shipping ViewScaffold: breadcrumb, then the title,
+    // the lede and the sections.
+    spacing: 0px;
     alignment: start;
-    PageTitle { text: "Appearance"; }
-    Lede { text: "Window spacing, blur and shadows. Changes write hypr/settings.json and reload Hyprland."; }
-
-    Rectangle {
-        height: 118px;
-        border-radius: 12px;
-        background: Theme.bg;
-        border-width: 1px;
-        border-color: Theme.line;
-        property <length> gap: max(2px, gaps-in * 0.6px);
-        property <length> edge: gaps-out * 0.6px;
-        property <length> radius: rounding * 1px;
-        property <length> border: max(1px, border-size * 1px);
-        HorizontalLayout {
-            padding: edge;
-            spacing: gap;
-            Rectangle {
-                horizontal-stretch: 1.3;
-                border-radius: radius;
-                background: Theme.surface-2;
-                border-width: border;
-                border-color: Theme.accent;
-            }
-            VerticalLayout {
-                spacing: gap;
-                horizontal-stretch: 1;
-                Rectangle {
-                    vertical-stretch: 1;
-                    border-radius: radius;
-                    background: Theme.surface;
-                    border-width: border;
-                    border-color: Theme.accent;
-                }
-                Rectangle {
-                    vertical-stretch: 1;
-                    border-radius: radius;
-                    background: Theme.surface;
-                    border-width: border;
-                    border-color: Theme.line;
-                }
-            }
-        }
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+        Text { text: "Personalise"; font-family: Theme.body; color: Theme.faint; font-size: 12px; }
+        Text { text: "›"; font-family: Theme.body; color: Theme.faint; font-size: 12px; }
+        Text { text: "Appearance"; font-family: Theme.body; color: Theme.muted; font-size: 12px; }
     }
+    Rectangle { height: 8px; }
+    PageTitle { text: "Appearance"; }
+    Rectangle { height: 6px; }
+    Lede { text: "Wallpaper sets the colors. Windows follow."; }
+    Rectangle { height: 18px; }
 
     GroupBox {
         title: "WINDOWS";
-        SettingRow { label: "Gaps between windows"; hint: round(gaps-in); first: true;
-            AccentSlider { minimum: 0; maximum: 50; value <=> gaps-in; changed(_) => { root.changed(); } } }
-        SettingRow { label: "Gaps around the edge"; hint: round(gaps-out);
-            AccentSlider { minimum: 0; maximum: 50; value <=> gaps-out; changed(_) => { root.changed(); } } }
-        SettingRow { label: "Border width"; hint: round(border-size);
-            AccentSlider { minimum: 0; maximum: 10; value <=> border-size; changed(_) => { root.changed(); } } }
-        SettingRow { label: "Corner rounding"; hint: round(rounding);
-            AccentSlider { minimum: 0; maximum: 30; value <=> rounding; changed(_) => { root.changed(); } } }
+        Rectangle {
+            // --gi/--go/--r/--bw: the shipping preview scales the values by
+            // 0.6 and keeps a 2px seam so the panes never merge into a blank.
+            height: 118px;
+            border-radius: 12px;
+            background: Theme.bg;
+            border-width: 1px;
+            border-color: Theme.line;
+            clip: true;
+            property <length> gap: max(2px, gaps-in * 0.6px);
+            property <length> edge: gaps-out * 0.6px;
+            property <length> radius: rounding * 1px;
+            property <length> border: max(1px, border-size * 1px);
+            property <brush> border-tint: border-size > 0 ? Theme.accent : Theme.line;
+            HorizontalLayout {
+                padding: edge;
+                spacing: gap;
+                Rectangle {
+                    horizontal-stretch: 1.3;
+                    border-radius: radius;
+                    background: Theme.surface-2;
+                    border-width: border;
+                    border-color: border-tint;
+                }
+                VerticalLayout {
+                    spacing: gap;
+                    horizontal-stretch: 1;
+                    Rectangle {
+                        vertical-stretch: 1;
+                        border-radius: radius;
+                        background: Theme.surface-2-soft;
+                        border-width: border;
+                        border-color: border-tint;
+                    }
+                    Rectangle {
+                        vertical-stretch: 1;
+                        border-radius: radius;
+                        background: Theme.surface-2;
+                        border-width: border;
+                        border-color: border-tint;
+                    }
+                }
+            }
+        }
+        SettingRow { label: "Gaps between windows"; first: true;
+            AccentSlider { minimum: 0; maximum: 50; value <=> gaps-in; changed(_) => { root.changed(); } }
+            ValueText { text: round(gaps-in); }
+        }
+        SettingRow { label: "Gaps around the edge";
+            AccentSlider { minimum: 0; maximum: 50; value <=> gaps-out; changed(_) => { root.changed(); } }
+            ValueText { text: round(gaps-out); }
+        }
+        SettingRow { label: "Border width";
+            AccentSlider { minimum: 0; maximum: 10; value <=> border-size; changed(_) => { root.changed(); } }
+            ValueText { text: round(border-size); }
+        }
+        SettingRow { label: "Active border";
+            Rectangle {
+                width: 36px;
+                height: 26px;
+                border-radius: 4px;
+                background: root.active-border;
+                border-width: 1px;
+                border-color: Theme.fg.with-alpha(20%);
+            }
+            AccentSlider {
+                width: 100px;
+                minimum: 0;
+                maximum: 255;
+                value <=> active-border-alpha;
+                changed(_) => { root.changed(); }
+            }
+        }
+        SettingRow { label: "Inactive border";
+            Rectangle {
+                width: 36px;
+                height: 26px;
+                border-radius: 4px;
+                background: root.inactive-border;
+                border-width: 1px;
+                border-color: Theme.fg.with-alpha(20%);
+            }
+            AccentSlider {
+                width: 100px;
+                minimum: 0;
+                maximum: 255;
+                value <=> inactive-border-alpha;
+                changed(_) => { root.changed(); }
+            }
+        }
         SettingRow { label: "Layout";
-            Segment { options: ["Tiling", "Master stack"]; current <=> layout-index; changed(_) => { root.changed(); } } }
+            SelectBox {
+                text: layout-index == 0 ? "Tiling" : "Master stack";
+                clicked => {
+                    layout-index = layout-index == 0 ? 1 : 0;
+                    root.changed();
+                }
+            }
+        }
         SettingRow { label: "Resize by dragging the border";
-            Toggle { checked <=> resize-on-border; toggled(_) => { root.changed(); } } }
+            Toggle { checked <=> resize-on-border; toggled(_) => { root.changed(); } }
+        }
     }
+
+    Rectangle { height: 14px; }
 
     GroupBox {
         title: "EFFECTS";
-        SettingRow { label: "Blur"; first: true;
-            Toggle { checked <=> blur; toggled(_) => { root.changed(); } } }
-        if blur: SettingRow { label: "Blur size"; hint: round(blur-size);
-            AccentSlider { minimum: 0; maximum: 20; value <=> blur-size; changed(_) => { root.changed(); } } }
-        if blur: SettingRow { label: "Blur quality"; hint: round(blur-passes);
-            AccentSlider { minimum: 1; maximum: 5; value <=> blur-passes; changed(_) => { root.changed(); } } }
+        SettingRow { label: "Corner rounding"; first: true;
+            AccentSlider { minimum: 0; maximum: 30; value <=> rounding; changed(_) => { root.changed(); } }
+            ValueText { text: round(rounding); }
+        }
+        SettingRow { label: "Blur";
+            Toggle { checked <=> blur; toggled(_) => { root.changed(); } }
+        }
+        if blur: SettingRow { label: "Blur size";
+            AccentSlider { minimum: 0; maximum: 20; value <=> blur-size; changed(_) => { root.changed(); } }
+            ValueText { text: round(blur-size); }
+        }
+        if blur: SettingRow { label: "Blur quality";
+            AccentSlider { minimum: 1; maximum: 5; value <=> blur-passes; changed(_) => { root.changed(); } }
+            ValueText { text: round(blur-passes); }
+        }
         SettingRow { label: "Shadows";
-            Toggle { checked <=> shadows; toggled(_) => { root.changed(); } } }
-        if shadows: SettingRow { label: "Shadow size"; hint: round(shadow-range);
-            AccentSlider { minimum: 0; maximum: 40; value <=> shadow-range; changed(_) => { root.changed(); } } }
+            Toggle { checked <=> shadows; toggled(_) => { root.changed(); } }
+        }
+        if shadows: SettingRow { label: "Shadow size";
+            AccentSlider { minimum: 0; maximum: 40; value <=> shadow-range; changed(_) => { root.changed(); } }
+            ValueText { text: round(shadow-range); }
+        }
     }
 
     if status != "": Text {

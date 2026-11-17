@@ -43,6 +43,10 @@ export component AppWindow inherits Window {
     in-out property <float> gaps-in;
     in-out property <float> gaps-out;
     in-out property <float> border-size;
+    in-out property <color> active-border;
+    in-out property <float> active-border-alpha;
+    in-out property <color> inactive-border;
+    in-out property <float> inactive-border-alpha;
     in-out property <float> rounding;
     in-out property <bool> blur;
     in-out property <float> blur-size;
@@ -100,6 +104,10 @@ export component AppWindow inherits Window {
                                 gaps-in <=> gaps-in;
                                 gaps-out <=> gaps-out;
                                 border-size <=> border-size;
+                                active-border <=> active-border;
+                                active-border-alpha <=> active-border-alpha;
+                                inactive-border <=> inactive-border;
+                                inactive-border-alpha <=> inactive-border-alpha;
                                 rounding <=> rounding;
                                 blur <=> blur;
                                 blur-size <=> blur-size;
