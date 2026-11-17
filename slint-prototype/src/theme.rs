@@ -83,7 +83,9 @@ pub fn solid(color: Rgba) -> slint::Color {
 }
 
 pub fn with_alpha(color: Rgba, alpha: f32) -> slint::Color {
-    slint::Color::from_argb_u8((alpha * 255.0) as u8, color.r, color.g, color.b)
+    // Round instead of truncating: 0.55 * 255 = 140.25 is fine either way,
+    // but 0.18 * 255 = 45.9 must not become 45 or the tints read a shade dim.
+    slint::Color::from_argb_u8((alpha * 255.0).round() as u8, color.r, color.g, color.b)
 }
 
 #[cfg(test)]

@@ -126,6 +126,10 @@ export component AppearancePage inherits VerticalLayout {
     callback choose-wallpaper();
     callback restart-shell();
     callback text-changed();
+    // repeat(auto-fill, minmax(200px, 1fr)): equal columns, whatever the
+    // longest theme name is.
+    property <int> theme-cols: max(1, Math.floor((root.content-width / 1px - 34 + 8) / 208));
+    property <length> theme-card-width: (root.content-width - 34px - (theme-cols - 1) * 8px) / theme-cols;
     spacing: 0px;
     alignment: start;
     HorizontalLayout {
@@ -145,11 +149,11 @@ export component AppearancePage inherits VerticalLayout {
         title: "THEME";
         GridLayout {
             spacing: 8px;
-            property <int> cols: max(1, Math.floor((root.content-width / 1px + 8) / 208));
             for card[index] in root.themes: Rectangle {
-                row: Math.floor(index / cols);
-                col: Math.mod(index, cols);
-                height: 145px;
+                row: Math.floor(index / root.theme-cols);
+                col: Math.mod(index, root.theme-cols);
+                width: root.theme-card-width;
+                height: 143px;
                 border-radius: 10px;
                 background: Theme.bg;
                 border-width: 2px;
@@ -162,7 +166,7 @@ export component AppearancePage inherits VerticalLayout {
                     spacing: 10px;
                     alignment: start;
                     ThemePreview {
-                        height: 66px;
+                        height: 72px;
                         theme-id: card.id;
                         horizontal-stretch: 1;
                     }
@@ -181,7 +185,7 @@ export component AppearancePage inherits VerticalLayout {
                         }
                         Text {
                             text: card.sub;
-                            height: 15px;
+                            height: 13px;
                             font-family: Theme.body;
                             color: Theme.muted;
                             font-size: 11px;

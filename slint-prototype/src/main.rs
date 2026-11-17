@@ -247,10 +247,11 @@ fn apply_palette(window: &AppWindow) {
     theme.set_on_accent(theme::solid(palette.on_accent));
     theme.set_red(theme::solid(palette.red));
     theme.set_line(theme::with_alpha(palette.fg, 0.08));
-    // The shipping tiles mix the accent over the page background, which on
-    // this wallpaper reads as a warm brown rather than a flat translucent wash.
-    theme.set_accent_soft(theme::solid(theme::mix(palette.bg, palette.accent, 0.24)));
-    theme.set_accent_line(theme::with_alpha(palette.accent, 0.6));
+    // app.css: color-mix(in oklab, accent 18%, transparent). Keep it
+    // translucent so it picks up each surface it sits on (page, sidebar,
+    // cards) the way the shipping app does.
+    theme.set_accent_soft(theme::with_alpha(palette.accent, 0.18));
+    theme.set_accent_line(theme::with_alpha(palette.accent, 0.55));
     if font_installed("Outfit") {
         theme.set_display("Outfit".into());
     }
@@ -461,7 +462,7 @@ fn tile(id: &str, title: &str, detail: &str, glyph: &str, on: bool) -> QuickTile
         detail: detail.into(),
         icon: icons::commands(glyph).into(),
         on,
-        enabled: false,
+        enabled: true,
     }
 }
 
