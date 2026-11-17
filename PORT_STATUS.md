@@ -358,23 +358,23 @@ parity_check.py fails while any item is not [x].
 - [ ] command `breadcrumbs::get_current_place`
 - [ ] command `breadcrumbs::save_breadcrumbs_config`
 - [ ] command `breadcrumbs::set_current_place`
-- [ ] command `config::atomic_write`
-- [ ] command `config::config_dir`
-- [ ] command `config::get_bool`
-- [ ] command `config::get_f64`
-- [ ] command `config::get_i64`
-- [ ] command `config::get_str`
-- [ ] command `config::get_str_list`
-- [ ] command `config::get_str_list_strict`
-- [ ] command `config::load_doc`
-- [ ] command `config::remove`
-- [ ] command `config::save_doc`
-- [ ] command `config::set_bool`
-- [ ] command `config::set_f64`
-- [ ] command `config::set_i64`
-- [ ] command `config::set_str`
-- [ ] command `config::set_str_list`
-- [ ] command `config::set_str_or_remove`
+- [x] command `config::atomic_write` -> slint-prototype/src/config.rs
+- [x] command `config::config_dir` -> slint-prototype/src/config.rs
+- [x] command `config::get_bool` -> slint-prototype/src/config.rs
+- [x] command `config::get_f64` -> slint-prototype/src/config.rs
+- [x] command `config::get_i64` -> slint-prototype/src/config.rs
+- [x] command `config::get_str` -> slint-prototype/src/config.rs
+- [x] command `config::get_str_list` -> slint-prototype/src/config.rs
+- [x] command `config::get_str_list_strict` -> slint-prototype/src/config.rs
+- [x] command `config::load_doc` -> slint-prototype/src/config.rs
+- [x] command `config::remove` -> slint-prototype/src/config.rs
+- [x] command `config::save_doc` -> slint-prototype/src/config.rs
+- [x] command `config::set_bool` -> slint-prototype/src/config.rs
+- [x] command `config::set_f64` -> slint-prototype/src/config.rs
+- [x] command `config::set_i64` -> slint-prototype/src/config.rs
+- [x] command `config::set_str` -> slint-prototype/src/config.rs
+- [x] command `config::set_str_list` -> slint-prototype/src/config.rs
+- [x] command `config::set_str_or_remove` -> slint-prototype/src/config.rs
 - [ ] command `navigation::get_initial_page`
 - [x] command `service::get_service_status` -> slint-prototype/src/pagedata.rs
 - [ ] command `service::open_logs`
