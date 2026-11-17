@@ -5,7 +5,7 @@ use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Monitor {
     pub name: String,
     pub x: i32,
@@ -198,7 +198,126 @@ pub fn statement(monitor: &Monitor) -> Result<String, String> {
     ))
 }
 
-fn write_layout(layout: &[Monitor]) -> Result<(), String> {
+#[derive(Clone, Debug, PartialEq)]
+pub struct MonitorRule {
+    pub output: String,
+    pub mode: String,
+    pub position: String,
+    pub scale: String,
+    pub transform: Option<u32>,
+    pub vrr: Option<u32>,
+    pub mirror: Option<String>,
+}
+
+fn rules_path() -> std::path::PathBuf {
+    crate::config::config_dir().join("hypr/monitors.json")
+}
+
+fn read_rule_objects() -> Vec<serde_json::Map<String, serde_json::Value>> {
+    let Ok(text) = std::fs::read_to_string(rules_path()) else {
+        return Vec::new();
+    };
+    let Ok(root) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Vec::new();
+    };
+    root.get("monitors")
+        .and_then(|value| value.as_array())
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|row| row.as_object().cloned())
+                .filter(|row| row.get("output").is_some_and(serde_json::Value::is_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn rule_from_object(object: &serde_json::Map<String, serde_json::Value>) -> Option<MonitorRule> {
+    let output = object.get("output")?.as_str()?.to_string();
+    let scale = match object.get("scale") {
+        Some(serde_json::Value::String(text)) => text.clone(),
+        Some(serde_json::Value::Number(number)) => number.to_string(),
+        _ => "auto".into(),
+    };
+    Some(MonitorRule {
+        output,
+        mode: object
+            .get("mode")
+            .and_then(|value| value.as_str())
+            .unwrap_or("preferred")
+            .into(),
+        position: object
+            .get("position")
+            .and_then(|value| value.as_str())
+            .unwrap_or("auto")
+            .into(),
+        scale,
+        transform: object
+            .get("transform")
+            .and_then(|value| value.as_u64())
+            .map(|value| value as u32),
+        vrr: object
+            .get("vrr")
+            .and_then(|value| value.as_u64())
+            .map(|value| value as u32),
+        mirror: object
+            .get("mirror")
+            .and_then(|value| value.as_str())
+            .map(str::to_string),
+    })
+}
+
+pub fn get_monitor_rules() -> Vec<MonitorRule> {
+    let rules: Vec<MonitorRule> = read_rule_objects()
+        .iter()
+        .filter_map(rule_from_object)
+        .collect();
+    if rules.is_empty() {
+        vec![MonitorRule {
+            output: String::new(),
+            mode: "preferred".into(),
+            position: "auto".into(),
+            scale: "auto".into(),
+            transform: None,
+            vrr: None,
+            mirror: None,
+        }]
+    } else {
+        rules
+    }
+}
+
+pub fn save_monitor_rules(rules: &[MonitorRule]) -> Result<(), String> {
+    let objects: Vec<serde_json::Value> = rules
+        .iter()
+        .map(|rule| {
+            let mut object = serde_json::Map::new();
+            object.insert("output".into(), rule.output.clone().into());
+            object.insert("mode".into(), rule.mode.clone().into());
+            object.insert("position".into(), rule.position.clone().into());
+            object.insert("scale".into(), rule.scale.clone().into());
+            if let Some(transform) = rule.transform {
+                object.insert("transform".into(), transform.into());
+            }
+            if let Some(vrr) = rule.vrr {
+                object.insert("vrr".into(), vrr.into());
+            }
+            if let Some(mirror) = &rule.mirror {
+                object.insert("mirror".into(), mirror.clone().into());
+            }
+            serde_json::Value::Object(object)
+        })
+        .collect();
+    let root = serde_json::json!({ "monitors": objects });
+    crate::config::atomic_write(
+        &rules_path(),
+        &serde_json::to_string_pretty(&root).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    crate::util::hypr_reload();
+    Ok(())
+}
+
+pub fn write_layout(layout: &[Monitor]) -> Result<(), String> {
     validate(layout)?;
     let mut ordered: Vec<&Monitor> = layout.iter().collect();
     ordered.sort_by_key(|monitor| !monitor.mirror_of.is_empty());
@@ -235,12 +354,30 @@ pub fn apply(layout: Vec<Monitor>, seconds: u64) -> Result<u64, String> {
         let _ = old_id;
         let _ = write_layout(&old_layout);
     }
-    write_layout(&layout)?;
     let id = state.next_id;
     state.next_id += 1;
     let deadline = now_ms() + seconds.saturating_mul(1000);
+    let record = crate::display_rescue::record_path();
+    if let Some(path) = &record {
+        let _ = crate::display_rescue::write_record(
+            path,
+            &crate::display_rescue::Record {
+                id,
+                pid: std::process::id(),
+                deadline_ms: deadline,
+                before: previous.clone(),
+            },
+        );
+    }
+    if let Err(error) = write_layout(&layout) {
+        if let Some(path) = &record {
+            crate::display_rescue::clear_record(path, id);
+        }
+        return Err(error);
+    }
     state.pending = Some((id, deadline, previous));
     drop(state);
+    let _ = crate::display_rescue::spawn_watchdog(id);
     std::thread::spawn(move || {
         loop {
             std::thread::sleep(Duration::from_millis(500));
@@ -255,6 +392,9 @@ pub fn apply(layout: Vec<Monitor>, seconds: u64) -> Result<u64, String> {
                 state.pending = None;
                 drop(state);
                 let _ = write_layout(&previous);
+                if let Some(path) = crate::display_rescue::record_path() {
+                    crate::display_rescue::clear_record(&path, id);
+                }
                 return;
             }
         }
@@ -267,6 +407,9 @@ pub fn keep(id: u64) -> Result<(), String> {
     match &state.pending {
         Some((pending, _, _)) if *pending == id => {
             state.pending = None;
+            if let Some(path) = crate::display_rescue::record_path() {
+                crate::display_rescue::clear_record(&path, id);
+            }
             Ok(())
         }
         _ => Err("That display change is no longer waiting.".into()),
@@ -278,6 +421,9 @@ pub fn revert(id: u64) -> Result<(), String> {
     match state.pending.take() {
         Some((pending, _, previous)) if pending == id => {
             drop(state);
+            if let Some(path) = crate::display_rescue::record_path() {
+                crate::display_rescue::clear_record(&path, id);
+            }
             write_layout(&previous)
         }
         _ => Err("That display change is no longer waiting.".into()),
@@ -288,9 +434,12 @@ pub fn revert(id: u64) -> Result<(), String> {
 /// window goes away.
 pub fn revert_on_exit() {
     let mut state = guard().lock().unwrap_or_else(|e| e.into_inner());
-    if let Some((_, _, previous)) = state.pending.take() {
+    if let Some((id, _, previous)) = state.pending.take() {
         drop(state);
         let _ = write_layout(&previous);
+        if let Some(path) = crate::display_rescue::record_path() {
+            crate::display_rescue::clear_record(&path, id);
+        }
     }
 }
 

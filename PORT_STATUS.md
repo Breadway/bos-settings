@@ -79,32 +79,32 @@ parity_check.py fails while any item is not [x].
 - [x] command `display_guard::revert` -> slint-prototype/src/displays.rs
 - [x] command `display_guard::revert_display_layout` -> slint-prototype/src/displays.rs
 - [x] command `display_guard::revert_on_exit` -> slint-prototype/src/displays.rs
-- [ ] command `display_guard::revert_on_signal`
-- [ ] command `display_guard::set_rescue`
+- [x] command `display_guard::revert_on_signal` -> slint-prototype/src/display_rescue.rs
+- [x] command `display_guard::set_rescue` -> slint-prototype/src/displays.rs
 - [x] command `display_guard::status` -> slint-prototype/src/displays.rs
 - [x] command `display_guard::validate_layout` -> slint-prototype/src/displays.rs
-- [ ] command `display_rescue::check_once`
-- [ ] command `display_rescue::clear_record`
-- [ ] command `display_rescue::decide`
-- [ ] command `display_rescue::now_ms`
-- [ ] command `display_rescue::owner_alive`
-- [ ] command `display_rescue::read_record`
-- [ ] command `display_rescue::record_path`
-- [ ] command `display_rescue::recover_at_start`
-- [ ] command `display_rescue::restore`
-- [ ] command `display_rescue::run_watchdog`
-- [ ] command `display_rescue::spawn_watchdog`
-- [ ] command `display_rescue::write_record`
+- [x] command `display_rescue::check_once` -> slint-prototype/src/display_rescue.rs
+- [x] command `display_rescue::clear_record` -> slint-prototype/src/display_rescue.rs
+- [x] command `display_rescue::decide` -> slint-prototype/src/display_rescue.rs
+- [x] command `display_rescue::now_ms` -> slint-prototype/src/display_rescue.rs
+- [x] command `display_rescue::owner_alive` -> slint-prototype/src/display_rescue.rs
+- [x] command `display_rescue::read_record` -> slint-prototype/src/display_rescue.rs
+- [x] command `display_rescue::record_path` -> slint-prototype/src/display_rescue.rs
+- [x] command `display_rescue::recover_at_start` -> slint-prototype/src/display_rescue.rs
+- [x] command `display_rescue::restore` -> slint-prototype/src/display_rescue.rs
+- [x] command `display_rescue::run_watchdog` -> slint-prototype/src/display_rescue.rs
+- [x] command `display_rescue::spawn_watchdog` -> slint-prototype/src/display_rescue.rs
+- [x] command `display_rescue::write_record` -> slint-prototype/src/display_rescue.rs
 - [x] command `hyprland::get_live_monitors` -> slint-prototype/src/displays.rs
-- [ ] command `hyprland::get_monitor_rules`
+- [x] command `hyprland::get_monitor_rules` -> slint-prototype/src/displays.rs
 - [x] command `hyprland::open_hyprland_conf` -> slint-prototype/src/pagedata.rs
 - [x] command `hyprland::open_keybinds_viewer` -> slint-prototype/src/pagedata.rs
-- [ ] command `hyprland::save_monitor_rules`
-- [ ] command `nightlight::get_nightlight`
-- [ ] command `nightlight::set_nightlight`
-- [ ] command `nvidia::get_nvidia_offer`
-- [ ] command `nvidia::nvidia_setup`
-- [ ] command `nvidia::read_nvidia_offer`
+- [x] command `hyprland::save_monitor_rules` -> slint-prototype/src/displays.rs
+- [x] command `nightlight::get_nightlight` -> slint-prototype/src/nightlight.rs
+- [x] command `nightlight::set_nightlight` -> slint-prototype/src/nightlight.rs
+- [x] command `nvidia::get_nvidia_offer` -> slint-prototype/src/nvidia.rs
+- [x] command `nvidia::nvidia_setup` -> slint-prototype/src/nvidia.rs
+- [x] command `nvidia::read_nvidia_offer` -> slint-prototype/src/nvidia.rs
 - [~] view `Display`
 - [x] view `DisplaysHub` -> slint-prototype/src/pagedata.rs
 - [~] view `NightLight`

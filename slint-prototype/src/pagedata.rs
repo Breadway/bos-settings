@@ -2421,6 +2421,23 @@ fn displays() -> Page {
     night_block.hint = "A warmer screen after dark helps you wind down.".into();
     night_block.rows = vec![toggle("night-light", "Night light", "", night)];
     p = p.push(night_block);
+    if let Some(offer) = crate::nvidia::read_offer() {
+        let mut graphics = group("Graphics driver");
+        graphics.hint = offer.reason.clone();
+        graphics.rows = vec![Row {
+            kind: "line".into(),
+            id: "nvidia-setup".into(),
+            label: offer.gpu.clone(),
+            hint: if offer.installed {
+                "The proprietary driver is installed.".into()
+            } else {
+                format!("Installs {}.", offer.packages.join(", "))
+            },
+            action: if offer.installed { "Recheck" } else { "Install" }.into(),
+            ..Row::default()
+        }];
+        p = p.push(graphics);
+    }
     p = p.rows(
         "Advanced",
         vec![
@@ -2446,6 +2463,9 @@ fn displays() -> Page {
 }
 
 fn displays_action(id: &str, action: &str) -> Result<(), String> {
+    if id == "nvidia-setup" && action == "action" {
+        return crate::nvidia::setup();
+    }
     if action == "toggle" && id == "night-light" {
         let mut cfg = crate::nightlight::load();
         cfg.enabled = !cfg.enabled;
