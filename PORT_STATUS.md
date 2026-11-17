@@ -296,34 +296,34 @@ parity_check.py fails while any item is not [x].
 ## Desktop
 - [x] command `breadbar::get_breadbar_css` -> slint-prototype/src/breadbar.rs
 - [x] command `breadbar::get_breadbar_style` -> slint-prototype/src/breadbar.rs
-- [ ] command `breadbar::save_breadbar_css`
+- [x] command `breadbar::save_breadbar_css` -> slint-prototype/src/breadbar.rs
 - [x] command `breadbar::save_breadbar_style` -> slint-prototype/src/breadbar.rs
-- [ ] command `breadbox::get_breadbox_contexts`
-- [ ] command `breadbox::save_breadbox_contexts`
+- [x] command `breadbox::get_breadbox_contexts` -> slint-prototype/src/breadbox.rs
+- [x] command `breadbox::save_breadbox_contexts` -> slint-prototype/src/breadbox.rs
 - [x] command `breadclip::open_breadclip` -> slint-prototype/src/pagedata.rs
-- [ ] command `breadhelp::open_breadhelp`
-- [ ] command `breadpad::get_breadpad_config`
-- [ ] command `breadpad::save_breadpad_config`
+- [x] command `breadhelp::open_breadhelp` -> slint-prototype/src/pagedata.rs
+- [x] command `breadpad::get_breadpad_config` -> slint-prototype/src/breadpad.rs
+- [x] command `breadpad::save_breadpad_config` -> slint-prototype/src/breadpad.rs
 - [x] command `breadpaper::get_current_wallpaper` -> slint-prototype/src/data.rs
 - [x] command `breadpaper::get_wallpapers_by_output` -> slint-prototype/src/data.rs
-- [ ] command `breadpaper::list_wallpaper_library`
+- [x] command `breadpaper::list_wallpaper_library` -> slint-prototype/src/data.rs
 - [x] command `breadpaper::set_wallpaper` -> slint-prototype/src/data.rs
 - [x] command `breadpaper::set_wallpaper_on` -> slint-prototype/src/data.rs
-- [ ] command `breadpaper::wallpaper_library_dir`
-- [ ] command `breadpaper::wallpaper_library_dir_display`
-- [ ] command `breadsearch::get_breadsearch_config`
-- [ ] command `breadsearch::save_breadsearch_config`
+- [x] command `breadpaper::wallpaper_library_dir` -> slint-prototype/src/data.rs
+- [x] command `breadpaper::wallpaper_library_dir_display` -> slint-prototype/src/data.rs
+- [x] command `breadsearch::get_breadsearch_config` -> slint-prototype/src/breadsearch.rs
+- [x] command `breadsearch::save_breadsearch_config` -> slint-prototype/src/breadsearch.rs
 - [x] command `breadshot::breadshot_region_clipboard` -> slint-prototype/src/breadshot.rs
 - [ ] command `breadshot::get_breadshot_binds`
 - [x] command `breadshot::get_breadshot_config` -> slint-prototype/src/breadshot.rs
 - [x] command `breadshot::save_breadshot_config` -> slint-prototype/src/breadshot.rs
-- [ ] view `Breadbar`
-- [ ] view `Breadbox`
-- [ ] view `Breadclip`
-- [ ] view `Breadhelp`
-- [ ] view `Breadpad`
+- [x] view `Breadbar` -> slint-prototype/src/pagedata.rs
+- [x] view `Breadbox` -> slint-prototype/src/pagedata.rs
+- [x] view `Breadclip` -> slint-prototype/src/pagedata.rs
+- [x] view `Breadhelp` -> slint-prototype/src/pagedata.rs
+- [x] view `Breadpad` -> slint-prototype/src/pagedata.rs
 - [x] view `Breadpaper` -> slint-prototype/ui/appearance.slint
-- [ ] view `Breadsearch`
+- [x] view `Breadsearch` -> slint-prototype/src/pagedata.rs
 - [~] view `Breadshot`
 - [~] view `DesktopHub`
 
@@ -408,4 +408,4 @@ parity_check.py fails while any item is not [x].
 - [ ] view `SystemHub`
 
 ## Other
-- [ ] view `Accessibility`
+- [x] view `Accessibility` -> slint-prototype/src/pagedata.rs

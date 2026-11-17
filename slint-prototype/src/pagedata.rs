@@ -4961,58 +4961,41 @@ fn set_bug_flag(path: &std::path::Path, key: &str, value: bool) -> Result<(), St
     std::fs::write(path, doc.to_string()).map_err(|error| error.to_string())
 }
 
-fn breadsearch_path() -> PathBuf {
-    config_dir().join("breadsearch/config.toml")
-}
-
-fn breadsearch_enabled() -> bool {
-    std::fs::read_to_string(breadsearch_path())
-        .ok()
-        .and_then(|text| text.parse::<toml::Value>().ok())
-        .and_then(|value| value.get("power")?.get("enabled")?.as_bool())
-        .unwrap_or(true)
-}
-
-fn breadsearch_set_enabled(enabled: bool) -> Result<(), String> {
-    let path = breadsearch_path();
-    let text = std::fs::read_to_string(&path).unwrap_or_default();
-    let mut doc: toml_edit::DocumentMut = text.parse().map_err(|error| format!("{error}"))?;
-    doc["power"]["enabled"] = toml_edit::value(enabled);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+fn breadhelp_entry() -> Option<PathBuf> {
+    let dir = config_dir().join("autostart");
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("desktop") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+        if text
+            .lines()
+            .any(|line| line.trim().strip_prefix("Exec=").is_some_and(|exec| exec.trim().starts_with("breadhelp")))
+        {
+            return Some(path);
+        }
     }
-    std::fs::write(&path, doc.to_string()).map_err(|error| error.to_string())
+    None
 }
 
-fn breadsearch_scope() -> usize {
-    let everything = std::fs::read_to_string(breadsearch_path())
-        .ok()
-        .and_then(|text| text.parse::<toml::Value>().ok())
-        .and_then(|value| {
-            value
-                .get("index")?
-                .get("roots")?
-                .as_array()?
-                .iter()
-                .any(|root| root.as_str() == Some("/"))
-                .then_some(())
-        })
-        .is_some();
-    usize::from(everything)
+fn breadhelp_login() -> bool {
+    breadhelp_entry()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .map(|text| !text.lines().any(|line| line.trim() == "Hidden=true"))
+        .unwrap_or(false)
 }
 
-fn breadsearch_set_scope(everything: bool) -> Result<(), String> {
-    let path = breadsearch_path();
-    let text = std::fs::read_to_string(&path).unwrap_or_default();
-    let mut doc: toml_edit::DocumentMut = text.parse().map_err(|error| format!("{error}"))?;
-    let home = home_dir().display().to_string();
-    let mut roots = toml_edit::Array::new();
-    roots.push(if everything { "/" } else { home.as_str() });
-    doc["index"]["roots"] = toml_edit::value(roots);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+fn parse_i64(action: &str, min: i64, max: i64, unit: &str) -> Result<i64, String> {
+    let value: i64 = action
+        .trim_start_matches("input:")
+        .trim()
+        .parse()
+        .map_err(|_| format!("use a whole number of {unit}"))?;
+    if !(min..=max).contains(&value) {
+        return Err(format!("use between {min} and {max} {unit}"));
     }
-    std::fs::write(&path, doc.to_string()).map_err(|error| error.to_string())
+    Ok(value)
 }
 
 fn desktop_action(id: &str, action: &str) -> Result<(), String> {
@@ -5040,6 +5023,13 @@ fn desktop_action(id: &str, action: &str) -> Result<(), String> {
             "text-size" => style.font_size = number.round().clamp(8.0, 32.0) as u32,
             "workspace-size" => style.workspace_font_size = number.round().clamp(8.0, 40.0) as u32,
             "inactive" => style.workspace_inactive_opacity = number.clamp(0.0, 1.0),
+            "bar-radius" => style.bar_border_radius = number.round().clamp(0.0, 40.0) as u32,
+            "bar-padding" => style.bar_padding = number.round().clamp(0.0, 32.0) as u32,
+            "stat-gap" => style.stat_gap = number.round().clamp(0.0, 40.0) as u32,
+            "tray-icon" => style.tray_icon_size = number.round().clamp(12.0, 40.0) as u32,
+            "notif-radius" => {
+                style.notification_border_radius = number.round().clamp(0.0, 32.0) as u32
+            }
             _ => return Ok(()),
         }
         crate::breadbar::save(&style)?;
@@ -5074,13 +5064,203 @@ fn desktop_action(id: &str, action: &str) -> Result<(), String> {
     if id == "shot-now" && action == "action" {
         return crate::breadshot::region_to_clipboard();
     }
-    if id == "search-index" && action == "toggle" {
-        return breadsearch_set_enabled(!breadsearch_enabled());
+    if id == "help-login" && action == "toggle" {
+        return match breadhelp_entry() {
+            Some(path) => startup_action(
+                &format!("startup:{}", path.display()),
+                "toggle",
+            ),
+            None => startup_add("breadhelp --autostart"),
+        };
     }
-    if id == "search-scope" {
-        if let Some(index) = action.strip_prefix("seg:").and_then(|v| v.parse::<usize>().ok()) {
-            return breadsearch_set_scope(index == 1);
+    if (id == "help-open" || id == "help-guide" || id == "help-shortcuts") && action == "action" {
+        return Command::new("breadhelp")
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+    }
+    if id == "css-all" && action.starts_with("input:") {
+        let css = action.trim_start_matches("input:");
+        if css.trim().is_empty() {
+            return Err("paste the style sheet first".into());
         }
+        crate::breadbar::save_css(css)?;
+        return Ok(());
+    }
+    if id == "box-add" && action == "action" {
+        let mut contexts = crate::breadbox::load();
+        let mut name = "work".to_string();
+        let mut n = 2;
+        while contexts.iter().any(|ctx| ctx.name == name) {
+            name = format!("work {n}");
+            n += 1;
+        }
+        contexts.push(crate::breadbox::Context {
+            name,
+            priority: Vec::new(),
+        });
+        return crate::breadbox::save(&contexts);
+    }
+    if id == "box-service" && action == "action" {
+        let active = service_active("breadbox-sync.service");
+        return systemctl_user(
+            if active { "stop" } else { "start" },
+            "breadbox-sync.service",
+        );
+    }
+    if let Some(name) = id.strip_prefix("box-remove:") {
+        if action == "action" {
+            let mut contexts = crate::breadbox::load();
+            contexts.retain(|ctx| ctx.name != name);
+            return crate::breadbox::save(&contexts);
+        }
+    }
+    if let Some(name) = id.strip_prefix("box:") {
+        if let Some(text) = action.strip_prefix("input:") {
+            let mut contexts = crate::breadbox::load();
+            let priority = crate::breadbox::split_list(text);
+            match contexts.iter_mut().find(|ctx| ctx.name == name) {
+                Some(ctx) => ctx.priority = priority,
+                None => contexts.push(crate::breadbox::Context {
+                    name: name.to_string(),
+                    priority,
+                }),
+            }
+            return crate::breadbox::save(&contexts);
+        }
+    }
+    if id.starts_with("notes-") {
+        if id == "notes-folder" && action == "action" {
+            let dir = home_dir().join("Documents/Notes");
+            let _ = std::fs::create_dir_all(&dir);
+            return Command::new("xdg-open")
+                .arg(dir)
+                .spawn()
+                .map(|_| ())
+                .map_err(|error| error.to_string());
+        }
+        let mut cfg = crate::breadpad::load();
+        match (id, action) {
+            ("notes-type", _) if action.starts_with("seg:") => {
+                let index = action
+                    .strip_prefix("seg:")
+                    .and_then(|value| value.parse::<usize>().ok())
+                    .unwrap_or(0);
+                cfg.default_type = match index {
+                    1 => "reminder",
+                    2 => "task",
+                    _ => "note",
+                }
+                .into();
+            }
+            ("notes-workspace-tag", "toggle") => cfg.workspace_tag = !cfg.workspace_tag,
+            ("notes-ollama", "toggle") => cfg.ollama_enabled = !cfg.ollama_enabled,
+            ("notes-calendar", "toggle") => cfg.calendar_enabled = !cfg.calendar_enabled,
+            ("notes-snooze", _) if action.starts_with("input:") => {
+                let list = crate::breadbox::split_list(action.trim_start_matches("input:"));
+                if list.is_empty() {
+                    return Err("add at least one snooze choice".into());
+                }
+                cfg.snooze_options = list;
+            }
+            ("notes-archive", _) if action.starts_with("input:") => {
+                cfg.archive_after_days = parse_i64(action, 0, 3650, "days")?;
+            }
+            ("notes-confidence", _) if action.starts_with("input:") => {
+                let value: f64 = action
+                    .trim_start_matches("input:")
+                    .trim()
+                    .parse()
+                    .map_err(|_| "use a number between 0 and 1".to_string())?;
+                if !(0.0..=1.0).contains(&value) {
+                    return Err("use a number between 0 and 1".into());
+                }
+                cfg.ollama_confidence_threshold = value;
+            }
+            ("notes-morning", _) if action.starts_with("input:") => {
+                let text = action.trim_start_matches("input:").trim();
+                if !crate::breadpad::valid_morning_time(text) {
+                    return Err("use 24-hour time like 08:00".into());
+                }
+                cfg.reminders_default_morning = text.into();
+            }
+            ("notes-grace", _) if action.starts_with("input:") => {
+                cfg.reminders_missed_grace_minutes = parse_i64(action, 0, 1440, "minutes")?;
+            }
+            ("notes-endpoint", _) if action.starts_with("input:") => {
+                cfg.ollama_endpoint = action.trim_start_matches("input:").trim().into();
+            }
+            ("notes-model", _) if action.starts_with("input:") => {
+                cfg.ollama_model = action.trim_start_matches("input:").trim().into();
+            }
+            ("notes-model-path", _) if action.starts_with("input:") => {
+                cfg.model_path = action.trim_start_matches("input:").trim().into();
+            }
+            ("notes-tokenizer", _) if action.starts_with("input:") => {
+                cfg.tokenizer_path = action.trim_start_matches("input:").trim().into();
+            }
+            ("notes-cal-url", _) if action.starts_with("input:") => {
+                cfg.calendar_url = action.trim_start_matches("input:").trim().into();
+            }
+            ("notes-cal-user", _) if action.starts_with("input:") => {
+                cfg.calendar_username = action.trim_start_matches("input:").trim().into();
+            }
+            ("notes-cal-password", _) if action.starts_with("input:") => {
+                cfg.calendar_password = action.trim_start_matches("input:").trim().into();
+            }
+            _ => return Ok(()),
+        }
+        return crate::breadpad::save(&cfg);
+    }
+    if id == "search-index" && action == "toggle" {
+        let mut cfg = crate::breadsearch::load();
+        cfg.power_enabled = !cfg.power_enabled;
+        return crate::breadsearch::save(&cfg);
+    }
+    if id == "search-battery" && action == "toggle" {
+        let mut cfg = crate::breadsearch::load();
+        cfg.run_on_battery = !cfg.run_on_battery;
+        return crate::breadsearch::save(&cfg);
+    }
+    if id == "search-backend" {
+        if let Some(index) = action.strip_prefix("seg:").and_then(|v| v.parse::<usize>().ok()) {
+            let mut cfg = crate::breadsearch::load();
+            if let Some((code, _)) = crate::breadsearch::BACKENDS.get(index) {
+                cfg.backend = (*code).into();
+                return crate::breadsearch::save(&cfg);
+            }
+        }
+        return Ok(());
+    }
+    if id == "search-service" && action == "action" {
+        let active = service_active("breadmill.service");
+        return systemctl_user(if active { "stop" } else { "start" }, "breadmill.service");
+    }
+    if let Some(text) = action.strip_prefix("input:") {
+        let mut cfg = crate::breadsearch::load();
+        match id {
+            "search-roots" => cfg.index_roots = crate::breadsearch::split_list(text),
+            "search-excludes" => cfg.index_excludes = crate::breadsearch::split_list(text),
+            "search-extensions" => cfg.index_extensions = crate::breadsearch::split_list(text),
+            "search-max" => {
+                let value: f64 = text
+                    .trim()
+                    .parse()
+                    .map_err(|_| "use a size in megabytes".to_string())?;
+                if !(0.1..=500.0).contains(&value) {
+                    return Err("use a size between 0.1 and 500 MB".into());
+                }
+                cfg.max_file_mb = value;
+            }
+            "search-limit" => {
+                cfg.search_limit = parse_i64(action, 1, 100, "results")?;
+            }
+            "search-snippet" => {
+                cfg.snippet_len = parse_i64(action, 20, 2000, "characters")?;
+            }
+            _ => return Ok(()),
+        }
+        return crate::breadsearch::save(&cfg);
     }
     if action != "action" {
         return Ok(());
@@ -5796,9 +5976,53 @@ fn desktop() -> Page {
             ..Row::default()
         },
         Row {
-            kind: "disclosure".into(),
-            id: "shape".into(),
-            label: "Shape and spacing".into(),
+            kind: "slider".into(),
+            id: "bar-radius".into(),
+            label: "Bar corner radius".into(),
+            value: format!("{} px", bar_style.bar_border_radius),
+            amount: bar_style.bar_border_radius as f32,
+            min: 0.0,
+            max: 40.0,
+            ..Row::default()
+        },
+        Row {
+            kind: "slider".into(),
+            id: "bar-padding".into(),
+            label: "Bar padding".into(),
+            value: format!("{} px", bar_style.bar_padding),
+            amount: bar_style.bar_padding as f32,
+            min: 0.0,
+            max: 32.0,
+            ..Row::default()
+        },
+        Row {
+            kind: "slider".into(),
+            id: "stat-gap".into(),
+            label: "Space between status items".into(),
+            value: format!("{} px", bar_style.stat_gap),
+            amount: bar_style.stat_gap as f32,
+            min: 0.0,
+            max: 40.0,
+            ..Row::default()
+        },
+        Row {
+            kind: "slider".into(),
+            id: "tray-icon".into(),
+            label: "Status icon size".into(),
+            value: format!("{} px", bar_style.tray_icon_size),
+            amount: bar_style.tray_icon_size as f32,
+            min: 12.0,
+            max: 40.0,
+            ..Row::default()
+        },
+        Row {
+            kind: "slider".into(),
+            id: "notif-radius".into(),
+            label: "Notification corner radius".into(),
+            value: format!("{} px", bar_style.notification_border_radius),
+            amount: bar_style.notification_border_radius as f32,
+            min: 0.0,
+            max: 32.0,
             ..Row::default()
         },
     ];
@@ -5806,34 +6030,86 @@ fn desktop() -> Page {
 
     let mut style = group("Bar style sheet");
     style.hint = "The CSS file behind the settings above, for changes they don't cover.".into();
-    style.rows = vec![Row {
-        kind: "line".into(),
-        id: "css".into(),
-        label: "Edit the CSS".into(),
-        hint: "~/.config/breadbar/style.css".into(),
-        action: "Edit".into(),
-        ..Row::default()
-    }];
-    p = p.push(style);
-
-    let mut launcher = group("Launcher");
-    launcher.hint = "Apps and categories the launcher lists first.".into();
-    launcher.rows = vec![
+    style.rows = vec![
         Row {
             kind: "line".into(),
-            id: "shown-first".into(),
-            label: "Shown first".into(),
-            hint: "Zen Browser, kitty, Files".into(),
+            id: "css".into(),
+            label: "Edit the CSS".into(),
+            hint: "~/.config/breadbar/style.css".into(),
             action: "Edit".into(),
             ..Row::default()
         },
         Row {
-            kind: "disclosure".into(),
-            id: "launcher-more".into(),
-            label: "More".into(),
+            kind: "input".into(),
+            id: "css-all".into(),
+            label: "Replace the whole style sheet".into(),
+            hint: "Paste CSS and press Save. Comments and rules outside the settings above are kept when they are left out.".into(),
+            value: String::new(),
+            action: "Save".into(),
             ..Row::default()
         },
     ];
+    p = p.push(style);
+
+    let contexts = crate::breadbox::load();
+    let mut launcher = group("Launcher");
+    launcher.hint = "Apps and categories the launcher lists first. Separate them with commas.".into();
+    if contexts.is_empty() {
+        launcher.rows.push(Row {
+            kind: "input".into(),
+            id: "box:default".into(),
+            label: "Shown first".into(),
+            hint: "Nothing yet".into(),
+            value: String::new(),
+            action: "Save".into(),
+            ..Row::default()
+        });
+    }
+    for ctx in &contexts {
+        launcher.rows.push(Row {
+            kind: "input".into(),
+            id: format!("box:{}", ctx.name),
+            label: if ctx.name == "default" {
+                "Shown first".into()
+            } else {
+                format!("Shown first in {}", ctx.name)
+            },
+            value: ctx.priority.join(", "),
+            action: "Save".into(),
+            ..Row::default()
+        });
+        if ctx.name != "default" {
+            launcher.rows.push(Row {
+                kind: "line".into(),
+                id: format!("box-remove:{}", ctx.name),
+                label: format!("Remove the {} list", ctx.name),
+                action: "Remove".into(),
+                ..Row::default()
+            });
+        }
+    }
+    launcher.rows.push(Row {
+        kind: "leftbutton".into(),
+        id: "box-add".into(),
+        action: "Add another list".into(),
+        ..Row::default()
+    });
+    launcher.rows.push(Row {
+        kind: "line".into(),
+        id: "box-service".into(),
+        label: "Launcher app list sync".into(),
+        hint: if service_active("breadbox-sync.service") {
+            "Running.".into()
+        } else {
+            "Stopped.".into()
+        },
+        action: if service_active("breadbox-sync.service") {
+            "Stop".into()
+        } else {
+            "Start".into()
+        },
+        ..Row::default()
+    });
     p = p.push(launcher);
 
     let mut shots = group("Screenshots");
@@ -5906,8 +6182,10 @@ fn desktop() -> Page {
     ];
     p = p.push(clip);
 
+    let pad = crate::breadpad::load();
     let mut notes = group("Quick notes");
     notes.hint = "Super + U opens a note. BOS sorts it into a note, reminder or task.".into();
+    let kinds = ["Note", "Reminder", "Task"];
     notes.rows = vec![
         Row {
             kind: "line".into(),
@@ -5917,53 +6195,253 @@ fn desktop() -> Page {
             action: "Open".into(),
             ..Row::default()
         },
-        toggle("notes-login", "Start on login", "", true),
-    ];
-    p = p.push(notes);
-
-    let mut calendar = group("Calendar");
-    calendar.hint = "Notes with a date show up here, and on the bar.".into();
-    calendar.rows = vec![Row {
-        kind: "line".into(),
-        id: "cal-source".into(),
-        label: "Calendar".into(),
-        hint: "No calendars connected.".into(),
-        action: "Add".into(),
-        ..Row::default()
-    }];
-    p = p.push(calendar);
-
-    let mut search = group("File search");
-    search.hint = "Find files by name from the launcher.".into();
-    search.rows = vec![
         Row {
             kind: "select".into(),
-            id: "search-scope".into(),
-            label: "Search".into(),
-            value: if breadsearch_scope() == 1 {
-                "Everything".into()
-            } else {
-                "My files".into()
-            },
-            options: vec!["My files".into(), "Everything".into()],
-            selected: breadsearch_scope() as i32,
+            id: "notes-type".into(),
+            label: "New notes start as".into(),
+            value: capitalise(&pad.default_type),
+            options: kinds.iter().map(|kind| kind.to_string()).collect(),
+            selected: kinds
+                .iter()
+                .position(|kind| kind.eq_ignore_ascii_case(&pad.default_type))
+                .unwrap_or(0) as i32,
             ..Row::default()
         },
         toggle(
-            "search-index",
-            "Keep the index up to date",
+            "notes-workspace-tag",
+            "Tag notes with the workspace",
             "",
-            breadsearch_enabled(),
+            pad.workspace_tag,
         ),
         Row {
-            kind: "line".into(),
-            id: "search-rebuild".into(),
-            label: "Rebuild the index".into(),
-            hint: "Takes a minute or two.".into(),
-            action: "Rebuild".into(),
+            kind: "input".into(),
+            id: "notes-snooze".into(),
+            label: "Snooze choices".into(),
+            hint: "Separate them with commas.".into(),
+            value: pad.snooze_options.join(", "),
+            action: "Save".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "input".into(),
+            id: "notes-archive".into(),
+            label: "Archive finished notes after (days)".into(),
+            value: pad.archive_after_days.to_string(),
+            action: "Save".into(),
             ..Row::default()
         },
     ];
+    p = p.push(notes);
+
+    let mut model = group("Notes model");
+    model.hint = "Local model that sorts notes into a type.".into();
+    model.rows = vec![
+        toggle("notes-ollama", "Use Ollama", "", pad.ollama_enabled),
+        Row {
+            kind: "input".into(),
+            id: "notes-endpoint".into(),
+            label: "Ollama address".into(),
+            value: pad.ollama_endpoint.clone(),
+            action: "Save".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "input".into(),
+            id: "notes-model".into(),
+            label: "Ollama model".into(),
+            value: pad.ollama_model.clone(),
+            action: "Save".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "input".into(),
+            id: "notes-confidence".into(),
+            label: "Minimum confidence".into(),
+            value: format!("{:.2}", pad.ollama_confidence_threshold),
+            action: "Save".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "input".into(),
+            id: "notes-model-path".into(),
+            label: "Model file".into(),
+            value: pad.model_path.clone(),
+            action: "Save".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "input".into(),
+            id: "notes-tokenizer".into(),
+            label: "Tokenizer file".into(),
+            value: pad.tokenizer_path.clone(),
+            action: "Save".into(),
+            ..Row::default()
+        },
+    ];
+    p = p.push(model);
+
+    let mut reminders = group("Reminders");
+    reminders.rows = vec![
+        Row {
+            kind: "input".into(),
+            id: "notes-morning".into(),
+            label: "Tomorrow morning means".into(),
+            hint: "24-hour time, like 08:00.".into(),
+            value: pad.reminders_default_morning.clone(),
+            action: "Save".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "input".into(),
+            id: "notes-grace".into(),
+            label: "Count as missed after (minutes)".into(),
+            value: pad.reminders_missed_grace_minutes.to_string(),
+            action: "Save".into(),
+            ..Row::default()
+        },
+    ];
+    p = p.push(reminders);
+
+    let mut calendar = group("Calendar");
+    calendar.hint = "Notes with a date show up here, and on the bar.".into();
+    calendar.rows = vec![
+        toggle("notes-calendar", "Connect a calendar", "", pad.calendar_enabled),
+        Row {
+            kind: "input".into(),
+            id: "notes-cal-url".into(),
+            label: "Calendar address".into(),
+            value: pad.calendar_url.clone(),
+            action: "Save".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "input".into(),
+            id: "notes-cal-user".into(),
+            label: "Username".into(),
+            value: pad.calendar_username.clone(),
+            action: "Save".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "input".into(),
+            id: "notes-cal-password".into(),
+            label: "Password".into(),
+            hint: "Leave empty to keep the saved one.".into(),
+            value: String::new(),
+            action: "Save".into(),
+            ..Row::default()
+        },
+    ];
+    p = p.push(calendar);
+
+    let search_cfg = crate::breadsearch::load();
+    let mut search = group("File search");
+    search.hint = "Lets the launcher find files by what's inside them, not only by name.".into();
+    search.rows = vec![toggle(
+        "search-index",
+        "Add new and changed files",
+        if search_cfg.power_enabled {
+            "Reads files in the folders below so their contents can be found."
+        } else {
+            "Paused. Search still finds what was already read."
+        },
+        search_cfg.power_enabled,
+    )];
+    if search_cfg.power_enabled {
+        search.rows.push(toggle(
+            "search-battery",
+            "Keep going on battery",
+            "Reading files uses a lot of power, so it waits for the charger by default.",
+            search_cfg.run_on_battery,
+        ));
+    }
+    search.rows.push(Row {
+        kind: "input".into(),
+        id: "search-roots".into(),
+        label: "Folders to search".into(),
+        hint: "Separate them with commas. / searches everything.".into(),
+        value: search_cfg.index_roots.join(", "),
+        action: "Save".into(),
+        ..Row::default()
+    });
+    search.rows.push(Row {
+        kind: "input".into(),
+        id: "search-excludes".into(),
+        label: "Skip these folders".into(),
+        hint: "Even when they are inside a folder above.".into(),
+        value: search_cfg.index_excludes.join(", "),
+        action: "Save".into(),
+        ..Row::default()
+    });
+    search.rows.push(Row {
+        kind: "input".into(),
+        id: "search-extensions".into(),
+        label: "File types".into(),
+        hint: "Leave empty for every text file.".into(),
+        value: search_cfg.index_extensions.join(", "),
+        action: "Save".into(),
+        ..Row::default()
+    });
+    search.rows.push(Row {
+        kind: "select".into(),
+        id: "search-backend".into(),
+        label: "Speed up with".into(),
+        hint: "Which chip does the indexing work.".into(),
+        value: crate::breadsearch::BACKENDS
+            .iter()
+            .find(|(code, _)| *code == search_cfg.backend)
+            .map(|(_, label)| label.to_string())
+            .unwrap_or_else(|| search_cfg.backend.clone()),
+        options: crate::breadsearch::BACKENDS
+            .iter()
+            .map(|(_, label)| label.to_string())
+            .collect(),
+        selected: crate::breadsearch::BACKENDS
+            .iter()
+            .position(|(code, _)| *code == search_cfg.backend)
+            .unwrap_or(0) as i32,
+        ..Row::default()
+    });
+    search.rows.push(Row {
+        kind: "input".into(),
+        id: "search-max".into(),
+        label: "Skip files bigger than (MB)".into(),
+        value: format!("{}", search_cfg.max_file_mb),
+        action: "Save".into(),
+        ..Row::default()
+    });
+    search.rows.push(Row {
+        kind: "input".into(),
+        id: "search-limit".into(),
+        label: "Results to show".into(),
+        value: search_cfg.search_limit.to_string(),
+        action: "Save".into(),
+        ..Row::default()
+    });
+    search.rows.push(Row {
+        kind: "input".into(),
+        id: "search-snippet".into(),
+        label: "Preview length (characters)".into(),
+        value: search_cfg.snippet_len.to_string(),
+        action: "Save".into(),
+        ..Row::default()
+    });
+    search.rows.push(Row {
+        kind: "line".into(),
+        id: "search-service".into(),
+        label: "Search indexer".into(),
+        hint: if service_active("breadmill.service") {
+            "Running.".into()
+        } else {
+            "Stopped.".into()
+        },
+        action: if service_active("breadmill.service") {
+            "Stop".into()
+        } else {
+            "Start".into()
+        },
+        ..Row::default()
+    });
     p = p.push(search);
 
     let mut auto = group("Automations");
@@ -6055,6 +6533,14 @@ fn desktop() -> Page {
     help.rows = vec![
         Row {
             kind: "line".into(),
+            id: "help-open".into(),
+            label: "BOS Help".into(),
+            hint: "Guides for getting started and fixing common problems.".into(),
+            action: "Open".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "line".into(),
             id: "help-guide".into(),
             label: "Desktop guide".into(),
             hint: "Bar, launcher, screenshots and automations.".into(),
@@ -6068,6 +6554,12 @@ fn desktop() -> Page {
             action: "Open".into(),
             ..Row::default()
         },
+        toggle(
+            "help-login",
+            "Show the welcome guide at login",
+            "",
+            breadhelp_login(),
+        ),
     ];
     p.push(help)
 }
