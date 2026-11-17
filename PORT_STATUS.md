@@ -14,35 +14,35 @@ parity_check.py fails while any item is not [x].
 - [~] view `Home`
 
 ## Appearance
-- [ ] command `appearance::get_appearance`
-- [ ] command `appearance::save_appearance`
-- [ ] command `shell_theme::get_active_shell_theme`
-- [ ] command `shell_theme::list_shell_themes`
-- [ ] command `shell_theme::restart_shell_apps`
-- [ ] command `shell_theme::set_active_shell_theme`
-- [ ] command `theme::get_theme_css`
-- [ ] command `theme::watch_and_emit`
-- [ ] view `Appearance`
-- [ ] view `AppearanceHub`
-- [ ] view `ShellTheme`
-- [ ] view `TextAppearance`
-- [ ] view `Windows`
+- [x] command `appearance::get_appearance` -> slint-prototype/src/data.rs
+- [x] command `appearance::save_appearance` -> slint-prototype/src/data.rs
+- [x] command `shell_theme::get_active_shell_theme` -> slint-prototype/src/data.rs
+- [x] command `shell_theme::list_shell_themes` -> slint-prototype/src/data.rs
+- [x] command `shell_theme::restart_shell_apps` -> slint-prototype/src/data.rs
+- [x] command `shell_theme::set_active_shell_theme` -> slint-prototype/src/data.rs
+- [x] command `theme::get_theme_css` -> slint-prototype/src/theme.rs
+- [x] command `theme::watch_and_emit` -> slint-prototype/src/theme.rs
+- [x] view `Appearance` -> slint-prototype/ui/appearance.slint
+- [x] view `AppearanceHub` -> slint-prototype/ui/appearance.slint
+- [x] view `ShellTheme` -> slint-prototype/ui/appearance.slint
+- [x] view `TextAppearance` -> slint-prototype/ui/appearance.slint
+- [x] view `Windows` -> slint-prototype/ui/appearance.slint
 
 ## Network
-- [ ] command `network::connect_wifi`
-- [ ] command `network::get_network_info`
-- [ ] command `network::open_connection_editor`
-- [ ] command `network::scan_wifi`
-- [ ] command `network::set_wifi_radio`
-- [ ] command `vpn::get_vpn_connections`
-- [ ] command `vpn::vpn_connect`
-- [ ] command `vpn::vpn_disconnect`
-- [ ] command `vpn::vpn_import`
-- [ ] view `Network`
-- [ ] view `NetworkAdvanced`
-- [ ] view `NetworkHub`
-- [ ] view `Places`
-- [ ] view `Vpn`
+- [x] command `network::connect_wifi` -> slint-prototype/src/network.rs
+- [x] command `network::get_network_info` -> slint-prototype/src/network.rs
+- [x] command `network::open_connection_editor` -> slint-prototype/src/network.rs
+- [x] command `network::scan_wifi` -> slint-prototype/src/network.rs
+- [x] command `network::set_wifi_radio` -> slint-prototype/src/network.rs
+- [x] command `vpn::get_vpn_connections` -> slint-prototype/src/network.rs
+- [x] command `vpn::vpn_connect` -> slint-prototype/src/network.rs
+- [x] command `vpn::vpn_disconnect` -> slint-prototype/src/network.rs
+- [x] command `vpn::vpn_import` -> slint-prototype/src/network.rs
+- [x] view `Network` -> slint-prototype/src/pagedata.rs
+- [x] view `NetworkAdvanced` -> slint-prototype/src/pagedata.rs
+- [x] view `NetworkHub` -> slint-prototype/src/pagedata.rs
+- [x] view `Places` -> slint-prototype/src/pagedata.rs
+- [x] view `Vpn` -> slint-prototype/src/pagedata.rs
 
 ## Bluetooth
 - [ ] command `bluetooth::bt_connect`

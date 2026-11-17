@@ -10,6 +10,7 @@
 
 mod breadram;
 mod lock;
+mod network;
 mod nightlight;
 mod notifications;
 mod prefs;
