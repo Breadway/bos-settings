@@ -9,6 +9,8 @@
 //! anything.
 
 mod breadram;
+mod lock;
+mod prefs;
 mod data;
 mod extra_icons;
 mod icons;

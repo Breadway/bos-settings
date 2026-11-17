@@ -5,7 +5,10 @@
 //! atomically with a `.bak` of the previous contents. A file that exists but
 //! does not parse is reported instead of being overwritten.
 
+use std::io::{BufRead, BufReader, Write};
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use toml_edit::{value, Array, DocumentMut, Item, Table};
 
@@ -325,6 +328,98 @@ pub fn apply_profile_to(path: &Path, profile: &str) -> Result<(), String> {
     cfg.allowed_actions = actions.iter().map(|value| value.to_string()).collect();
     cfg.protected = protected.iter().map(|value| value.to_string()).collect();
     save_to(path, &cfg)
+}
+
+fn socket_path() -> PathBuf {
+    match std::env::var_os("XDG_RUNTIME_DIR") {
+        Some(dir) if !dir.is_empty() => PathBuf::from(dir).join("breadram.sock"),
+        _ => std::env::temp_dir().join("breadram.sock"),
+    }
+}
+
+/// One socket round trip: hello, one request, one answer. A missing daemon is
+/// ordinary and reported as an error the page can show as unavailable.
+fn call(body: serde_json::Value) -> Result<serde_json::Value, String> {
+    let timeout = Some(Duration::from_secs(3));
+    let stream = UnixStream::connect(socket_path()).map_err(|_| "unavailable".to_string())?;
+    stream.set_read_timeout(timeout).map_err(|e| e.to_string())?;
+    stream.set_write_timeout(timeout).map_err(|e| e.to_string())?;
+    let mut reader = BufReader::new(stream.try_clone().map_err(|e| e.to_string())?);
+    let mut writer = stream;
+    let mut id = 0u64;
+    let mut round = |request: serde_json::Value| -> Result<serde_json::Value, String> {
+        id += 1;
+        let mut line = serde_json::json!({"id": id});
+        for (key, value) in request.as_object().cloned().unwrap_or_default() {
+            line[key] = value;
+        }
+        let mut text = serde_json::to_string(&line).map_err(|e| e.to_string())?;
+        text.push('\n');
+        writer
+            .write_all(text.as_bytes())
+            .map_err(|e| e.to_string())?;
+        let mut answer = String::new();
+        reader.read_line(&mut answer).map_err(|e| e.to_string())?;
+        serde_json::from_str(answer.trim()).map_err(|e| e.to_string())
+    };
+    let hello = round(serde_json::json!({
+        "type": "hello", "major": 1, "minor": 8, "client": "bos-settings-slint",
+    }))?;
+    if hello.get("type").and_then(|v| v.as_str()) != Some("hello")
+        || hello.get("major").and_then(|v| v.as_u64()) != Some(1)
+    {
+        return Err("incompatible".into());
+    }
+    round(body)
+}
+
+pub fn status() -> serde_json::Value {
+    let diagnostics = call(serde_json::json!({"type": "diagnostics"}));
+    let rules = call(serde_json::json!({"type": "rules"}));
+    let Ok(diagnostics) = diagnostics else {
+        return serde_json::json!({"present": false});
+    };
+    serde_json::json!({
+        "present": true,
+        "mode": diagnostics.get("mode").cloned().unwrap_or_default(),
+        "version": diagnostics.get("version").cloned().unwrap_or_default(),
+        "pressure": diagnostics.get("pressure").cloned().unwrap_or_default(),
+        "memory": diagnostics.get("memory").cloned().unwrap_or_default(),
+        "capabilities": diagnostics.get("capabilities").cloned().unwrap_or_default(),
+        "journal": diagnostics.get("journal").cloned().unwrap_or_default(),
+        "config_path": diagnostics.get("config_path").cloned().unwrap_or_default(),
+        "rules": rules.unwrap_or(serde_json::Value::Null),
+    })
+}
+
+pub fn actions() -> serde_json::Value {
+    match call(serde_json::json!({"type": "actions"})) {
+        Ok(actions) => serde_json::json!({"present": true, "actions": actions}),
+        Err(_) => serde_json::json!({"present": false}),
+    }
+}
+
+/// Change the running mode through the daemon. `persist` false changes this
+/// run only, which is what the Pause button does.
+pub fn set_mode(mode: &str, persist: bool) -> Result<String, String> {
+    if !matches!(mode, "monitor" | "automatic") {
+        return Err(format!("unknown management mode: {mode}"));
+    }
+    let answer = call(serde_json::json!({"type": "set_mode", "mode": mode, "persist": persist}))
+        .map_err(|_| "the daemon could not be reached".to_string())?;
+    if answer.get("type").and_then(|v| v.as_str()) == Some("applied") {
+        Ok(answer
+            .get("summary")
+            .and_then(|v| v.as_str())
+            .unwrap_or("mode changed")
+            .to_string())
+    } else {
+        Err(answer
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("the daemon refused the change")
+            .to_string())
+    }
 }
 
 #[cfg(test)]

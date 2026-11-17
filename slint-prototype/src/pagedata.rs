@@ -1045,46 +1045,10 @@ fn a11y() -> Page {
     p
 }
 
-#[derive(Clone)]
-struct DesktopPrefs {
-    text_size: i64,
-    cursor_size: i64,
-    stronger_borders: bool,
-    reduce_motion: bool,
-}
-
-impl Default for DesktopPrefs {
-    fn default() -> Self {
-        Self {
-            text_size: 14,
-            cursor_size: 24,
-            stronger_borders: false,
-            reduce_motion: false,
-        }
-    }
-}
+type DesktopPrefs = crate::prefs::Preferences;
 
 fn desktop_prefs() -> DesktopPrefs {
-    let path = config_dir().join("hypr/bos-settings-v2.json");
-    let value: serde_json::Value = std::fs::read_to_string(path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| serde_json::json!({}));
-    DesktopPrefs {
-        text_size: value.get("text_size").and_then(|v| v.as_i64()).unwrap_or(14),
-        cursor_size: value
-            .get("cursor_size")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(24),
-        stronger_borders: value
-            .get("stronger_borders")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false),
-        reduce_motion: value
-            .get("reduce_motion")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false),
-    }
+    crate::prefs::load()
 }
 
 fn hypr_option(name: &str) -> Option<f32> {
@@ -2061,8 +2025,12 @@ fn mouse() -> Page {
             kind: "slider".into(),
             id: "speed".into(),
             label: "Speed".into(),
-            value: "Normal".into(),
-            amount: 0.0,
+            value: if prefs.pointer_speed.abs() < 0.01 {
+                "Normal".into()
+            } else {
+                format!("{:+.2}", prefs.pointer_speed)
+            },
+            amount: prefs.pointer_speed as f32,
             min: -1.0,
             max: 1.0,
             ..Row::default()
@@ -2071,14 +2039,24 @@ fn mouse() -> Page {
     p = p.rows(
         "Touchpad",
         vec![
-            toggle("tap", "Tap to click", "", prefs.stronger_borders),
-            toggle("natural", "Natural scrolling", "", true),
-            toggle("disable-typing", "Disable while typing", "", true),
+            toggle("tap", "Tap to click", "", prefs.tap_to_click),
+            toggle("natural", "Natural scrolling", "", prefs.natural_scroll),
+            toggle(
+                "disable-typing",
+                "Disable while typing",
+                "",
+                prefs.disable_while_typing,
+            ),
             Row {
                 kind: "select".into(),
                 id: "click-method".into(),
                 label: "Click method".into(),
-                value: "Click with fingers".into(),
+                value: if prefs.click_method == "buttonareas" {
+                    "Bottom corners".into()
+                } else {
+                    "Click with fingers".into()
+                },
+                selected: if prefs.click_method == "buttonareas" { 1 } else { 0 },
                 options: vec!["Click with fingers".into(), "Bottom corners".into()],
                 ..Row::default()
             },
@@ -2086,8 +2064,8 @@ fn mouse() -> Page {
                 kind: "slider".into(),
                 id: "scroll-factor".into(),
                 label: "Scroll speed".into(),
-                value: "100%".into(),
-                amount: 1.0,
+                value: format!("{}%", (prefs.scroll_factor * 100.0).round() as i64),
+                amount: prefs.scroll_factor as f32,
                 min: 0.1,
                 max: 5.0,
                 ..Row::default()
@@ -2123,22 +2101,16 @@ fn lock() -> Page {
                 id: "clock".into(),
                 label: "Clock".into(),
                 options: vec!["24-hour".into(), "12-hour".into()],
-                selected: if cfg.clock.contains("%I") { 1 } else { 0 },
+                selected: if cfg.clock_format.contains("%I") { 1 } else { 0 },
                 ..Row::default()
             },
-            toggle("seconds", "Show seconds", "", cfg.clock.contains("%S")),
+            toggle("seconds", "Show seconds", "", cfg.clock_format.contains("%S")),
             Row {
                 kind: "select".into(),
                 id: "font".into(),
                 label: "Font".into(),
-                value: cfg.font.clone(),
-                options: vec![
-                    cfg.font.clone(),
-                    "Varela Round".into(),
-                    "Outfit".into(),
-                    "Inter".into(),
-                    "Noto Sans".into(),
-                ],
+                value: cfg.font_family.clone(),
+                options: LOCK_FONTS.iter().map(|font| font.to_string()).collect(),
                 ..Row::default()
             },
         ],
@@ -2146,33 +2118,13 @@ fn lock() -> Page {
     p
 }
 
-struct LockConf {
-    background_mode: String,
-    clock: String,
-    font: String,
-}
+type LockConf = crate::lock::Config;
 
 fn breadlock_conf() -> LockConf {
-    let path = config_dir().join("bread/breadlock.toml");
-    let value = std::fs::read_to_string(path)
-        .ok()
-        .and_then(|s| s.parse::<toml::Value>().ok());
-    let get = |key: &str, fallback: &str| {
-        value
-            .as_ref()
-            .and_then(|v| v.get(key))
-            .and_then(|v| v.as_str())
-            .unwrap_or(fallback)
-            .to_string()
-    };
-    LockConf {
-        background_mode: get("background_mode", "image"),
-        clock: get("clock_format", "%H:%M"),
-        font: get("font_family", "Varela Round"),
-    }
+    crate::lock::load().unwrap_or_default()
 }
 
-// --------------------------------------------------------------------- privacy
+const LOCK_FONTS: [&str; 4] = ["Varela Round", "Outfit", "Inter", "Noto Sans"];
 
 fn privacy() -> Page {
     let mut p = page(
@@ -2557,28 +2509,148 @@ fn memory_profile_index(cfg: &crate::breadram::Config) -> i32 {
     -1
 }
 
+fn json_u64(value: Option<&serde_json::Value>) -> Option<u64> {
+    value.and_then(|v| v.as_u64())
+}
+
+fn json_text(value: Option<&serde_json::Value>) -> String {
+    value
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+fn remember_bytes(bytes: Option<u64>) -> String {
+    let Some(bytes) = bytes else {
+        return "unknown".into();
+    };
+    if bytes >= 1024 * 1024 * 1024 {
+        format!("{:.1} GiB", bytes as f64 / 1024.0 / 1024.0 / 1024.0)
+    } else if bytes >= 1024 * 1024 {
+        format!("{} MiB", bytes / 1024 / 1024)
+    } else {
+        format!("{} KiB", bytes / 1024)
+    }
+}
+
+fn memory_history_row(record: &serde_json::Value) -> Row {
+    let kind = json_text(record.get("kind"));
+    let scope = json_text(record.get("scope"));
+    let state = json_text(record.get("state"));
+    let delta = |key: &str| {
+        record
+            .get(key)
+            .and_then(|v| v.as_i64())
+            .map(|v| {
+                if v < 0 {
+                    format!("freed {}", remember_bytes(Some((-v) as u64)))
+                } else {
+                    format!("used {}", remember_bytes(Some(v as u64)))
+                }
+            })
+            .unwrap_or_else(|| "not measured".into())
+    };
+    Row {
+        kind: "line".into(),
+        id: format!("history:{scope}:{kind}"),
+        label: format!("{kind} · {scope}"),
+        hint: json_text(record.get("reason")),
+        value: format!("{state} · expected {} · measured {}", delta("requested_host_ram_delta"), delta("observed_host_ram_delta")),
+        ..Row::default()
+    }
+}
+
 fn memory() -> Page {
     let mut p = page("memory", "System", "Memory", "");
-    let running = run("pgrep", &["-x", "breadram"])
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false);
+    let live = crate::breadram::status();
+    let actions = crate::breadram::actions();
+    let present = live.get("present").and_then(|v| v.as_bool()).unwrap_or(false);
 
     let mut right = group("Right now");
     right.hint =
         "What the memory daemon is doing. Nothing here needs the daemon running to open this page."
             .into();
-    right.rows = vec![Row {
-        kind: "value".into(),
-        id: "daemon".into(),
-        label: "Daemon".into(),
-        hint: if running {
-            "breadram is running.".into()
-        } else {
-            "breadram is not running. Settings below still open and save.".into()
-        },
-        value: if running { "Running".into() } else { "Unavailable".into() },
-        ..Row::default()
-    }];
+    if present {
+        let memory = live.get("memory");
+        let device = memory
+            .and_then(|m| m.get("vram_bytes"))
+            .and_then(|v| v.as_u64())
+            .map(|v| remember_bytes(Some(v)))
+            .or_else(|| {
+                memory
+                    .and_then(|m| m.get("gtt_used_bytes"))
+                    .and_then(|v| v.as_u64())
+                    .map(|used| {
+                        format!(
+                            "{} shared of {}",
+                            remember_bytes(Some(used)),
+                            remember_bytes(json_u64(memory.and_then(|m| m.get("gtt_total_bytes"))))
+                        )
+                    })
+            })
+            .unwrap_or_else(|| "nothing measured it".into());
+        let mode = json_text(live.get("mode"));
+        let paused = mode == "monitor";
+        right.rows = vec![
+            Row {
+                kind: "value".into(),
+                id: "pressure".into(),
+                label: "Pressure".into(),
+                value: json_text(live.get("pressure").and_then(|v| v.get("state"))),
+                ..Row::default()
+            },
+            Row {
+                kind: "value".into(),
+                id: "live-mode".into(),
+                label: "Mode".into(),
+                value: mode.clone(),
+                ..Row::default()
+            },
+            Row {
+                kind: "value".into(),
+                id: "available".into(),
+                label: "Available".into(),
+                value: format!(
+                    "{} of {}",
+                    remember_bytes(json_u64(memory.and_then(|m| m.get("ram_available_bytes")))),
+                    remember_bytes(json_u64(memory.and_then(|m| m.get("ram_total_bytes"))))
+                ),
+                ..Row::default()
+            },
+            Row {
+                kind: "value".into(),
+                id: "device".into(),
+                label: "Device memory".into(),
+                value: device,
+                ..Row::default()
+            },
+            Row {
+                kind: "value".into(),
+                id: "version".into(),
+                label: "Daemon version".into(),
+                value: json_text(live.get("version")),
+                ..Row::default()
+            },
+            Row {
+                kind: "button".into(),
+                id: "pause".into(),
+                label: "Pause".into(),
+                hint: "Stops automatic changes now without saving anything. A restart goes back to the saved mode.".into(),
+                action: if paused { "Resume".into() } else { "Pause".into() },
+                primary: !paused,
+                ..Row::default()
+            },
+        ];
+    } else {
+        right.rows = vec![Row {
+            kind: "value".into(),
+            id: "daemon".into(),
+            label: "Daemon".into(),
+            hint: "breadram is not running. Settings below still open and save.".into(),
+            value: "Unavailable".into(),
+            ..Row::default()
+        }];
+    }
     p = p.push(right);
 
     let cfg = match crate::breadram::load() {
@@ -2666,6 +2738,7 @@ fn memory() -> Page {
             tag: provider.name.clone(),
             action: "Remove".into(),
             checked: provider.allow_automation,
+            options: vec![provider.kind.clone()],
             ..Row::default()
         });
     }
@@ -2677,7 +2750,292 @@ fn memory() -> Page {
             ..Row::default()
         });
     }
-    p.push(backends)
+    let mut add = row("leftbutton", "");
+    add.id = "add-provider".into();
+    add.action = "Add backend".into();
+    add.icon = crate::icons::commands("plus").into();
+    add.primary = true;
+    backends.rows.push(add);
+    p = p.push(backends);
+
+    let mut jobs = group("Background jobs");
+    jobs.hint = "Queued programs the daemon may run when memory allows. Only a supervised job carries a hard reservation, taken from its estimate.".into();
+    jobs.rows = vec![
+        toggle(
+            "jobs-enabled",
+            "Let the daemon run queued jobs",
+            "",
+            cfg.jobs_enabled.unwrap_or(false),
+        ),
+        Row {
+            kind: "input".into(),
+            id: "jobs-total".into(),
+            label: "Total memory for jobs (GiB)".into(),
+            value: format!("{}", cfg.jobs_total_budget_gib.unwrap_or(8.0)),
+            ..Row::default()
+        },
+        Row {
+            kind: "input".into(),
+            id: "jobs-estimate".into(),
+            label: "Guess per job (GiB)".into(),
+            value: format!("{}", cfg.jobs_default_estimate_gib.unwrap_or(2.0)),
+            ..Row::default()
+        },
+        toggle(
+            "jobs-auto",
+            "Start the next job on its own",
+            "",
+            cfg.jobs_auto_launch.unwrap_or(false),
+        ),
+    ];
+    p = p.push(jobs);
+
+    let mut effective = group("What the daemon thinks");
+    effective.hint = "The settings actually in force, and why. File changes apply when the daemon restarts.".into();
+    let rules = live.get("rules").filter(|v| !v.is_null());
+    if present && rules.is_some() {
+        let rules = rules.unwrap();
+        let list = |key: &str| {
+            rules
+                .get(key)
+                .and_then(|v| v.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|v| v.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .filter(|text| !text.is_empty())
+                .unwrap_or_else(|| "none".into())
+        };
+        effective.rows.push(Row {
+            kind: "value".into(),
+            id: "rules-mode".into(),
+            label: "Mode in force".into(),
+            value: json_text(rules.get("mode")),
+            ..Row::default()
+        });
+        effective.rows.push(Row {
+            kind: "value".into(),
+            id: "rules-actions".into(),
+            label: "Actions in force".into(),
+            value: list("allowed_actions"),
+            ..Row::default()
+        });
+        effective.rows.push(Row {
+            kind: "value".into(),
+            id: "rules-protected".into(),
+            label: "Protected in force".into(),
+            value: list("protected"),
+            ..Row::default()
+        });
+        if let Some(budgets) = rules.get("budgets").and_then(|v| v.as_array()) {
+            for budget in budgets {
+                effective.rows.push(Row {
+                    kind: "value".into(),
+                    id: format!("budget:{}", json_text(budget.get("scope"))),
+                    label: format!("Budget {}", json_text(budget.get("scope"))),
+                    value: remember_bytes(json_u64(budget.get("max_bytes"))),
+                    ..Row::default()
+                });
+            }
+        }
+        effective.rows.push(Row {
+            kind: "value".into(),
+            id: "config-path".into(),
+            label: "Config file".into(),
+            value: json_text(live.get("config_path")),
+            ..Row::default()
+        });
+    } else {
+        effective.rows.push(Row {
+            kind: "value".into(),
+            id: "effective".into(),
+            label: "Effective settings".into(),
+            hint: "Start the daemon to compare the file against what is running.".into(),
+            value: "Daemon unavailable".into(),
+            ..Row::default()
+        });
+    }
+    p = p.push(effective);
+
+    let mut capabilities = group("What this host can do");
+    capabilities.hint = "Each capability the daemon probed, and why anything unavailable stays off. A workload is observation-only when its controls are missing here.".into();
+    let entries = live
+        .get("capabilities")
+        .and_then(|v| v.get("capabilities"))
+        .and_then(|v| v.as_array());
+    if present && entries.map(|e| !e.is_empty()).unwrap_or(false) {
+        for entry in entries.unwrap() {
+            let state = json_text(entry.get("state"));
+            let reason = entry
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .map(|v| format!(": {v}"))
+                .unwrap_or_default();
+            capabilities.rows.push(Row {
+                kind: "value".into(),
+                id: format!("cap:{}", json_text(entry.get("name"))),
+                label: json_text(entry.get("name")),
+                value: if state == "available" {
+                    "Available".into()
+                } else {
+                    format!("{state}{reason}")
+                },
+                ..Row::default()
+            });
+        }
+    } else {
+        capabilities.rows.push(Row {
+            kind: "value".into(),
+            id: "cap-none".into(),
+            label: "Capabilities".into(),
+            hint: "Start the daemon to probe this host.".into(),
+            value: "Daemon unavailable".into(),
+            ..Row::default()
+        });
+    }
+    p = p.push(capabilities);
+
+    let mut recent = group("Recent changes");
+    recent.hint = "Newest first. Expected is the plan's guess, measured is what the daemon saw.".into();
+    if actions.get("present").and_then(|v| v.as_bool()).unwrap_or(false) {
+        let payload = actions.get("actions");
+        if let Some(plan) = payload.and_then(|p| p.get("plan")) {
+            let explanation = plan
+                .get("explanation")
+                .and_then(|v| v.as_array())
+                .map(|lines| {
+                    lines
+                        .iter()
+                        .take(3)
+                        .filter_map(|v| v.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+                .filter(|text| !text.is_empty())
+                .unwrap_or_else(|| "Nothing proposed.".into());
+            recent.rows.push(Row {
+                kind: "value".into(),
+                id: "plan".into(),
+                label: format!("Plan ({})", json_text(plan.get("state"))),
+                value: explanation,
+                ..Row::default()
+            });
+        }
+        if let Some(history) = payload
+            .and_then(|p| p.get("history"))
+            .and_then(|v| v.as_array())
+        {
+            for record in history.iter().take(20) {
+                recent.rows.push(memory_history_row(record));
+            }
+        }
+    }
+    if recent.rows.len() <= 1 {
+        recent.rows.push(Row {
+            kind: "value".into(),
+            id: "history-none".into(),
+            label: "History".into(),
+            hint: "Nothing recorded yet, or the daemon is unavailable.".into(),
+            value: "Empty".into(),
+            ..Row::default()
+        });
+    }
+    p.push(recent)
+}
+
+fn lock_action(id: &str, action: &str) -> Result<(), String> {
+    let mut cfg = crate::lock::load()?;
+    if let Some(index) = action.strip_prefix("seg:").and_then(|v| v.parse::<usize>().ok()) {
+        match id {
+            "background" => {
+                cfg.background_mode = if index == 0 { "image" } else { "color" }.into();
+                return crate::lock::save(&cfg);
+            }
+            "clock" => {
+                let seconds = cfg.clock_format.contains("%S");
+                cfg.clock_format = crate::lock::clock_format(index == 1, seconds).into();
+                return crate::lock::save(&cfg);
+            }
+            _ => return Ok(()),
+        }
+    }
+    if action == "toggle" && id == "seconds" {
+        let twelve = cfg.clock_format.contains("%I");
+        let seconds = !cfg.clock_format.contains("%S");
+        cfg.clock_format = crate::lock::clock_format(twelve, seconds).into();
+        return crate::lock::save(&cfg);
+    }
+    if action == "select" && id == "font" {
+        let current = LOCK_FONTS
+            .iter()
+            .position(|font| *font == cfg.font_family)
+            .unwrap_or(0);
+        cfg.font_family = LOCK_FONTS[(current + 1) % LOCK_FONTS.len()].into();
+        return crate::lock::save(&cfg);
+    }
+    Ok(())
+}
+
+fn preferences_action(page: &str, id: &str, action: &str) -> Result<(), String> {
+    let mut prefs = crate::prefs::load();
+    match page {
+        "mouse" => {
+            if let Some(value) = action.strip_prefix("slider:") {
+                let value: f64 = value.parse().map_err(|_| "enter a number")?;
+                match id {
+                    "speed" => prefs.pointer_speed = value,
+                    "scroll-factor" => prefs.scroll_factor = value,
+                    _ => return Ok(()),
+                }
+                return crate::prefs::save(&prefs);
+            }
+            if action == "toggle" {
+                match id {
+                    "tap" => prefs.tap_to_click = !prefs.tap_to_click,
+                    "natural" => prefs.natural_scroll = !prefs.natural_scroll,
+                    "disable-typing" => prefs.disable_while_typing = !prefs.disable_while_typing,
+                    _ => return Ok(()),
+                }
+                return crate::prefs::save(&prefs);
+            }
+            if action == "select" && id == "click-method" {
+                prefs.click_method = if prefs.click_method == "clickfinger" {
+                    "buttonareas".into()
+                } else {
+                    "clickfinger".into()
+                };
+                return crate::prefs::save(&prefs);
+            }
+        }
+        "a11y" => {
+            if action == "toggle" {
+                match id {
+                    "stronger-borders" => prefs.stronger_borders = !prefs.stronger_borders,
+                    "reduce-motion" => prefs.reduce_motion = !prefs.reduce_motion,
+                    _ => return Ok(()),
+                }
+                return crate::prefs::save(&prefs);
+            }
+            if let Some(index) = action.strip_prefix("seg:").and_then(|v| v.parse::<usize>().ok()) {
+                match id {
+                    "text-size" => {
+                        prefs.text_size = [14, 16, 18].get(index).copied().unwrap_or(14);
+                        return crate::prefs::save(&prefs);
+                    }
+                    "cursor-size" => {
+                        prefs.cursor_size = [24, 32, 48].get(index).copied().unwrap_or(24);
+                        return crate::prefs::save(&prefs);
+                    }
+                    _ => return Ok(()),
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 fn memory_action(id: &str, action: &str) -> Result<(), String> {
@@ -2698,7 +3056,24 @@ fn memory_action_at(
         });
         return crate::breadram::save_to(path, &cfg);
     }
+    if action == "action" && id == "pause" {
+        let live = crate::breadram::status();
+        if live.get("present").and_then(|v| v.as_bool()) != Some(true) {
+            return Err("the daemon could not be reached".into());
+        }
+        let paused = live.get("mode").and_then(|v| v.as_str()) == Some("monitor");
+        crate::breadram::set_mode(if paused { "automatic" } else { "monitor" }, false)?;
+        return Ok(());
+    }
     if action == "toggle" {
+        if id == "jobs-enabled" {
+            cfg.jobs_enabled = Some(!cfg.jobs_enabled.unwrap_or(false));
+            return crate::breadram::save_to(path, &cfg);
+        }
+        if id == "jobs-auto" {
+            cfg.jobs_auto_launch = Some(!cfg.jobs_auto_launch.unwrap_or(false));
+            return crate::breadram::save_to(path, &cfg);
+        }
         if !MEMORY_ACTIONS.iter().any(|(code, _)| *code == id) {
             return Ok(());
         }
@@ -2730,8 +3105,81 @@ fn memory_action_at(
         }
     }
     if action == "action" {
+        if id == "add-provider" {
+            cfg.providers.push(crate::breadram::Provider {
+                name: "New backend".into(),
+                kind: "ollama".into(),
+                url: "http://127.0.0.1:11434".into(),
+                scope: String::new(),
+                allow_automation: false,
+            });
+            return crate::breadram::save_to(path, &cfg);
+        }
         if let Some(name) = id.strip_prefix("provider:") {
             cfg.providers.retain(|provider| provider.name != name);
+            return crate::breadram::save_to(path, &cfg);
+        }
+    }
+    if let Some(text) = action.strip_prefix("tag-add:") {
+        let text = text.trim();
+        if !text.is_empty() && !cfg.protected.iter().any(|scope| scope == text) {
+            cfg.protected.push(text.to_string());
+            return crate::breadram::save_to(path, &cfg);
+        }
+    }
+    if let Some(text) = action.strip_prefix("input:") {
+        let text = text.trim();
+        match id {
+            "jobs-total" => {
+                cfg.jobs_total_budget_gib = Some(text.parse().map_err(|_| "enter a number of GiB")?);
+                return crate::breadram::save_to(path, &cfg);
+            }
+            "jobs-estimate" => {
+                cfg.jobs_default_estimate_gib =
+                    Some(text.parse().map_err(|_| "enter a number of GiB")?);
+                return crate::breadram::save_to(path, &cfg);
+            }
+            _ => {}
+        }
+    }
+    if let Some(name) = id.strip_prefix("provider:") {
+        let Some(provider) = cfg
+            .providers
+            .iter_mut()
+            .find(|provider| provider.name == name)
+        else {
+            return Ok(());
+        };
+        if let Some(text) = action.strip_prefix("provider-name:") {
+            let text = text.trim();
+            if text.is_empty() {
+                return Err("a backend needs a name".into());
+            }
+            provider.name = text.to_string();
+            return crate::breadram::save_to(path, &cfg);
+        }
+        if let Some(text) = action.strip_prefix("provider-url:") {
+            provider.url = text.trim().to_string();
+            return crate::breadram::save_to(path, &cfg);
+        }
+        if let Some(text) = action.strip_prefix("provider-scope:") {
+            provider.scope = text.trim().to_string();
+            return crate::breadram::save_to(path, &cfg);
+        }
+        if action == "provider-kind" {
+            let kinds = ["ollama", "llamacpp", "vllm", "breadsearch", "hook"];
+            let current = kinds
+                .iter()
+                .position(|kind| {
+                    *kind == provider.kind
+                        || (*kind == "llamacpp" && provider.kind == "llama_cpp")
+                })
+                .unwrap_or(0);
+            provider.kind = kinds[(current + 1) % kinds.len()].to_string();
+            return crate::breadram::save_to(path, &cfg);
+        }
+        if action == "provider-automation" {
+            provider.allow_automation = !provider.allow_automation;
             return crate::breadram::save_to(path, &cfg);
         }
     }
@@ -3430,7 +3878,7 @@ fn planned_row(page: &str, id: &str, checked: bool, action: &str) -> Option<Plan
             })
         }
         "power" if id == "brightness" && action.starts_with("slider:") => {
-            let percent = action.strip_prefix("slider:")?.parse::<u32>().ok()?;
+            let percent = action.strip_prefix("slider:")?.parse::<f32>().ok()?.round() as u32;
             Some(Planned {
                 program: "brightnessctl",
                 args: vec!["set".into(), format!("{percent}%")],
@@ -3483,6 +3931,20 @@ fn run_planned(planned: Option<Planned>) -> Result<(), String> {
 /// state comes from the system again. Errors are returned in Page.status.
 pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page {
     let current = load(page);
+    if page == "lock" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = lock_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not save that setting: {message}");
+        }
+        return reloaded;
+    }
     if page == "memory" {
         let id = current
             .blocks
@@ -3491,6 +3953,20 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
             .map(|r| r.id.clone())
             .unwrap_or_default();
         let error = memory_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not save that setting: {message}");
+        }
+        return reloaded;
+    }
+    if page == "mouse" || page == "a11y" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = preferences_action(page, &id, action).err();
         let mut reloaded = load(page);
         if let Some(message) = error {
             reloaded.status = format!("Could not save that setting: {message}");
@@ -3686,9 +4162,25 @@ mod action_tests {
         assert!(cfg
             .allowed_actions
             .contains(&"queue_background_job".to_string()));
+        super::memory_action_at(&path, "never-touch", "tag-add:unit:foo.service").unwrap();
+        let cfg = crate::breadram::load_from(&path).unwrap();
+        assert!(cfg.protected.contains(&"unit:foo.service".to_string()));
+        super::memory_action_at(&path, "jobs-total", "input:12.5").unwrap();
+        let cfg = crate::breadram::load_from(&path).unwrap();
+        assert_eq!(cfg.jobs_total_budget_gib, Some(12.5));
+        super::memory_action_at(&path, "provider:llama-server", "provider-url:http://127.0.0.1:7401").unwrap();
+        let cfg = crate::breadram::load_from(&path).unwrap();
+        assert_eq!(cfg.providers[0].url, "http://127.0.0.1:7401");
+        super::memory_action_at(&path, "provider:llama-server", "provider-kind").unwrap();
+        let cfg = crate::breadram::load_from(&path).unwrap();
+        assert_eq!(cfg.providers[0].kind, "vllm");
+        super::memory_action_at(&path, "add-provider", "action").unwrap();
+        let cfg = crate::breadram::load_from(&path).unwrap();
+        assert_eq!(cfg.providers.len(), 2);
         super::memory_action_at(&path, "provider:llama-server", "action").unwrap();
         let cfg = crate::breadram::load_from(&path).unwrap();
-        assert!(cfg.providers.is_empty());
+        assert_eq!(cfg.providers.len(), 1);
+        assert_eq!(cfg.providers[0].name, "New backend");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
