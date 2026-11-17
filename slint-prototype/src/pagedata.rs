@@ -2944,6 +2944,21 @@ fn memory() -> Page {
     p.push(recent)
 }
 
+fn storage_action(id: &str, action: &str) -> Result<(), String> {
+    if action != "action" {
+        return Ok(());
+    }
+    match id {
+        "trash" => write("gio", &["trash", "--empty"]),
+        "app-cache" => std::process::Command::new("xdg-open")
+            .arg(home_dir().join(".cache"))
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| error.to_string()),
+        _ => Ok(()),
+    }
+}
+
 fn notifications_action(id: &str, action: &str) -> Result<(), String> {
     if action == "toggle" {
         let key = match id {
@@ -3992,6 +4007,20 @@ fn run_planned(planned: Option<Planned>) -> Result<(), String> {
 /// state comes from the system again. Errors are returned in Page.status.
 pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page {
     let current = load(page);
+    if page == "storage" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = storage_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not clean that up: {message}");
+        }
+        return reloaded;
+    }
     if page == "notifications" {
         let id = current
             .blocks
