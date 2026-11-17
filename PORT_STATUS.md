@@ -140,9 +140,9 @@ parity_check.py fails while any item is not [x].
 - [~] view `PowerMenu`
 
 ## Mouse
-- [ ] command `desktop_preferences::get_desktop_preferences`
-- [ ] command `desktop_preferences::save_desktop_preferences`
-- [ ] view `Mouse`
+- [x] command `desktop_preferences::get_desktop_preferences` -> slint-prototype/src/prefs.rs
+- [x] command `desktop_preferences::save_desktop_preferences` -> slint-prototype/src/prefs.rs
+- [x] view `Mouse` -> slint-prototype/src/pagedata.rs
 
 ## Keyboard
 - [x] command `ime::get_ime_status` -> slint-prototype/src/ime.rs
@@ -234,7 +234,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `backup::restic_restore` -> slint-prototype/src/backup.rs
 - [x] command `backup::restic_restore_dry_run` -> slint-prototype/src/backup.rs
 - [x] command `backup::save_backup_config` -> slint-prototype/src/backup.rs
-- [ ] command `backup::scheduled_backup`
+- [x] command `backup::scheduled_backup` -> slint-prototype/src/backup.rs
 - [x] command `backup::set_backup_schedule` -> slint-prototype/src/backup.rs
 - [x] command `backup::valid_repo` -> slint-prototype/src/backup.rs
 - [x] command `backup::valid_restore_target` -> slint-prototype/src/backup.rs
