@@ -7,6 +7,11 @@ export struct ThemeCard {
     sub: string,
 }
 
+export struct MonitorOption {
+    name: string,
+    mode: string,
+}
+
 export struct WallpaperThumb {
     name: string,
     path: string,
@@ -184,6 +189,9 @@ export component AppearancePage inherits VerticalLayout {
     in property <string> wallpaper-path;
     in property <string> library-dir;
     in property <[WallpaperThumb]> library;
+    in property <[MonitorOption]> monitors;
+    in-out property <string> selected-monitor;
+    in-out property <bool> same-on-all;
     in-out property <int> text-size-index;
     in-out property <int> font-index;
     callback changed();
@@ -192,6 +200,8 @@ export component AppearancePage inherits VerticalLayout {
     callback choose-wallpaper();
     callback restart-shell();
     callback text-changed();
+    callback monitor-selected(string);
+    callback same-all-changed(bool);
     // repeat(auto-fill, minmax(200px, 1fr)): equal columns, whatever the
     // longest theme name is.
     // Derived from the page's own width, not the window-derived content
@@ -285,6 +295,35 @@ export component AppearancePage inherits VerticalLayout {
     GroupBox {
         title: "WALLPAPER";
         hint: "This also sets the desktop colors: each monitor's accent comes from its own wallpaper.";
+        if root.monitors.length > 1: SettingRow {
+            label: "Use the same wallpaper on every monitor";
+            first: true;
+            Toggle { checked <=> same-on-all; toggled(value) => { root.same-all-changed(value); } }
+        }
+        if root.monitors.length > 1 && !root.same-on-all: HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            for monitor in root.monitors: Rectangle {
+                height: 30px;
+                width: label.width + 24px;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: monitor.name == root.selected-monitor ? Theme.accent : Theme.line;
+                background: monitor.name == root.selected-monitor ? Theme.accent-soft : Theme.surface;
+                label := Text {
+                    x: 12px;
+                    y: 0;
+                    height: 100%;
+                    text: monitor.name;
+                    font-family: Theme.body;
+                    color: Theme.fg;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+                TouchArea { clicked => { root.monitor-selected(monitor.name); } }
+            }
+        }
+        if root.monitors.length > 1 && !root.same-on-all: Rectangle { height: 8px; }
         if root.wallpaper-name != "": Rectangle {
             height: 180px;
             border-radius: 12px;

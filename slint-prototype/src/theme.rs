@@ -46,6 +46,12 @@ pub fn load() -> Option<Palette> {
     })
 }
 
+pub fn stamp() -> Option<std::time::SystemTime> {
+    std::fs::metadata(runtime_dir()?.join("bread/theme.css"))
+        .ok()
+        .and_then(|meta| meta.modified().ok())
+}
+
 fn runtime_dir() -> Option<PathBuf> {
     std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from)
 }

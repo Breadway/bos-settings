@@ -780,6 +780,14 @@ pub struct Extra {
     pub library: Vec<LibItem>,
     pub text_size: i64,
     pub font: String,
+    pub monitors: Vec<MonitorInfo>,
+    pub wallpapers: Vec<(String, String)>,
+}
+
+#[derive(Clone)]
+pub struct MonitorInfo {
+    pub name: String,
+    pub mode: String,
 }
 
 /// bread_theme's compiled-in themes, in presentation order.
@@ -824,6 +832,68 @@ pub fn load_extra() -> Extra {
         library: library(&library_dir),
         text_size: text_prefs().0,
         font: text_prefs().1,
+        monitors: live_monitors(),
+        wallpapers: wallpapers_by_output(),
+    }
+}
+
+pub fn live_monitors() -> Vec<MonitorInfo> {
+    let Ok(out) = Command::new("hyprctl").args(["monitors", "-j"]).output() else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&out.stdout) else {
+        return Vec::new();
+    };
+    value
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|row| {
+                    let name = row.get("name")?.as_str()?.to_string();
+                    let width = row.get("width").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let height = row.get("height").and_then(|v| v.as_i64()).unwrap_or(0);
+                    Some(MonitorInfo {
+                        name,
+                        mode: format!("{width}x{height}"),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub fn wallpapers_by_output() -> Vec<(String, String)> {
+    let path = config_dir().join("breadpaper/current.json");
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Vec::new();
+    };
+    value
+        .get("outputs")
+        .and_then(|v| v.as_object())
+        .map(|outputs| {
+            outputs
+                .iter()
+                .filter_map(|(output, path)| {
+                    Some((output.clone(), path.as_str()?.to_string()))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub fn set_wallpaper_on(output: &str, path: &str) -> Result<(), String> {
+    let status = Command::new("breadpaper")
+        .args(["--output", output, "set"])
+        .arg(path)
+        .status()
+        .map_err(|error| error.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("breadpaper refused the wallpaper".into())
     }
 }
 
@@ -909,6 +979,10 @@ fn active_theme() -> String {
 }
 
 pub fn set_theme(id: &str) -> Result<(), String> {
+    let available = themes().0;
+    if !available.iter().any(|theme| theme.id == id) {
+        return Err(format!("no shell theme with id '{id}'"));
+    }
     let path = shell_toml();
     let text = std::fs::read_to_string(&path).unwrap_or_default();
     let line = format!("active = \"{id}\"");
@@ -952,7 +1026,7 @@ pub fn restart_shell() -> Result<(), String> {
     Ok(())
 }
 
-fn current_wallpaper() -> (Option<String>, String) {
+pub fn current_wallpaper() -> (Option<String>, String) {
     let out = Command::new("breadpaper").arg("get").output();
     let path = out
         .ok()
@@ -1056,24 +1130,10 @@ fn text_prefs() -> (i64, String) {
 }
 
 pub fn save_text(size: i64, font: &str) -> Result<(), String> {
-    let path = config_dir().join("hypr/bos-settings-v2.json");
-    let mut value: serde_json::Value = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| serde_json::json!({}));
-    value["text_size"] = serde_json::json!(size);
-    value["font_family"] = serde_json::json!(font);
-    let json = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())?;
-    // GTK apps read gtk-font-name from their settings.ini.
-    for folder in ["gtk-3.0", "gtk-4.0"] {
-        let ini = config_dir().join(folder).join("settings.ini");
-        let text = std::fs::read_to_string(&ini).unwrap_or_default();
-        let text = set_ini_key(&text, "gtk-font-name", &format!("{font} {size}"));
-        let _ = std::fs::create_dir_all(ini.parent().unwrap_or(&config_dir()));
-        let _ = std::fs::write(&ini, text);
-    }
-    Ok(())
+    let mut prefs = crate::prefs::load();
+    prefs.text_size = size as u32;
+    prefs.font_family = font.to_string();
+    crate::prefs::save(&prefs)
 }
 
 fn set_ini_key(text: &str, key: &str, value: &str) -> String {

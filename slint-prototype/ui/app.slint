@@ -1,7 +1,7 @@
 import { Theme } from "theme.slint";
 import { Sidebar, NavItem } from "sidebar.slint";
 import { HomePage, QuickTile, AttentionRow } from "home.slint";
-import { AppearancePage, ThemeCard, WallpaperThumb } from "appearance.slint";
+import { AppearancePage, MonitorOption, ThemeCard, WallpaperThumb } from "appearance.slint";
 import { AboutPage, AboutCheck } from "about.slint";
 import { SpecPage, SpecBlock, SpecRow } from "spec.slint";
 
@@ -66,6 +66,9 @@ export component AppWindow inherits Window {
     in property <string> wallpaper-path;
     in property <string> library-dir;
     in property <[WallpaperThumb]> library;
+    in property <[MonitorOption]> monitors;
+    in-out property <string> selected-monitor;
+    in-out property <bool> same-on-all;
     in-out property <int> text-size-index;
     in-out property <int> font-index;
     in property <string> about-os;
@@ -99,6 +102,8 @@ export component AppWindow inherits Window {
     callback choose-wallpaper();
     callback restart-shell();
     callback text-changed();
+    callback monitor-selected(string);
+    callback same-all-changed(bool);
     callback copy-info();
     callback run-checks();
 
@@ -191,6 +196,9 @@ export component AppWindow inherits Window {
                                 wallpaper-path: root.wallpaper-path;
                                 library-dir: root.library-dir;
                                 library: root.library;
+                                monitors: root.monitors;
+                                selected-monitor <=> root.selected-monitor;
+                                same-on-all <=> root.same-on-all;
                                 text-size-index <=> root.text-size-index;
                                 font-index <=> root.font-index;
                                 changed => { root.appearance-changed(); }
@@ -199,6 +207,8 @@ export component AppWindow inherits Window {
                                 choose-wallpaper => { root.choose-wallpaper(); }
                                 restart-shell => { root.restart-shell(); }
                                 text-changed => { root.text-changed(); }
+                                monitor-selected(name) => { root.monitor-selected(name); }
+                                same-all-changed(value) => { root.same-all-changed(value); }
                             }
                             if page == "about": AboutPage {
                                 os: root.about-os;

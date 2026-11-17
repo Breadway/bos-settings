@@ -19,6 +19,7 @@ mod icons;
 mod pagedata;
 mod theme;
 
+use slint::Model;
 use std::rc::Rc;
 
 slint::include_modules!();
@@ -219,6 +220,24 @@ fn main() -> anyhow::Result<()> {
         },
     );
 
+    let theme_poll = slint::Timer::default();
+    let theme_weak = window.as_weak();
+    let mut theme_stamp = theme::stamp();
+    theme_poll.start(
+        slint::TimerMode::Repeated,
+        std::time::Duration::from_millis(1000),
+        move || {
+            let stamp = theme::stamp();
+            if stamp == theme_stamp {
+                return;
+            }
+            theme_stamp = stamp;
+            if let Some(window) = theme_weak.upgrade() {
+                apply_palette(&window);
+            }
+        },
+    );
+
     let weak = window.as_weak();
     window.on_theme_selected(move |id| {
         let Some(window) = weak.upgrade() else {
@@ -236,7 +255,8 @@ fn main() -> anyhow::Result<()> {
     let weak = window.as_weak();
     window.on_wallpaper_selected(move |path| {
         if let Some(window) = weak.upgrade() {
-            apply_wallpaper(&window, path.as_str());
+            let output = wallpaper_output(&window);
+            apply_wallpaper(&window, path.as_str(), output.as_deref());
         }
     });
 
@@ -246,7 +266,33 @@ fn main() -> anyhow::Result<()> {
             return;
         };
         if let Some(path) = data::choose_wallpaper() {
-            apply_wallpaper(&window, &path);
+            let output = wallpaper_output(&window);
+            apply_wallpaper(&window, &path, output.as_deref());
+        }
+    });
+
+    let weak = window.as_weak();
+    window.on_monitor_selected(move |name| {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        window.set_selected_monitor(name.clone());
+        show_output_wallpaper(&window, name.as_str());
+    });
+
+    let weak = window.as_weak();
+    window.on_same_all_changed(move |same| {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        window.set_same_on_all(same);
+        if same {
+            if let Some(path) = data::current_wallpaper().0 {
+                show_wallpaper_path(&window, &path);
+            }
+        } else {
+            let selected = window.get_selected_monitor().to_string();
+            show_output_wallpaper(&window, &selected);
         }
     });
 
@@ -567,6 +613,27 @@ fn apply_extra(window: &AppWindow, extra: &data::Extra) {
     window.set_wallpaper_name(extra.wallpaper_name.clone().into());
     window.set_wallpaper_path(extra.wallpaper.clone().unwrap_or_default().into());
     window.set_library_dir(extra.library_dir.clone().into());
+    let monitors: Vec<MonitorOption> = extra
+        .monitors
+        .iter()
+        .map(|monitor| MonitorOption {
+            name: monitor.name.clone().into(),
+            mode: monitor.mode.clone().into(),
+        })
+        .collect();
+    let selected = extra
+        .monitors
+        .first()
+        .map(|monitor| monitor.name.clone())
+        .unwrap_or_default();
+    let distinct: std::collections::HashSet<&str> = extra
+        .wallpapers
+        .iter()
+        .map(|(_, path)| path.as_str())
+        .collect();
+    window.set_same_on_all(distinct.len() <= 1);
+    window.set_selected_monitor(selected.clone().into());
+    window.set_monitors(slint::ModelRc::new(slint::VecModel::from(monitors)));
     // Filled in once the thumbnails have decoded; empty cells would just
     // flicker transparent.
     window.set_library(slint::ModelRc::new(slint::VecModel::from(Vec::<
@@ -656,23 +723,49 @@ fn image_from_rgba(rgba: Rgba) -> slint::Image {
     slint::Image::from_rgba8(buffer)
 }
 
-fn apply_wallpaper(window: &AppWindow, path: &str) {
-    match data::set_wallpaper(path) {
+fn wallpaper_output(window: &AppWindow) -> Option<String> {
+    let monitors = window.get_monitors();
+    let selected = window.get_selected_monitor().to_string();
+    (!window.get_same_on_all() && monitors.row_count() > 1 && !selected.is_empty())
+        .then_some(selected)
+}
+
+fn apply_wallpaper(window: &AppWindow, path: &str, output: Option<&str>) {
+    let result = match output {
+        Some(output) => data::set_wallpaper_on(output, path),
+        None => data::set_wallpaper(path),
+    };
+    match result {
         Ok(()) => {
-            let name = path.rsplit('/').next().unwrap_or("").to_string();
-            window.set_wallpaper_path(path.into());
-            window.set_wallpaper_name(name.into());
-            window.set_wallpaper(
-                load_image(path, 1400, 800)
-                    .map(|mut rgba| {
-                        rgba.round_corners(HERO_RADIUS);
-                        image_from_rgba(rgba)
-                    })
-                    .unwrap_or_else(slint::Image::default),
-            );
+            show_wallpaper_path(window, path);
             window.set_appearance_status("".into());
         }
         Err(err) => window.set_appearance_status(err.into()),
+    }
+}
+
+fn show_wallpaper_path(window: &AppWindow, path: &str) {
+    let name = path.rsplit('/').next().unwrap_or("").to_string();
+    window.set_wallpaper_path(path.into());
+    window.set_wallpaper_name(name.into());
+    window.set_wallpaper(
+        load_image(path, 1400, 800)
+            .map(|mut rgba| {
+                rgba.round_corners(HERO_RADIUS);
+                image_from_rgba(rgba)
+            })
+            .unwrap_or_else(slint::Image::default),
+    );
+}
+
+fn show_output_wallpaper(window: &AppWindow, output: &str) {
+    let path = data::wallpapers_by_output()
+        .into_iter()
+        .find(|(name, _)| name == output)
+        .map(|(_, path)| path)
+        .or_else(|| data::current_wallpaper().0);
+    if let Some(path) = path {
+        show_wallpaper_path(window, &path);
     }
 }
 
