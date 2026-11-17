@@ -565,6 +565,12 @@ fn charge_threshold_paths() -> Option<(PathBuf, PathBuf)> {
     None
 }
 
+/// Current charge start and stop percentages, when the battery exposes both.
+pub fn charge_thresholds() -> Option<(i64, i64)> {
+    let (start, end) = charge_threshold_paths()?;
+    Some((read_threshold(&start), read_threshold(&end)))
+}
+
 pub fn set_charge_threshold(which: &str, percent: i64) -> Result<(), String> {
     if which != "start" && which != "end" {
         return Err("threshold must be start or end".into());

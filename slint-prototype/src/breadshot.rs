@@ -9,6 +9,8 @@ pub struct Config {
     pub save_dir: String,
     pub silent: bool,
     pub freeze: bool,
+    pub notif_timeout: i64,
+    pub date_format: String,
 }
 
 pub fn path() -> PathBuf {
@@ -22,6 +24,10 @@ pub fn load() -> Config {
             .unwrap_or_else(|| "~/Pictures/Screenshots".into()),
         silent: config::get_bool(&doc, &["silent"]).unwrap_or(false),
         freeze: config::get_bool(&doc, &["freeze"]).unwrap_or(false),
+        notif_timeout: config::get_i64(&doc, &["notif_timeout"]).unwrap_or(5000),
+        date_format: config::get_str(&doc, &["date_format"])
+            .filter(|format| !format.trim().is_empty())
+            .unwrap_or_else(|| "%Y-%m-%d-%H%M%S".into()),
     }
 }
 
@@ -35,6 +41,15 @@ pub fn save(cfg: &Config) -> Result<(), String> {
     config::set_str(&mut doc, &["save_dir"], dir);
     config::set_bool(&mut doc, &["silent"], cfg.silent);
     config::set_bool(&mut doc, &["freeze"], cfg.freeze);
+    if !(0..=600_000).contains(&cfg.notif_timeout) {
+        return Err("the notification timeout is out of range".into());
+    }
+    config::set_i64(&mut doc, &["notif_timeout"], cfg.notif_timeout);
+    let format = cfg.date_format.trim();
+    if format.is_empty() || format.contains('/') || format.contains('\n') {
+        return Err("use a date format without slashes".into());
+    }
+    config::set_str(&mut doc, &["date_format"], format);
     config::save_doc(&path, &doc)
 }
 
