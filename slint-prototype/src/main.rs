@@ -356,6 +356,21 @@ fn main() -> anyhow::Result<()> {
     });
 
     let weak = window.as_weak();
+    window.on_rename_hostname(move |name| {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        let status = match data::set_hostname(name.trim()) {
+            Ok(()) => String::new(),
+            Err(err) => err,
+        };
+        window.set_about_status(status.into());
+        if window.get_about_status().is_empty() {
+            window.set_about_hostname(name.trim().into());
+        }
+    });
+
+    let weak = window.as_weak();
     window.on_run_checks(move || {
         let Some(window) = weak.upgrade() else {
             return;

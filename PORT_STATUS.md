@@ -349,9 +349,9 @@ parity_check.py fails while any item is not [x].
 ## About
 - [x] command `about::get_system_info` -> slint-prototype/src/data.rs
 - [x] command `about::run_health_checks` -> slint-prototype/src/data.rs
-- [ ] command `about::set_hostname`
-- [~] view `About`
-- [~] view `AboutHub`
+- [x] command `about::set_hostname` -> slint-prototype/src/data.rs
+- [x] view `About` -> slint-prototype/ui/about.slint
+- [x] view `AboutHub` -> slint-prototype/ui/about.slint
 
 ## System
 - [ ] command `breadcrumbs::get_breadcrumbs_config`

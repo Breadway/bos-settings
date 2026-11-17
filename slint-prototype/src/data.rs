@@ -1335,6 +1335,21 @@ fn bakery_track() -> String {
         .unwrap_or_else(|| "Unavailable".into())
 }
 
+pub fn set_hostname(name: &str) -> Result<(), String> {
+    if name.is_empty() || name.len() > 63 || name.contains(char::is_whitespace) {
+        return Err("use a short name without spaces".into());
+    }
+    let out = std::process::Command::new("hostnamectl")
+        .args(["set-hostname", name])
+        .output()
+        .map_err(|error| error.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
 pub fn health_checks() -> Vec<HealthCheck> {
     let mut out = Vec::new();
     for (name, program, arg) in [
