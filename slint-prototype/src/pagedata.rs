@@ -2944,6 +2944,100 @@ fn memory() -> Page {
     p.push(recent)
 }
 
+const KEYBOARD_LAYOUTS: [(&str, &str); 6] = [
+    ("us", "English (US)"),
+    ("gb", "English (UK)"),
+    ("de", "German"),
+    ("fr", "French"),
+    ("es", "Spanish"),
+    ("dvorak", "Dvorak"),
+];
+
+fn next_layout(current: &str) -> &'static str {
+    let current = current.split(',').next().unwrap_or(current);
+    let index = KEYBOARD_LAYOUTS
+        .iter()
+        .position(|(code, _)| *code == current)
+        .unwrap_or(0);
+    KEYBOARD_LAYOUTS[(index + 1) % KEYBOARD_LAYOUTS.len()].0
+}
+
+fn keyboard_action(id: &str, action: &str) -> Result<(), String> {
+    if id == "layout" && action == "select" {
+        let live = run("hyprctl", &["getoption", "input:kb_layout"])
+            .and_then(|text| {
+                text.strip_prefix("str: ")
+                    .map(|value| value.trim().to_string())
+            })
+            .unwrap_or_else(|| "us".into());
+        let next = next_layout(&live);
+        let path = config_dir().join("hypr/settings.json");
+        let mut stored = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+        let object = stored
+            .as_object_mut()
+            .ok_or("appearance settings must be a JSON object")?;
+        object.insert("kb_layout".into(), serde_json::Value::String(next.into()));
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        std::fs::write(
+            &path,
+            serde_json::to_string_pretty(&stored).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        let _ = std::process::Command::new("hyprctl").arg("reload").status();
+        return Ok(());
+    }
+    if action == "action" && id == "ime-config" {
+        return std::process::Command::new("fcitx5-configtool")
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+    }
+    Ok(())
+}
+
+fn set_bug_flag(path: &std::path::Path, key: &str, value: bool) -> Result<(), String> {
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    let mut doc = text
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|error| error.to_string())?;
+    doc.insert(key, toml_edit::value(value));
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    std::fs::write(path, doc.to_string()).map_err(|error| error.to_string())
+}
+
+fn privacy_action(id: &str, action: &str) -> Result<(), String> {
+    if action == "toggle" {
+        let key = match id {
+            "bug-upload" => "upload_enabled",
+            "bug-notify" => "notify_fixed",
+            _ => return Ok(()),
+        };
+        let path = config_dir().join("bread/breadbug.toml");
+        let prefs = bug_prefs();
+        let current = if key == "upload_enabled" {
+            prefs.upload
+        } else {
+            prefs.notify
+        };
+        return set_bug_flag(&path, key, !current);
+    }
+    if action == "action" && id == "bug-folder" {
+        return std::process::Command::new("xdg-open")
+            .arg(home_dir().join(".local/share/breadbug"))
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+    }
+    Ok(())
+}
+
 fn storage_action(id: &str, action: &str) -> Result<(), String> {
     if action != "action" {
         return Ok(());
@@ -4007,6 +4101,34 @@ fn run_planned(planned: Option<Planned>) -> Result<(), String> {
 /// state comes from the system again. Errors are returned in Page.status.
 pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page {
     let current = load(page);
+    if page == "keyboard" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = keyboard_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not apply that setting: {message}");
+        }
+        return reloaded;
+    }
+    if page == "privacy" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = privacy_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not save that setting: {message}");
+        }
+        return reloaded;
+    }
     if page == "storage" {
         let id = current
             .blocks
@@ -4255,6 +4377,32 @@ mod action_tests {
             })
         );
         assert_eq!(planned_block("updates", false, "toggle"), None);
+    }
+
+    #[test]
+    fn keyboard_layouts_cycle_through_the_list() {
+        assert_eq!(super::next_layout("us"), "gb");
+        assert_eq!(super::next_layout("gb,us"), "de");
+        assert_eq!(super::next_layout("dvorak"), "us");
+        assert_eq!(super::next_layout("unknown"), "gb");
+    }
+
+    #[test]
+    fn bug_flags_keep_the_rest_of_the_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "bos-settings-slint-bug-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("breadbug.toml");
+        std::fs::write(&path, "# keep\nnotify_fixed = true\nexcluded = [\"x\"]\n").unwrap();
+        super::set_bug_flag(&path, "upload_enabled", true).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("# keep"));
+        assert!(text.contains("excluded = [\"x\"]"));
+        assert!(text.contains("notify_fixed = true"));
+        assert!(text.contains("upload_enabled = true"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
