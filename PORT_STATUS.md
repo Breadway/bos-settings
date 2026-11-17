@@ -184,18 +184,18 @@ parity_check.py fails while any item is not [x].
 - [x] view `Defaults` -> slint-prototype/src/pagedata.rs
 
 ## Get apps
-- [ ] command `app_store::install_store_app`
-- [ ] command `app_store::search_apps`
-- [ ] command `aur::install_aur_package`
-- [ ] command `aur::search_aur`
-- [ ] command `optional::enable_flathub`
-- [ ] command `optional::get_optional_software`
-- [ ] command `packages::get_installed_packages`
-- [ ] view `AppsHub`
-- [ ] view `Aur`
-- [ ] view `GetAppsHub`
-- [ ] view `Optional`
-- [ ] view `Packages`
+- [x] command `app_store::install_store_app` -> slint-prototype/src/apps.rs
+- [x] command `app_store::search_apps` -> slint-prototype/src/apps.rs
+- [x] command `aur::install_aur_package` -> slint-prototype/src/apps.rs
+- [x] command `aur::search_aur` -> slint-prototype/src/apps.rs
+- [x] command `optional::enable_flathub` -> slint-prototype/src/apps.rs
+- [x] command `optional::get_optional_software` -> slint-prototype/src/apps.rs
+- [x] command `packages::get_installed_packages` -> slint-prototype/src/apps.rs
+- [~] view `AppsHub`
+- [~] view `Aur`
+- [x] view `GetAppsHub` -> slint-prototype/src/pagedata.rs
+- [~] view `Optional`
+- [~] view `Packages`
 
 ## Startup
 - [ ] command `autostart::command`
