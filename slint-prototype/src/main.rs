@@ -8,6 +8,7 @@
 //! navigation, shown so the shell matches, and those pages do not write
 //! anything.
 
+mod breadram;
 mod data;
 mod extra_icons;
 mod icons;

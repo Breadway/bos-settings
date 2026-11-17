@@ -329,6 +329,10 @@ fn apply_state(page: &mut Page) {
 }
 
 fn apply_state_with(map: &HashMap<String, String>, page: &mut Page) {
+    // Memory shows the daemon's file, never the prototype's own scratch state.
+    if page.id == "memory" {
+        return;
+    }
     for (block_index, block) in page.blocks.iter_mut().enumerate() {
         let block_key = format!("{}:block{block_index}", page.id);
         if block.tag == "toggle" {
@@ -2527,6 +2531,32 @@ fn snapshot_rows() -> Vec<Row> {
 
 // ---------------------------------------------------------------------- memory
 
+const MEMORY_ACTIONS: [(&str, &str); 6] = [
+    ("cgroup_soft_limit", "Soft memory limits"),
+    ("reclaim_protection", "Reclaim protection"),
+    ("unload_idle_model", "Unload idle models"),
+    ("sleep_model", "Sleep model backends"),
+    ("reduce_job_concurrency", "Reduce job workers"),
+    ("queue_background_job", "Delay background jobs"),
+];
+
+fn memory_profile_index(cfg: &crate::breadram::Config) -> i32 {
+    if cfg.mode.as_deref() == Some("monitor") {
+        return 0;
+    }
+    if cfg
+        .allowed_actions
+        .iter()
+        .any(|action| action == "queue_background_job")
+    {
+        return 2;
+    }
+    if cfg.mode.is_some() {
+        return 1;
+    }
+    -1
+}
+
 fn memory() -> Page {
     let mut p = page("memory", "System", "Memory", "");
     let running = run("pgrep", &["-x", "breadram"])
@@ -2551,6 +2581,16 @@ fn memory() -> Page {
     }];
     p = p.push(right);
 
+    let cfg = match crate::breadram::load() {
+        Ok(cfg) => cfg,
+        Err(error) => {
+            p.status = format!("Could not read the breadram config: {error}");
+            return p.push(note(
+                "The memory settings stay closed until that file parses again. Nothing was written.",
+            ));
+        }
+    };
+
     let mut start = group("Starting point");
     start.hint =
         "Named setups that fill in the settings below. You can still change anything afterwards."
@@ -2566,7 +2606,7 @@ fn memory() -> Page {
             "Desktop".into(),
             "Headless server".into(),
         ],
-        selected: 0,
+        selected: memory_profile_index(&cfg),
         tag: "plain".into(),
         ..Row::default()
     }];
@@ -2575,87 +2615,127 @@ fn memory() -> Page {
     let mut automation = group("Automation");
     automation.hint =
         "What the daemon may do on its own. Unticked actions never run automatically.".into();
-    automation.rows = vec![
-        Row {
-            kind: "select".into(),
-            id: "mode".into(),
-            label: "Mode".into(),
-            hint: "Monitor watches and explains. Automatic acts within the ticked actions.".into(),
-            value: "Automatic".into(),
-            options: vec!["Monitor".into(), "Automatic".into()],
-            ..Row::default()
+    let mut rows = vec![Row {
+        kind: "select".into(),
+        id: "mode".into(),
+        label: "Mode".into(),
+        hint: "Monitor watches and explains. Automatic acts within the ticked actions.".into(),
+        value: match cfg.mode.as_deref() {
+            Some("automatic") => "Automatic".into(),
+            _ => "Monitor".into(),
         },
-        Row {
+        options: vec!["Monitor".into(), "Automatic".into()],
+        selected: if cfg.mode.as_deref() == Some("automatic") { 1 } else { 0 },
+        ..Row::default()
+    }];
+    for (code, label) in MEMORY_ACTIONS {
+        let on = cfg.allowed_actions.iter().any(|action| action == code);
+        rows.push(Row {
             kind: "check".into(),
-            id: "soft-limits".into(),
-            label: "Soft memory limits".into(),
-            hint: "Allowed.".into(),
-            checked: true,
+            id: code.into(),
+            label: label.into(),
+            hint: if on {
+                "Allowed.".into()
+            } else {
+                "Off. The daemon will not do this.".into()
+            },
+            checked: on,
             ..Row::default()
-        },
-        Row {
-            kind: "check".into(),
-            id: "reclaim".into(),
-            label: "Reclaim protection".into(),
-            hint: "Allowed.".into(),
-            checked: true,
-            ..Row::default()
-        },
-        Row {
-            kind: "check".into(),
-            id: "unload".into(),
-            label: "Unload idle models".into(),
-            hint: "Allowed.".into(),
-            checked: true,
-            ..Row::default()
-        },
-        Row {
-            kind: "check".into(),
-            id: "sleep-model".into(),
-            label: "Sleep model backends".into(),
-            hint: "Allowed.".into(),
-            checked: true,
-            ..Row::default()
-        },
-        Row {
-            kind: "check".into(),
-            id: "workers".into(),
-            label: "Reduce job workers".into(),
-            hint: "Off. The daemon will not do this.".into(),
-            ..Row::default()
-        },
-        Row {
-            kind: "check".into(),
-            id: "background".into(),
-            label: "Delay background jobs".into(),
-            hint: "Off. The daemon will not do this.".into(),
-            ..Row::default()
-        },
-        Row {
-            kind: "tags".into(),
-            id: "never-touch".into(),
-            label: "Never touch".into(),
-            options: vec!["exe:Hyprland".into(), "unit:systemd-logind.service".into()],
-            ..Row::default()
-        },
-    ];
+        });
+    }
+    rows.push(Row {
+        kind: "tags".into(),
+        id: "never-touch".into(),
+        label: "Never touch".into(),
+        options: cfg.protected.clone(),
+        ..Row::default()
+    });
+    automation.rows = rows;
     p = p.push(automation);
 
     let mut backends = group("Model backends");
     backends.hint = "Extra programs the daemon may ask to release memory. Each one only watches the workload scope you name.".into();
-    backends.rows = vec![Row {
-        kind: "provider".into(),
-        id: "backend-llama".into(),
-        label: "llma-server".into(),
-        hint: "http://127.0.0.1:7301".into(),
-        value: "http://127.0.0.1:7301".into(),
-        detail: "unit:llamacpp.service".into(),
-        tag: "llama-server".into(),
-        action: "Remove".into(),
-        checked: true,
-        ..Row::default()
-    }];
+    for provider in &cfg.providers {
+        backends.rows.push(Row {
+            kind: "provider".into(),
+            id: format!("provider:{}", provider.name),
+            label: provider.name.clone(),
+            hint: provider.url.clone(),
+            value: provider.url.clone(),
+            detail: provider.scope.clone(),
+            tag: provider.name.clone(),
+            action: "Remove".into(),
+            checked: provider.allow_automation,
+            ..Row::default()
+        });
+    }
+    if backends.rows.is_empty() {
+        backends.rows.push(Row {
+            kind: "hint".into(),
+            id: "no-providers".into(),
+            label: "No model backends configured.".into(),
+            ..Row::default()
+        });
+    }
     p.push(backends)
+}
+
+fn memory_action(id: &str, action: &str) -> Result<(), String> {
+    memory_action_at(&crate::breadram::path(), id, action)
+}
+
+fn memory_action_at(
+    path: &std::path::Path,
+    id: &str,
+    action: &str,
+) -> Result<(), String> {
+    let mut cfg = crate::breadram::load_from(path)?;
+    if action == "select" && id == "mode" {
+        cfg.mode = Some(if cfg.mode.as_deref() == Some("automatic") {
+            "monitor".to_string()
+        } else {
+            "automatic".to_string()
+        });
+        return crate::breadram::save_to(path, &cfg);
+    }
+    if action == "toggle" {
+        if !MEMORY_ACTIONS.iter().any(|(code, _)| *code == id) {
+            return Ok(());
+        }
+        if let Some(index) = cfg.allowed_actions.iter().position(|code| code == id) {
+            cfg.allowed_actions.remove(index);
+        } else {
+            cfg.allowed_actions.push(id.to_string());
+        }
+        return crate::breadram::save_to(path, &cfg);
+    }
+    if let Some(index) = action.strip_prefix("seg:").and_then(|v| v.parse().ok()) {
+        if id == "profile" {
+            let profile = match index {
+                0 => "monitor",
+                1 => "desktop",
+                2 => "headless-server",
+                _ => return Ok(()),
+            };
+            return crate::breadram::apply_profile_to(path, profile);
+        }
+    }
+    if let Some(index) = action
+        .strip_prefix("tag-remove:")
+        .and_then(|v| v.parse::<usize>().ok())
+    {
+        if cfg.protected.get(index).is_some() {
+            cfg.protected.remove(index);
+            return crate::breadram::save_to(path, &cfg);
+        }
+    }
+    if action == "action" {
+        if let Some(name) = id.strip_prefix("provider:") {
+            cfg.providers.retain(|provider| provider.name != name);
+            return crate::breadram::save_to(path, &cfg);
+        }
+    }
+    Ok(())
 }
 
 // --------------------------------------------------------------------- getapps
@@ -3372,7 +3452,12 @@ fn planned_row(page: &str, id: &str, checked: bool, action: &str) -> Option<Plan
     }
 }
 
-fn planned_block(page: &str, on: bool) -> Option<Planned> {
+fn planned_block(page: &str, on: bool, action: &str) -> Option<Planned> {
+    // Only the hero switch toggles the radio. Add device, Add a place and
+    // Add VPN share the hero action buttons and must never change radio state.
+    if action != "toggle" {
+        return None;
+    }
     match page {
         "network" => Some(Planned {
             program: "nmcli",
@@ -3398,6 +3483,20 @@ fn run_planned(planned: Option<Planned>) -> Result<(), String> {
 /// state comes from the system again. Errors are returned in Page.status.
 pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page {
     let current = load(page);
+    if page == "memory" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = memory_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not save that setting: {message}");
+        }
+        return reloaded;
+    }
     let planned = current
         .blocks
         .get(block)
@@ -3413,12 +3512,12 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
 
 /// Hero toggles change radio state rather than a row, so they look at the
 /// block's current value to decide which way to switch.
-pub fn apply_block_action(page: &str, block: usize, _action: &str) -> Page {
+pub fn apply_block_action(page: &str, block: usize, action: &str) -> Page {
     let current = load(page);
     let planned = current
         .blocks
         .get(block)
-        .and_then(|b| planned_block(page, b.on));
+        .and_then(|b| planned_block(page, b.on, action));
     let error = run_planned(planned).err();
     let mut reloaded = load(page);
     if let Some(message) = error {
@@ -3534,19 +3633,79 @@ mod action_tests {
     #[test]
     fn radios_toggle_against_the_shown_state() {
         assert_eq!(
-            planned_block("network", true),
+            planned_block("network", true, "toggle"),
             Some(Planned {
                 program: "nmcli",
                 args: vec!["radio".into(), "wifi".into(), "off".into()],
             })
         );
         assert_eq!(
-            planned_block("bluetooth", false),
+            planned_block("bluetooth", false, "toggle"),
             Some(Planned {
                 program: "bluetoothctl",
                 args: vec!["power".into(), "on".into()],
             })
         );
-        assert_eq!(planned_block("updates", false), None);
+        assert_eq!(planned_block("updates", false, "toggle"), None);
+    }
+
+    #[test]
+    fn memory_actions_write_the_real_config_shape() {
+        let dir = std::env::temp_dir().join(format!(
+            "bos-settings-slint-memory-actions-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("breadram.toml");
+        std::fs::write(
+            &path,
+            "mode = \"monitor\"\n\n[automation]\nallowed_actions = [\"reclaim_protection\"]\n\n[protection]\nprotected = [\"exe:Hyprland\", \"unit:logind.service\"]\n\n[[providers]]\nname = \"llama-server\"\nkind = \"llama_cpp\"\nurl = \"http://127.0.0.1:7301\"\nscope = \"unit:llamacpp.service\"\nallow_automation = true\ncommand = [\"/usr/bin/hook\"]\n",
+        )
+        .unwrap();
+        super::memory_action_at(&path, "mode", "select").unwrap();
+        assert_eq!(
+            crate::breadram::load_from(&path).unwrap().mode.as_deref(),
+            Some("automatic")
+        );
+        super::memory_action_at(&path, "cgroup_soft_limit", "toggle").unwrap();
+        let cfg = crate::breadram::load_from(&path).unwrap();
+        assert!(cfg
+            .allowed_actions
+            .contains(&"cgroup_soft_limit".to_string()));
+        super::memory_action_at(&path, "reclaim_protection", "toggle").unwrap();
+        let cfg = crate::breadram::load_from(&path).unwrap();
+        assert!(!cfg
+            .allowed_actions
+            .contains(&"reclaim_protection".to_string()));
+        super::memory_action_at(&path, "never-touch", "tag-remove:0").unwrap();
+        let cfg = crate::breadram::load_from(&path).unwrap();
+        assert_eq!(cfg.protected, vec!["unit:logind.service".to_string()]);
+        super::memory_action_at(&path, "profile", "seg:2").unwrap();
+        let cfg = crate::breadram::load_from(&path).unwrap();
+        assert_eq!(cfg.mode.as_deref(), Some("automatic"));
+        assert!(cfg
+            .allowed_actions
+            .contains(&"queue_background_job".to_string()));
+        super::memory_action_at(&path, "provider:llama-server", "action").unwrap();
+        let cfg = crate::breadram::load_from(&path).unwrap();
+        assert!(cfg.providers.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn hero_add_buttons_do_not_touch_the_radio() {
+        for page in ["network", "bluetooth"] {
+            assert_eq!(
+                planned_block(page, true, "action"),
+                None,
+                "{page} Add action must not toggle"
+            );
+            assert_eq!(
+                planned_block(page, false, "again"),
+                None,
+                "{page} second Add action must not toggle"
+            );
+        }
+        assert!(planned_block("network", true, "toggle").is_some());
     }
 }
