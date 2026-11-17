@@ -5016,6 +5016,44 @@ fn breadsearch_set_scope(everything: bool) -> Result<(), String> {
 }
 
 fn desktop_action(id: &str, action: &str) -> Result<(), String> {
+    if id == "font" {
+        if let Some(index) = action.strip_prefix("seg:").and_then(|v| v.parse::<usize>().ok()) {
+            let fonts = [
+                "Varela Round",
+                "Outfit",
+                "Inter",
+                "Noto Sans",
+                "JetBrains Mono",
+            ];
+            let mut style = crate::breadbar::load();
+            if let Some(font) = fonts.get(index) {
+                style.font_family = font.to_string();
+                crate::breadbar::save(&style)?;
+            }
+            return Ok(());
+        }
+    }
+    if let Some(text) = action.strip_prefix("slider:") {
+        let number: f64 = text.parse().map_err(|_| "bad value".to_string())?;
+        let mut style = crate::breadbar::load();
+        match id {
+            "text-size" => style.font_size = number.round().clamp(8.0, 32.0) as u32,
+            "workspace-size" => style.workspace_font_size = number.round().clamp(8.0, 40.0) as u32,
+            "inactive" => style.workspace_inactive_opacity = number.clamp(0.0, 1.0),
+            _ => return Ok(()),
+        }
+        crate::breadbar::save(&style)?;
+        return Ok(());
+    }
+    if id == "css" && action == "action" {
+        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "nano".to_string());
+        return Command::new("kitty")
+            .args(["-e", &editor])
+            .arg(config_dir().join("breadbar/style.css"))
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+    }
     if id == "shot-notify" && action == "toggle" {
         let mut shot = crate::breadshot::load();
         shot.silent = !shot.silent;
@@ -5704,28 +5742,34 @@ fn desktop() -> Page {
         "Bar, launcher, screenshots and desktop tools.",
     );
 
+    let bar_style = crate::breadbar::load();
+    let fonts = [
+        "Varela Round",
+        "Outfit",
+        "Inter",
+        "Noto Sans",
+        "JetBrains Mono",
+    ];
     let mut bar = group("Bar");
     bar.rows = vec![
         Row {
             kind: "select".into(),
             id: "font".into(),
             label: "Font".into(),
-            value: "Varela Round".into(),
-            options: vec![
-                "Varela Round".into(),
-                "Outfit".into(),
-                "Inter".into(),
-                "Noto Sans".into(),
-                "JetBrains Mono".into(),
-            ],
+            value: bar_style.font_family.clone(),
+            options: fonts.iter().map(|f| f.to_string()).collect(),
+            selected: fonts
+                .iter()
+                .position(|f| *f == bar_style.font_family)
+                .unwrap_or(0) as i32,
             ..Row::default()
         },
         Row {
             kind: "slider".into(),
             id: "text-size".into(),
             label: "Text size".into(),
-            value: "14 px".into(),
-            amount: 14.0,
+            value: format!("{} px", bar_style.font_size),
+            amount: bar_style.font_size as f32,
             min: 8.0,
             max: 32.0,
             ..Row::default()
@@ -5734,8 +5778,8 @@ fn desktop() -> Page {
             kind: "slider".into(),
             id: "workspace-size".into(),
             label: "Workspace number size".into(),
-            value: "20 px".into(),
-            amount: 20.0,
+            value: format!("{} px", bar_style.workspace_font_size),
+            amount: bar_style.workspace_font_size as f32,
             min: 8.0,
             max: 40.0,
             ..Row::default()
@@ -5745,8 +5789,8 @@ fn desktop() -> Page {
             id: "inactive".into(),
             label: "Inactive workspaces".into(),
             hint: "How visible the numbers of workspaces you're not on are.".into(),
-            value: "45%".into(),
-            amount: 0.45,
+            value: format!("{:.0}%", bar_style.workspace_inactive_opacity * 100.0),
+            amount: bar_style.workspace_inactive_opacity as f32,
             min: 0.0,
             max: 1.0,
             ..Row::default()
@@ -5763,9 +5807,11 @@ fn desktop() -> Page {
     let mut style = group("Bar style sheet");
     style.hint = "The CSS file behind the settings above, for changes they don't cover.".into();
     style.rows = vec![Row {
-        kind: "disclosure".into(),
+        kind: "line".into(),
         id: "css".into(),
         label: "Edit the CSS".into(),
+        hint: "~/.config/breadbar/style.css".into(),
+        action: "Edit".into(),
         ..Row::default()
     }];
     p = p.push(style);

@@ -294,10 +294,10 @@ parity_check.py fails while any item is not [x].
 - [x] view `Memory` -> slint-prototype/src/pagedata.rs
 
 ## Desktop
-- [ ] command `breadbar::get_breadbar_css`
-- [ ] command `breadbar::get_breadbar_style`
+- [x] command `breadbar::get_breadbar_css` -> slint-prototype/src/breadbar.rs
+- [x] command `breadbar::get_breadbar_style` -> slint-prototype/src/breadbar.rs
 - [ ] command `breadbar::save_breadbar_css`
-- [ ] command `breadbar::save_breadbar_style`
+- [x] command `breadbar::save_breadbar_style` -> slint-prototype/src/breadbar.rs
 - [ ] command `breadbox::get_breadbox_contexts`
 - [ ] command `breadbox::save_breadbox_contexts`
 - [x] command `breadclip::open_breadclip` -> slint-prototype/src/pagedata.rs

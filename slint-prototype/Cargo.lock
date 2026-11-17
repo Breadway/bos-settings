@@ -410,6 +410,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "image",
+ "regex",
  "serde",
  "serde_json",
  "slint",
