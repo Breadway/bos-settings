@@ -2214,6 +2214,16 @@ fn power() -> Page {
     h.arc = ring_arc(info.percent.unwrap_or(0.0));
     p = p.push(h);
     let mut performance = group("Performance");
+    p = p.rows(
+        "Power menu",
+        vec![Row {
+            kind: "line".into(),
+            id: "link-power-menu".into(),
+            label: "Sleep, restart or power off".into(),
+            action: "open:power-menu".into(),
+            ..Row::default()
+        }],
+    );
     performance.rows = vec![
         Row {
             kind: "seg".into(),
@@ -2740,6 +2750,17 @@ fn displays() -> Page {
         "Arrange your monitors. Every change can be kept or reverted.",
     );
     let layout = display_draft();
+    p = p.rows(
+        "Screen comfort",
+        vec![Row {
+            kind: "line".into(),
+            id: "link-nightlight".into(),
+            label: "Night light".into(),
+            hint: "Warmer colours after sunset.".into(),
+            action: "open:nightlight".into(),
+            ..Row::default()
+        }],
+    );
     let pending = crate::displays::status();
     if pending.id != 0 {
         let mut block = group("Keep this layout?");
@@ -4810,6 +4831,17 @@ fn updates() -> Page {
         }],
     );
     let bread = crate::bread::load();
+    p = p.rows(
+        "Automation",
+        vec![Row {
+            kind: "line".into(),
+            id: "link-bread".into(),
+            label: "All automation settings".into(),
+            hint: "Adapters, modules and daemon control.".into(),
+            action: "open:bread".into(),
+            ..Row::default()
+        }],
+    );
     p = p.rows(
         "Bread daemon",
         vec![
@@ -7704,6 +7736,27 @@ fn getapps() -> Page {
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     p = p.rows(
+        "More apps",
+        vec![
+            Row {
+                kind: "line".into(),
+                id: "link-packages".into(),
+                label: "Installed packages".into(),
+                hint: "Everything pacman knows about.".into(),
+                action: "open:packages".into(),
+                ..Row::default()
+            },
+            Row {
+                kind: "line".into(),
+                id: "link-aur".into(),
+                label: "AUR".into(),
+                hint: "Community packages, built on your computer.".into(),
+                action: "open:aur".into(),
+                ..Row::default()
+            },
+        ],
+    );
+    p = p.rows(
         "Search apps",
         vec![Row {
             kind: "input".into(),
@@ -8517,6 +8570,17 @@ fn keyboard() -> Page {
     let layout = run("hyprctl", &["getoption", "input:kb_layout"])
         .and_then(|s| s.strip_prefix("str: ").map(|v| v.trim().to_string()))
         .unwrap_or_else(|| "us".into());
+    p = p.rows(
+        "Input method",
+        vec![Row {
+            kind: "line".into(),
+            id: "link-ime".into(),
+            label: "Type in Japanese, Korean or Chinese".into(),
+            hint: "Installs and switches input methods.".into(),
+            action: "open:ime".into(),
+            ..Row::default()
+        }],
+    );
     p = p.rows(
         "Keyboard layout",
         vec![Row {
