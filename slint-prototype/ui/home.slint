@@ -62,12 +62,15 @@ component Tile inherits Rectangle {
 }
 
 export component HomePage inherits VerticalLayout {
+    in property <length> content-width: 716px;
     in property <string> greeting;
     in property <string> lede;
     in property <[QuickTile]> tiles;
     in property <[AttentionRow]> attention;
     in property <string> battery-label;
     in property <string> battery-detail;
+    // SVG arc for the charge ring, from src/main.rs.
+    in property <string> battery-arc;
     in property <string> storage-detail;
     in property <float> storage-used;
     in property <string> status;
@@ -77,6 +80,8 @@ export component HomePage inherits VerticalLayout {
     // content. The app.slint column supplies the outer padding.
     spacing: 0px;
     alignment: start;
+    // .summaries is repeat(auto-fit, minmax(220px, 1fr)).
+    property <length> cards-width: root.content-width >= 450px ? (root.content-width - 10px) / 2 : root.content-width;
     PageTitle { text: greeting; }
     Rectangle { height: 6px; }
     Lede { text: lede; }
@@ -84,11 +89,13 @@ export component HomePage inherits VerticalLayout {
 
     GridLayout {
         spacing: 10px;
-        min-width: 716px;
+        // .quick is repeat(auto-fit, minmax(170px, 1fr)): 4 columns at 716,
+        // 3 once the column drops below 710.
+        property <int> columns: max(1, Math.floor((root.content-width / 1px + 10) / 180));
         for tile[index] in root.tiles: Tile {
             tile: tile;
-            row: Math.floor(index / 4);
-            col: Math.mod(index, 4);
+            row: Math.floor(index / columns);
+            col: Math.mod(index, columns);
             clicked(id) => { root.tile-clicked(id); }
         }
     }
@@ -110,7 +117,7 @@ export component HomePage inherits VerticalLayout {
     if storage-detail != "": HorizontalLayout {
         spacing: 10px;
         if battery-label != "": Rectangle {
-            width: (root.width - 10px) / 2;
+            width: cards-width;
             border-radius: Theme.radius;
             background: Theme.surface;
             border-width: 1px;
@@ -123,13 +130,37 @@ export component HomePage inherits VerticalLayout {
                     horizontal-stretch: 0;
                     alignment: center;
                     Rectangle {
-                        // The shipping summary draws a plain accent ring, not
-                        // a progress arc.
+                        // The shipping app draws a full accent ring, which we
+                        // treat as a bug: the ring fills to the actual charge,
+                        // with a faint track behind it. Path coordinates are
+                        // 48-unit space; Slint insets the fitted viewbox by
+                        // half the stroke, so r=24 and a 4px stroke render a
+                        // 48px outer ring with 40px inside.
                         width: 48px;
                         height: 48px;
-                        border-radius: 24px;
-                        border-width: 4px;
-                        border-color: Theme.accent;
+                        horizontal-stretch: 0;
+                        Path {
+                            width: 48px;
+                            height: 48px;
+                            viewbox-width: 48;
+                            viewbox-height: 48;
+                            commands: "M 24 0 A 24 24 0 1 1 24 48 A 24 24 0 1 1 24 0";
+                            fill: transparent;
+                            stroke: Theme.surface-2;
+                            stroke-width: 4px;
+                            stroke-line-cap: butt;
+                        }
+                        Path {
+                            width: 48px;
+                            height: 48px;
+                            viewbox-width: 48;
+                            viewbox-height: 48;
+                            commands: root.battery-arc;
+                            fill: transparent;
+                            stroke: Theme.accent;
+                            stroke-width: 4px;
+                            stroke-line-cap: round;
+                        }
                         Text {
                             text: battery-label;
                             font-family: Theme.body;
@@ -150,7 +181,7 @@ export component HomePage inherits VerticalLayout {
             }
         }
         Rectangle {
-            width: (root.width - 10px) / 2;
+            width: cards-width;
             border-radius: Theme.radius;
             background: Theme.surface;
             border-width: 1px;
