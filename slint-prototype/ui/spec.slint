@@ -131,10 +131,10 @@ component CheckBox inherits Rectangle {
 }
 
 component InputBox inherits Rectangle {
-    in property <string> text;
+    in-out property <string> text;
     in property <string> placeholder;
     in property <length> box-width: 150px;
-    callback accepted();
+    callback accepted(string);
     height: 34px;
     width: box-width;
     border-radius: 9px;
@@ -146,12 +146,13 @@ component InputBox inherits Rectangle {
         y: 0;
         width: parent.width - 20px;
         height: 100%;
-        text: root.text;
+        text <=> root.text;
         font-family: Theme.body;
         color: Theme.fg;
         font-size: 13px;
         vertical-alignment: center;
         single-line: true;
+        accepted => { root.accepted(root.text); }
     }
     if root.text == "" && root.placeholder != "": Text {
         x: 11px;
@@ -163,7 +164,6 @@ component InputBox inherits Rectangle {
         font-size: 13px;
         vertical-alignment: center;
     }
-    TouchArea { clicked => { root.accepted(); } }
 }
 
 component IconTile inherits Rectangle {
@@ -661,6 +661,7 @@ component SpecRowView inherits VerticalLayout {
                     width: parent.width;
                     box-width: 0px;
                     placeholder: "Type and press Enter…";
+                    accepted(text) => { root.act("tag-add:" + text); }
                 }
             }
         }
@@ -710,6 +711,7 @@ component SpecRowView inherits VerticalLayout {
                 InputBox {
                     text: data.tag != "" ? data.tag : data.label;
                     box-width: 161px;
+                    accepted(text) => { root.act("provider-name:" + text); }
                 }
             }
             HorizontalLayout {
@@ -724,7 +726,11 @@ component SpecRowView inherits VerticalLayout {
                     horizontal-alignment: right;
                     vertical-alignment: center;
                 }
-                InputBox { text: data.value; box-width: 161px; }
+                InputBox {
+                    text: data.value;
+                    box-width: 161px;
+                    accepted(text) => { root.act("provider-url:" + text); }
+                }
             }
             HorizontalLayout {
                 spacing: 8px;
@@ -738,15 +744,27 @@ component SpecRowView inherits VerticalLayout {
                     horizontal-alignment: right;
                     vertical-alignment: center;
                 }
-                InputBox { text: data.detail; box-width: 161px; }
+                InputBox {
+                    text: data.detail;
+                    box-width: 161px;
+                    accepted(text) => { root.act("provider-scope:" + text); }
+                }
             }
             HorizontalLayout {
                 width: 100%;
                 spacing: 0px;
                 alignment: start;
-                SelectControl { width: 108px; height: 34px; }
+                SelectControl {
+                    width: 108px;
+                    height: 34px;
+                    text: data.options.length > 0 ? data.options[0] : "";
+                    clicked => { root.act("provider-kind"); }
+                }
                 Rectangle { width: 24px; height: 1px; }
-                CheckBox { checked: data.checked; }
+                CheckBox {
+                    checked: data.checked;
+                    toggled(v) => { root.act("provider-automation"); }
+                }
                 Rectangle { width: 8px; height: 1px; }
                 Text {
                     text: "May act";
@@ -965,7 +983,7 @@ component SpecRowView inherits VerticalLayout {
                     minimum: data.min;
                     maximum: data.max;
                     value: data.amount;
-                    changed(v) => { root.act("slider:" + round(v)); }
+                    changed(v) => { root.act("slider:" + v); }
                 }
                 if data.kind == "slider" || data.kind == "value": Text {
                     text: data.value;
@@ -1012,7 +1030,7 @@ component SpecRowView inherits VerticalLayout {
                 if data.kind == "input": InputBox {
                     text: data.value;
                     box-width: 200px;
-                    accepted => { root.act("input"); }
+                    accepted(text) => { root.act("input:" + text); }
                 }
             }
         }

@@ -64,19 +64,22 @@ app at the pixel level.
 - **Write coverage.** These controls now run the shipping command and reload the
   page from the system: Network (Wi-Fi radio, VPN up/down), Bluetooth (power,
   connect, disconnect, forget), Sound (default output and input), Power
-  (brightness on release, power profile) and Memory (mode, allowed actions,
-  profiles, protected scopes, backend removal). Memory reads and writes
-  `~/.config/breadram/breadram.toml` through a comment-preserving TOML edit with
-  an atomic write and a `.bak`, and refuses to write a file it cannot parse.
+  (brightness on release, power profile), Memory (mode, allowed actions,
+  profiles, protected scopes and additions, backends and their fields, jobs,
+  pause), Mouse & touchpad (speed, scroll, tap, natural scrolling, click method,
+  disable while typing), Accessibility (text size, cursor size, stronger
+  borders, reduce motion) and Lock screen (background mode, clock, seconds,
+  font). Memory reads and writes `~/.config/breadram/breadram.toml` through a
+  comment-preserving TOML edit with an atomic write and a `.bak`, and refuses to
+  write a file it cannot parse. Mouse and accessibility use the same managed
+  Lua include, JSON and GTK sizes as the shipping app. Lock screen edits
+  `breadlock/breadlock.toml` and keeps its unmodelled keys.
   Every other toggle, select, slider and chip still only remembers its position
   in `~/.local/state/bos-settings-slint/state.toml`. Failures appear under the
   page lede instead of being swallowed.
-- **Memory limits.** The Memory page now shows the daemon's file, but it still
-  lacks the shipping page's live status, pause control, background-job group,
-  effective-settings section, capability list and history. Backend text fields
-  and the protected-scope input are display-only until the prototype's text
-  inputs are editable; existing protected scopes can be removed, and backends
-  can be removed, not added.
+- **Memory refresh.** Live daemon values, effective rules, capabilities and
+  history load when the page opens and after an action; the shipping page also
+  refreshes them every ten seconds.
 - **Svelte stays.** `frontend/` remains the shipping UI until every page has the
   same write paths and dialogs here. Deleting it before then would drop
   capabilities, so the port lands page by page.
