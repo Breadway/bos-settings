@@ -118,7 +118,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `sound::set_default_sound_device` -> slint-prototype/src/sound.rs
 - [x] command `sound::set_sound_mute` -> slint-prototype/src/sound.rs
 - [x] command `sound::set_sound_volume` -> slint-prototype/src/sound.rs
-- [ ] command `sound::watch_sound`
+- [x] command `sound::watch_sound` -> slint-prototype/src/sound.rs
 - [x] view `Sound` -> slint-prototype/src/pagedata.rs
 
 ## Power
@@ -354,9 +354,9 @@ parity_check.py fails while any item is not [x].
 - [x] view `AboutHub` -> slint-prototype/ui/about.slint
 
 ## System
-- [ ] command `breadcrumbs::get_breadcrumbs_config`
+- [x] command `breadcrumbs::get_breadcrumbs_config` -> slint-prototype/src/network.rs
 - [x] command `breadcrumbs::get_current_place` -> slint-prototype/src/network.rs
-- [ ] command `breadcrumbs::save_breadcrumbs_config`
+- [x] command `breadcrumbs::save_breadcrumbs_config` -> slint-prototype/src/network.rs
 - [x] command `breadcrumbs::set_current_place` -> slint-prototype/src/network.rs
 - [x] command `config::atomic_write` -> slint-prototype/src/config.rs
 - [x] command `config::config_dir` -> slint-prototype/src/config.rs
