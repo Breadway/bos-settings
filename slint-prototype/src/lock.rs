@@ -79,11 +79,14 @@ pub fn load_from(path: &Path) -> Result<Config, String> {
     if let Some(font) = get_string(&doc, "font", "family") {
         cfg.font_family = font;
     }
-    if let Some(timeout) = doc
-        .get("security")
-        .and_then(Item::as_table)
-        .and_then(|table| table.get("fail_timeout_ms"))
-        .and_then(Item::as_integer)
+    if let Some(timeout) = ["input", "security"]
+        .iter()
+        .find_map(|table| {
+            doc.get(table)
+                .and_then(Item::as_table)
+                .and_then(|table| table.get("fail_timeout_ms"))
+                .and_then(Item::as_integer)
+        })
     {
         cfg.fail_timeout_ms = timeout;
     }
@@ -209,11 +212,10 @@ mod tests {
             "# keep\n[background]\nmode = \"color\"\npath = \"/tmp/wall.png\"\n[input]\nfail_timeout_ms = 900\n",
         )
         .unwrap();
-        let cfg = Config {
-            background_mode: "image".into(),
-            clock_format: "%H:%M:%S".into(),
-            font_family: "Outfit".into(),
-        };
+        let mut cfg = load_from(&path).unwrap();
+        cfg.background_mode = "image".into();
+        cfg.clock_format = "%H:%M:%S".into();
+        cfg.font_family = "Outfit".into();
         save_to(&path, &cfg).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("# keep"));
