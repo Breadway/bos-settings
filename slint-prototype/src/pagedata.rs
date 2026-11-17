@@ -5,10 +5,12 @@
 //! identical across pages. Reads mirror src/src/commands/*; nothing here shells
 //! out to bos-settings itself.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Row {
     pub kind: String,
     pub id: String,
@@ -27,6 +29,32 @@ pub struct Row {
     pub max: f32,
     pub options: Vec<String>,
     pub selected: i32,
+}
+
+impl Default for Row {
+    fn default() -> Self {
+        Self {
+            kind: String::new(),
+            id: String::new(),
+            label: String::new(),
+            hint: String::new(),
+            value: String::new(),
+            detail: String::new(),
+            icon: String::new(),
+            action: String::new(),
+            tag: String::new(),
+            checked: false,
+            primary: false,
+            // Rows are enabled unless a page says otherwise; a plain derive
+            // would default this to false and dim every control.
+            enabled: true,
+            amount: 0.0,
+            min: 0.0,
+            max: 0.0,
+            options: Vec::new(),
+            selected: -1,
+        }
+    }
 }
 
 #[derive(Clone, Default)]
@@ -52,6 +80,7 @@ pub struct Page {
     pub crumb: String,
     pub title: String,
     pub lede: String,
+    pub status: String,
     pub blocks: Vec<Block>,
 }
 
@@ -96,6 +125,7 @@ fn page(id: &str, crumb: &str, title: &str, lede: &str) -> Page {
         crumb: crumb.into(),
         title: title.into(),
         lede: lede.into(),
+        status: String::new(),
         blocks: Vec::new(),
     }
 }
@@ -182,7 +212,7 @@ fn item(id: &str, icon: &str, label: &str, hint: &str) -> Row {
 // ---------------------------------------------------------------- notifications
 
 pub fn load(id: &str) -> Page {
-    match id {
+    let mut page = match id {
         "notifications" => notifications(),
         "sharing" => sharing(),
         "defaults" => defaults(),
@@ -207,7 +237,137 @@ pub fn load(id: &str) -> Page {
         "desktop" => desktop(),
         "keyboard" => keyboard(),
         other => page(other, "", other, ""),
+    };
+    apply_state(&mut page);
+    page
+}
+
+// ---------------------------------------------------------------- UI state
+// Controls remember their value in one small TOML file, so the prototype is
+// usable without the shipping app. Keys are "page:row-id" or "page:blockN".
+
+fn state_path() -> PathBuf {
+    std::env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/state")))
+        .unwrap_or_else(|| PathBuf::from(".local/state"))
+        .join("bos-settings-slint/state.toml")
+}
+
+fn read_state(path: &std::path::Path) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    let Some(table) = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| text.parse::<toml::Value>().ok())
+        .and_then(|value| value.as_table().cloned())
+    else {
+        return map;
+    };
+    for (key, value) in table {
+        if let Some(text) = value.as_str() {
+            map.insert(key, text.to_string());
+        }
     }
+    map
+}
+
+fn state() -> &'static Mutex<HashMap<String, String>> {
+    static STATE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+    STATE.get_or_init(|| Mutex::new(read_state(&state_path())))
+}
+
+fn save_state(map: &HashMap<String, String>) {
+    let path = state_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let mut table = toml::map::Map::new();
+    for (key, value) in map {
+        table.insert(key.clone(), toml::Value::String(value.clone()));
+    }
+    if let Ok(text) = toml::to_string(&toml::Value::Table(table)) {
+        let _ = std::fs::write(path, text);
+    }
+}
+
+fn state_put(key: String, value: String) {
+    let mut map = state().lock().unwrap();
+    map.insert(key, value);
+    save_state(&map);
+}
+
+fn apply_state(page: &mut Page) {
+    let map = state().lock().unwrap();
+    apply_state_with(&map, page);
+}
+
+fn apply_state_with(map: &HashMap<String, String>, page: &mut Page) {
+    for (block_index, block) in page.blocks.iter_mut().enumerate() {
+        let block_key = format!("{}:block{block_index}", page.id);
+        if block.tag == "toggle" {
+            if let Some(value) = map.get(&block_key) {
+                block.on = value == "true";
+            }
+        }
+        if block.kind == "chips" {
+            if let Some(index) = map.get(&block_key).and_then(|v| v.parse::<i32>().ok()) {
+                block.chip = index;
+            }
+        }
+        for row in &mut block.rows {
+            let key = format!("{}:{}", page.id, row.id);
+            match row.kind.as_str() {
+                "toggle" => {
+                    if let Some(value) = map.get(&key) {
+                        row.checked = value == "true";
+                    }
+                }
+                "select" => {
+                    if row.selected == 0 {
+                        if let Some(index) = row.options.iter().position(|o| *o == row.value) {
+                            row.selected = index as i32;
+                        }
+                    }
+                    if let Some(index) = map.get(&key).and_then(|v| v.parse::<i32>().ok()) {
+                        if let Some(option) = row.options.get(index as usize) {
+                            row.value = option.clone();
+                            row.selected = index;
+                        }
+                    }
+                }
+                "seg" => {
+                    if let Some(index) = map.get(&key).and_then(|v| v.parse::<i32>().ok()) {
+                        row.selected = index;
+                    }
+                }
+                "chips" => {
+                    if let Some(index) = map.get(&key).and_then(|v| v.parse::<i32>().ok()) {
+                        row.selected = index;
+                    }
+                }
+                "slider" => {
+                    if let Some(value) = map.get(&key).and_then(|v| v.parse::<f32>().ok()) {
+                        row.amount = value;
+                        row.value = number_label(value, &row.value);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Keeps a slider's unit ("%", " px") while replacing the number it shows.
+fn number_label(value: f32, previous: &str) -> String {
+    let suffix: String = previous
+        .trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == '-')
+        .to_string();
+    let number = if (value - value.round()).abs() < 0.05 {
+        format!("{}", value.round() as i64)
+    } else {
+        format!("{value:.1}")
+    };
+    format!("{number}{suffix}")
 }
 
 fn notifications() -> Page {
@@ -2435,8 +2595,8 @@ fn desktop() -> Page {
             label: "Text size".into(),
             value: "14 px".into(),
             amount: 14.0,
-            min: 9.0,
-            max: 22.0,
+            min: 8.0,
+            max: 32.0,
             ..Row::default()
         },
         Row {
@@ -2445,8 +2605,8 @@ fn desktop() -> Page {
             label: "Workspace number size".into(),
             value: "20 px".into(),
             amount: 20.0,
-            min: 10.0,
-            max: 32.0,
+            min: 8.0,
+            max: 40.0,
             ..Row::default()
         },
         Row {
@@ -2455,9 +2615,9 @@ fn desktop() -> Page {
             label: "Inactive workspaces".into(),
             hint: "How visible the numbers of workspaces you're not on are.".into(),
             value: "45%".into(),
-            amount: 45.0,
+            amount: 0.45,
             min: 0.0,
-            max: 100.0,
+            max: 1.0,
             ..Row::default()
         },
         Row {
@@ -2527,12 +2687,7 @@ fn desktop() -> Page {
             label: "Shortcuts".into(),
             hint: "I set up. Change them in Keyboard.".into(),
             action: "Open".into(),
-            ..Row::default()
-        },
-        Row {
-            kind: "leftbutton".into(),
-            id: "shot-now".into(),
-            action: "Take one now".into(),
+            value: "Take one now".into(),
             ..Row::default()
         },
         Row {
@@ -2560,12 +2715,7 @@ fn desktop() -> Page {
             label: "Keep clipboard history".into(),
             hint: "Stopped · doesn't start at login".into(),
             action: "Start".into(),
-            ..Row::default()
-        },
-        Row {
-            kind: "leftbutton".into(),
-            id: "clip-logs".into(),
-            action: "Logs".into(),
+            value: "Logs".into(),
             ..Row::default()
         },
     ];

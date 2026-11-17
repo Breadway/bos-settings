@@ -46,13 +46,13 @@ component SelectControl inherits Rectangle {
     in property <string> text;
     in property <bool> enabled: true;
     callback clicked();
-    height: 32px;
-    width: max(128px, label.preferred-width + 42px);
+    height: 40px;
+    width: max(128px, label.preferred-width + 58px);
     border-radius: 10px;
     background: Theme.bg;
     opacity: enabled ? 1 : 0.5;
     label := Text {
-        x: 10px;
+        x: 11px;
         y: (parent.height - self.height) / 2;
         text: root.text;
         font-family: Theme.body;
@@ -392,6 +392,13 @@ component SpecRowView inherits VerticalLayout {
                     primary: data.primary;
                     clicked => { root.act("action"); }
                 }
+                if data.value != "": PillButton {
+                    text: data.value;
+                    small: true;
+                    ghost: !data.primary;
+                    primary: false;
+                    clicked => { root.act("action2"); }
+                }
                 if data.tag == "toggle": Toggle {
                     checked: data.checked;
                     toggled(v) => { root.act("toggle"); }
@@ -456,7 +463,8 @@ component SpecRowView inherits VerticalLayout {
     if data.kind != "item" && data.kind != "bar" && data.kind != "line" && data.kind != "detail" && data.kind != "hint" && data.kind != "disclosure" && data.kind != "leftbutton" && data.kind != "chips": HorizontalLayout {
         width: 100%;
         padding-top: 11px;
-        padding-bottom: 12px;
+        padding-bottom: 11px;
+        padding-left: 2px;
         padding-right: 2px;
         spacing: 14px;
 
@@ -485,7 +493,6 @@ component SpecRowView inherits VerticalLayout {
         VerticalLayout {
             horizontal-stretch: 0;
             alignment: center;
-            padding-right: 3px;
             HorizontalLayout {
                 spacing: 8px;
                 alignment: end;
