@@ -11,7 +11,7 @@ parity_check.py fails while any item is not [x].
 - [ ] command `dashboard::get_radio_states`
 - [ ] command `dashboard::restore_radio_states`
 - [ ] command `dashboard::set_airplane_mode`
-- [ ] view `Home`
+- [~] view `Home`
 
 ## Appearance
 - [ ] command `appearance::get_appearance`

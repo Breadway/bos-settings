@@ -121,11 +121,61 @@ fn main() -> anyhow::Result<()> {
 
     let window_weak = window.as_weak();
     window.on_tile_clicked(move |id| {
+        let Some(window) = window_weak.upgrade() else {
+            return;
+        };
         if id.as_str() == "appearance" {
-            if let Some(window) = window_weak.upgrade() {
-                window.set_page("appearance".into());
-            }
+            window.set_page("appearance".into());
+            return;
         }
+        let action = id.to_string();
+        let weak = window.as_weak();
+        std::thread::spawn(move || {
+            let result = match action.as_str() {
+                "wifi" => {
+                    let on = data::load_home().wifi_on;
+                    data::set_wifi_radio(!on)
+                }
+                "bluetooth" => {
+                    let on = data::load_home().bluetooth_on;
+                    data::set_bluetooth_power(!on)
+                }
+                "night" => {
+                    let mut cfg = crate::nightlight::load();
+                    cfg.enabled = !cfg.enabled;
+                    crate::nightlight::save(&cfg)
+                }
+                "dnd" => crate::notifications::toggle("dnd"),
+                "power" => {
+                    let home = data::load_home();
+                    if home.automatic_power {
+                        Err("Automatic power mode is on".into())
+                    } else {
+                        let profiles = ["power-saver", "balanced", "performance"];
+                        let index = profiles
+                            .iter()
+                            .position(|profile| *profile == home.power_mode)
+                            .unwrap_or(1);
+                        data::set_power_mode(profiles[(index + 1) % profiles.len()])
+                    }
+                }
+                "plane" => {
+                    let home = data::load_home();
+                    data::set_airplane(!home.airplane_on)
+                }
+                _ => Ok(()),
+            };
+            let home = data::load_home();
+            let _ = slint::invoke_from_event_loop(move || {
+                let Some(window) = weak.upgrade() else {
+                    return;
+                };
+                apply_home(&window, &home);
+                if let Err(error) = result {
+                    window.set_home_status(format!("Could not apply that change: {error}").into());
+                }
+            });
+        });
     });
 
     let window_weak = window.as_weak();
@@ -644,6 +694,21 @@ fn apply_home(window: &AppWindow, home: &data::Home) {
     window.set_account_host(home.hostname.clone().into());
     window.set_greeting(home.greeting.clone().into());
     window.set_lede(home.lede.clone().into());
+    let night_detail = if home.night_installed {
+        if home.night_on { "On" } else { "Off" }
+    } else {
+        "Not installed"
+    };
+    let power_detail = if home.automatic_power {
+        format!("{} · Auto", home.power_mode_detail)
+    } else {
+        home.power_mode_detail.clone()
+    };
+    let plane_detail = if home.airplane_available {
+        if home.airplane_on { "Radios off" } else { "Off" }
+    } else {
+        "No radios found"
+    };
     let tiles = vec![
         tile("wifi", "Wi-Fi", &home.wifi_detail, "wifi", home.wifi_on),
         tile(
@@ -653,10 +718,31 @@ fn apply_home(window: &AppWindow, home: &data::Home) {
             "bluetooth",
             home.bluetooth_on,
         ),
-        tile("night", "Night light", "Off", "moon", false),
-        tile("dnd", "Do not disturb", "Off", "bell", false),
-        tile("power", "Power mode", "Not available", "zap", false),
-        tile("plane", "Airplane mode", "Off", "plane", false),
+        tile_enabled(
+            "night",
+            "Night light",
+            night_detail,
+            "moon",
+            home.night_on,
+            home.night_installed,
+        ),
+        tile("dnd", "Do not disturb", &home.dnd_detail, "bell", home.dnd_on),
+        tile_enabled(
+            "power",
+            "Power mode",
+            &power_detail,
+            "zap",
+            false,
+            !home.power_mode.is_empty() && !home.automatic_power,
+        ),
+        tile_enabled(
+            "plane",
+            "Airplane mode",
+            plane_detail,
+            "plane",
+            home.airplane_on,
+            home.airplane_available,
+        ),
     ];
     window.set_tiles(slint::ModelRc::new(slint::VecModel::from(tiles)));
     let attention = vec![
@@ -667,15 +753,23 @@ fn apply_home(window: &AppWindow, home: &data::Home) {
             primary: false,
         },
         AttentionRow {
-            label: home.updates.clone().into(),
+            label: if home.update_count > 0 {
+                format!("{} updates ready", home.update_count).into()
+            } else {
+                "No package updates found".into()
+            },
             hint: "System packages, bread apps and firmware.".into(),
             action: "Review".into(),
             primary: true,
         },
         AttentionRow {
-            label: "Set up a file backup".into(),
+            label: if home.backup_ready {
+                "Your file backup".into()
+            } else {
+                "Set up a file backup".into()
+            },
             hint: "System snapshots protect the system. A separate backup protects your personal files.".into(),
-            action: "Set up".into(),
+            action: if home.backup_ready { "Review".into() } else { "Set up".into() },
             primary: false,
         },
     ];
@@ -685,7 +779,14 @@ fn apply_home(window: &AppWindow, home: &data::Home) {
     window.set_battery_detail(home.battery_detail.clone().into());
     window.set_storage_detail(home.storage_detail.clone().into());
     window.set_storage_used(home.storage_used);
-    window.set_home_status(home.notes.join(" ").into());
+    let mut status = home.notes.join(" ");
+    if !home.connected.is_empty() {
+        if !status.is_empty() {
+            status.push(' ');
+        }
+        status.push_str(&format!("Connected: {}.", home.connected));
+    }
+    window.set_home_status(status.into());
 }
 
 /// SVG arc for the battery ring: a path in a 48-unit box, starting at twelve
@@ -708,13 +809,24 @@ fn battery_arc(fraction: f32) -> String {
 }
 
 fn tile(id: &str, title: &str, detail: &str, glyph: &str, on: bool) -> QuickTile {
+    tile_enabled(id, title, detail, glyph, on, true)
+}
+
+fn tile_enabled(
+    id: &str,
+    title: &str,
+    detail: &str,
+    glyph: &str,
+    on: bool,
+    enabled: bool,
+) -> QuickTile {
     QuickTile {
         id: id.into(),
         title: title.into(),
         detail: detail.into(),
         icon: icons::commands(glyph).into(),
         on,
-        enabled: true,
+        enabled,
     }
 }
 
