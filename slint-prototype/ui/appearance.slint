@@ -194,8 +194,11 @@ export component AppearancePage inherits VerticalLayout {
     callback text-changed();
     // repeat(auto-fill, minmax(200px, 1fr)): equal columns, whatever the
     // longest theme name is.
-    property <int> theme-cols: max(1, Math.floor((root.content-width / 1px - 34 + 8) / 208));
-    property <length> theme-card-width: (root.content-width - 34px - (theme-cols - 1) * 8px) / theme-cols;
+    // Derived from the page's own width, not the window-derived content
+    // width: if those ever disagree (a resize the poll has not seen yet) the
+    // cards must still fit the group instead of spilling out of it.
+    property <int> theme-cols: max(1, Math.floor((root.width / 1px - 34 + 8) / 208));
+    property <length> theme-card-width: (root.width - 34px - (theme-cols - 1) * 8px) / theme-cols;
     spacing: 0px;
     alignment: start;
     HorizontalLayout {
@@ -343,7 +346,7 @@ export component AppearancePage inherits VerticalLayout {
         title: "LIBRARY";
         GridLayout {
             spacing: 8px;
-            property <int> cols: max(1, Math.floor((root.content-width / 1px + 8) / 128));
+            property <int> cols: max(1, Math.floor((root.width / 1px + 8) / 128));
             for thumb[index] in root.library: Rectangle {
                 row: Math.floor(index / cols);
                 col: Math.mod(index, cols);
