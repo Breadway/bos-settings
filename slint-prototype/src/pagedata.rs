@@ -270,6 +270,7 @@ pub fn load(id: &str) -> Page {
         "privacyhub" => privacy(),
         "keyboardhub" => keyboard(),
         "desktophub" => desktop(),
+        "power-menu" => power_menu(),
         "desktop" => desktop(),
         "keyboard" => keyboard(),
         other => page(other, "", other, ""),
@@ -921,11 +922,17 @@ fn printers() -> Page {
                     let name = rest.split_whitespace().next().unwrap_or("").to_string();
                     let status = rest.to_string();
                     let ready = status.contains("is idle");
+                    let disabled = status.contains("disabled");
                     let mut row = item(
                         &format!("printer:{name}"),
                         "",
                         &name.replace(['_', '-'], " "),
-                        &if ready {
+                        &if disabled {
+                            format!(
+                                "Turned off{}",
+                                if name == default { " · default printer" } else { "" }
+                            )
+                        } else if ready {
                             format!("Ready{}", if name == default { " · default printer" } else { "" })
                         } else {
                             status.clone()
@@ -977,8 +984,8 @@ fn printers() -> Page {
         Row {
             kind: "input".into(),
             id: "printer-add".into(),
-            label: "Name and address".into(),
-            hint: "Like Office ipp://192.168.1.20/ipp/print".into(),
+            label: "Add by address".into(),
+            hint: "192.168.1.20 or ipp://printer.local/ipp/print".into(),
             value: String::new(),
             action: "Add".into(),
             ..Row::default()
@@ -1465,10 +1472,38 @@ fn users_action(id: &str, action: &str) -> Result<(), String> {
 
 // --------------------------------------------------------------------- startup
 
+fn is_system_startup(command: &str) -> bool {
+    const CORE: [&str; 5] = [
+        "breadbar",
+        "hypridle",
+        "bos-netcheck",
+        "breadhelp --autostart",
+        "bash -c 'command -v bos-first-boot >/dev/null && exec bos-first-boot'",
+    ];
+    const BUSES: [&str; 9] = [
+        "breadpaper",
+        "breadshot",
+        "breadlock",
+        "breadbox",
+        "breadhelp",
+        "breadpad",
+        "breadclip",
+        "breadsearch",
+        "bread",
+    ];
+    CORE.contains(&command)
+        || BUSES.iter().any(|bus| {
+            command == format!("bash -c 'command -v {bus} >/dev/null && exec {bus} listen'")
+        })
+        || command == "hyprsunset"
+        || (command.starts_with("hyprsunset ") && !command.contains(';'))
+}
+
 fn startup() -> Page {
     let mut p = page("startup", "Apps", "Startup", "Apps that open when you log in.");
     let dir = config_dir().join("autostart");
     let mut rows = Vec::new();
+    let mut services = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -1500,14 +1535,45 @@ fn startup() -> Page {
             } else {
                 name
             };
+            if is_system_startup(&exec) {
+                services.push(Row {
+                    kind: "item".into(),
+                    id: format!("startup:{}", path.display()),
+                    label: label.clone(),
+                    hint: if hidden {
+                        format!("Turned off · {exec}")
+                    } else {
+                        format!("Runs at login · {exec}")
+                    },
+                    tag: if hidden { "".into() } else { "toggle".into() },
+                    checked: !hidden,
+                    ..Row::default()
+                });
+                continue;
+            }
             rows.push(Row {
                 kind: "item".into(),
                 id: format!("startup:{}", path.display()),
                 label,
                 hint: if hidden { "Off".into() } else { "Opens at login".into() },
-                action: "Edit".into(),
                 tag: if hidden { "".into() } else { "toggle".into() },
                 checked: !hidden,
+                ..Row::default()
+            });
+            rows.push(Row {
+                kind: "input".into(),
+                id: format!("startup-command:{}", path.display()),
+                label: "Command".into(),
+                hint: "Press Enter to save a different command.".into(),
+                value: exec.clone(),
+                action: "Save".into(),
+                ..Row::default()
+            });
+            rows.push(Row {
+                kind: "line".into(),
+                id: format!("startup-remove:{}", path.display()),
+                label: "Remove from startup".into(),
+                action: "Remove".into(),
                 ..Row::default()
             });
         }
@@ -1524,19 +1590,66 @@ fn startup() -> Page {
     } else {
         p = p.rows("Your apps", rows);
     }
+    if !services.is_empty() {
+        let mut block = group("Desktop services");
+        block.hint = "These run the bar, locking, screenshots and other parts of the desktop. Leave them on unless you are replacing one.".into();
+        block.rows = services;
+        p = p.push(block);
+    }
     p = p.rows(
         "Add a command",
-        vec![Row {
-            kind: "input".into(),
-            id: "new-startup".into(),
-            label: "Command".into(),
-            hint: "Runs once each time you log in.".into(),
-            value: String::new(),
-            action: "Add".into(),
-            ..Row::default()
-        }],
+        vec![
+            Row {
+                kind: "input".into(),
+                id: "new-startup".into(),
+                label: "Command".into(),
+                hint: "Runs once each time you log in.".into(),
+                value: String::new(),
+                action: "Add".into(),
+                ..Row::default()
+            },
+            Row {
+                kind: "input".into(),
+                id: "new-startup-app".into(),
+                label: "Add an app".into(),
+                hint: "An app id from /usr/share/applications, like org.gnome.Nautilus.desktop".into(),
+                value: String::new(),
+                action: "Add".into(),
+                ..Row::default()
+            },
+        ],
     );
     p
+}
+
+fn startup_add_app(id: &str) -> Result<(), String> {
+    let id = id.trim();
+    if id.is_empty() || !id.ends_with(".desktop") {
+        return Err("Enter an app id ending in .desktop".into());
+    }
+    if !id
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    {
+        return Err("That app id has characters a startup entry cannot hold".into());
+    }
+    let path = PathBuf::from("/usr/share/applications").join(id);
+    let text = std::fs::read_to_string(&path).map_err(|_| "No such app is installed".to_string())?;
+    let name = text
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("Name="))
+        .unwrap_or(id.trim_end_matches(".desktop"))
+        .to_string();
+    let slug: String = id
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect();
+    let dir = config_dir().join("autostart");
+    std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    let body = format!(
+        "[Desktop Entry]\nType=Application\nName={name}\nExec=gtk-launch {id}\nTerminal=false\nX-GNOME-Autostart-enabled=true\n"
+    );
+    std::fs::write(dir.join(format!("{slug}.desktop")), body).map_err(|error| error.to_string())
 }
 
 fn startup_add(command: &str) -> Result<(), String> {
@@ -4554,6 +4667,42 @@ fn updates_action(id: &str, action: &str) -> Result<(), String> {
 
 // --------------------------------------------------------------------- restore
 
+fn power_menu() -> Page {
+    let mut p = page("power-menu", "Power", "Power", "Choose what happens next.");
+    let mut block = group("Power");
+    block.rows = vec![
+        Row {
+            kind: "line".into(),
+            id: "power-sleep".into(),
+            label: "Sleep".into(),
+            action: "action".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "line".into(),
+            id: "power-restart".into(),
+            label: "Restart".into(),
+            action: "action".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "line".into(),
+            id: "power-off".into(),
+            label: "Power off".into(),
+            action: "action".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "line".into(),
+            id: "power-cancel".into(),
+            label: "Cancel".into(),
+            action: "open:home".into(),
+            ..Row::default()
+        },
+    ];
+    p.push(block)
+}
+
 fn hub(id: &str, title: &str, lede: &str, tabs: &[(&str, &str)]) -> Page {
     let mut p = page(id, "Settings", title, lede);
     let mut block = group(title);
@@ -6081,6 +6230,32 @@ fn notifications_action(id: &str, action: &str) -> Result<(), String> {
 fn startup_action(id: &str, action: &str) -> Result<(), String> {
     if id == "new-startup" && action.starts_with("input:") {
         return startup_add(action.trim_start_matches("input:"));
+    }
+    if id == "new-startup-app" && action.starts_with("input:") {
+        return startup_add_app(action.trim_start_matches("input:"));
+    }
+    if let Some(path) = id.strip_prefix("startup-command:") {
+        if action.starts_with("input:") {
+            let command = action.trim_start_matches("input:").trim();
+            if command.is_empty() || command.contains(['\n', '\r']) {
+                return Err("Enter a single command".into());
+            }
+            let file = std::path::Path::new(path);
+            let text = std::fs::read_to_string(file).map_err(|error| error.to_string())?;
+            let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
+            let index = lines
+                .iter()
+                .position(|line| line.trim_start().starts_with("Exec="))
+                .ok_or("that startup entry has no command")?;
+            lines[index] = format!("Exec={command}");
+            return std::fs::write(file, lines.join("\n") + "\n")
+                .map_err(|error| error.to_string());
+        }
+    }
+    if let Some(path) = id.strip_prefix("startup-remove:") {
+        if action == "action" {
+            return std::fs::remove_file(path).map_err(|error| error.to_string());
+        }
     }
     let Some(path) = id.strip_prefix("startup:") else {
         return Ok(());
@@ -7910,26 +8085,46 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
                 return Ok(());
             }
             if id == "printer-add" && action_name.starts_with("input:") {
-                let text = action_name.trim_start_matches("input:");
-                let mut parts = text.splitn(2, char::is_whitespace);
-                let name = parts.next().unwrap_or("").trim();
-                let uri = parts.next().unwrap_or("").trim();
-                if !crate::util::valid_printer_name(name) {
-                    return Err("Printer names use letters, numbers, dots, dashes or underscores".into());
+                let raw = action_name.trim_start_matches("input:").trim();
+                if raw.is_empty() || raw.contains(char::is_whitespace) {
+                    return Err("Enter the printer's address".into());
                 }
-                if uri.is_empty()
-                    || uri.contains(char::is_whitespace)
-                    || !(uri.starts_with("ipp://")
-                        || uri.starts_with("ipps://")
-                        || uri.starts_with("socket://")
-                        || uri.starts_with("usb://")
-                        || uri.starts_with("dnssd://"))
+                let uri = if raw.contains("://") {
+                    raw.to_string()
+                } else {
+                    format!("ipp://{raw}/ipp/print")
+                };
+                if !(uri.starts_with("ipp://")
+                    || uri.starts_with("ipps://")
+                    || uri.starts_with("socket://")
+                    || uri.starts_with("usb://")
+                    || uri.starts_with("dnssd://"))
                 {
                     return Err(
                         "Use an ipp://, ipps://, socket://, usb:// or dnssd:// address".into(),
                     );
                 }
-                return add_printer(name, uri);
+                let host = uri
+                    .split("://")
+                    .nth(1)
+                    .unwrap_or("printer")
+                    .split(['/', ':'])
+                    .next()
+                    .unwrap_or("printer");
+                let name: String = format!("Printer_{host}")
+                    .chars()
+                    .map(|ch| {
+                        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+                            ch
+                        } else {
+                            '_'
+                        }
+                    })
+                    .collect();
+                if !crate::util::valid_printer_name(&name) {
+                    return Err("That address does not give a usable printer name".into());
+                }
+                return add_printer(&name, &uri);
             }
             if (id == "find" || id == "printer-settings") && action_name == "action" {
                 Command::new("system-config-printer")
@@ -8145,6 +8340,25 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
         }
         return reloaded;
     }
+    if page == "power-menu" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = match id.as_str() {
+            "power-sleep" => crate::power_settings::run_power_action("sleep").err(),
+            "power-restart" => crate::power_settings::run_power_action("restart").err(),
+            "power-off" => crate::power_settings::run_power_action("power-off").err(),
+            _ => None,
+        };
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = message;
+        }
+        return reloaded;
+    }
     if matches!(page, "snapshots" | "backup") {
         let id = current
             .blocks
@@ -8311,10 +8525,11 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
             .and_then(|b| b.rows.get(row))
             .map(|r| r.id.clone())
             .unwrap_or_default();
-        let error = startup_action(&id, action).err();
+        let action_name = action.to_string();
+        let error = startup_action(&id, &action_name).err();
         let mut reloaded = load(page);
         if let Some(message) = error {
-            reloaded.status = format!("Could not apply that setting: {message}");
+            reloaded.status = message;
         }
         return reloaded;
     }

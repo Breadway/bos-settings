@@ -137,7 +137,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `power_settings::set_automatic_power_mode` -> slint-prototype/src/power_settings.rs
 - [x] command `power_settings::set_power_mode` -> slint-prototype/src/data.rs
 - [~] view `Power`
-- [~] view `PowerMenu`
+- [x] view `PowerMenu` -> slint-prototype/src/pagedata.rs
 
 ## Mouse
 - [x] command `desktop_preferences::get_desktop_preferences` -> slint-prototype/src/prefs.rs
@@ -161,7 +161,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `printing::get_printers` -> slint-prototype/src/pagedata.rs
 - [x] command `printing::open_printer_settings` -> slint-prototype/src/pagedata.rs
 - [x] command `printing::set_default_printer` -> slint-prototype/src/pagedata.rs
-- [~] view `Printing`
+- [x] view `Printing` -> slint-prototype/src/pagedata.rs
 
 ## Lock screen
 - [x] command `breadlock::breadlock_example_path` -> slint-prototype/src/lock.rs
@@ -194,7 +194,7 @@ parity_check.py fails while any item is not [x].
 - [x] view `AppsHub` -> slint-prototype/src/pagedata.rs
 - [x] view `Aur` -> slint-prototype/src/pagedata.rs
 - [x] view `GetAppsHub` -> slint-prototype/src/pagedata.rs
-- [~] view `Optional`
+- [x] view `Optional` -> slint-prototype/src/pagedata.rs
 - [x] view `Packages` -> slint-prototype/src/pagedata.rs
 
 ## Startup
@@ -206,7 +206,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `autostart::save_autostart_entries` -> slint-prototype/src/pagedata.rs
 - [x] command `autostart::store_entries` -> slint-prototype/src/pagedata.rs
 - [x] command `autostart::upsert_entry` -> slint-prototype/src/pagedata.rs
-- [~] view `Autostart`
+- [x] view `Autostart` -> slint-prototype/src/pagedata.rs
 
 ## Updates
 - [x] command `bread::get_bread_config` -> slint-prototype/src/bread.rs
