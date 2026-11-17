@@ -252,19 +252,19 @@ parity_check.py fails while any item is not [x].
 ## Users
 - [ ] command `users::add_user`
 - [ ] command `users::change_password`
-- [ ] command `users::get_users_info`
+- [x] command `users::get_users_info` -> slint-prototype/src/pagedata.rs
 - [ ] command `users::remove_user`
-- [ ] view `Users`
+- [~] view `Users`
 
 ## Date and time
-- [ ] command `datetime::get_datetime_info`
-- [ ] command `datetime::set_ntp_enabled`
-- [ ] command `datetime::set_timezone`
+- [x] command `datetime::get_datetime_info` -> slint-prototype/src/pagedata.rs
+- [x] command `datetime::set_ntp_enabled` -> slint-prototype/src/pagedata.rs
+- [x] command `datetime::set_timezone` -> slint-prototype/src/pagedata.rs
 - [ ] command `locale_settings::get_clock_format`
-- [ ] command `locale_settings::get_locale_info`
-- [ ] command `locale_settings::save_locale_choice`
-- [ ] command `locale_settings::set_clock_format`
-- [ ] view `DateTime`
+- [x] command `locale_settings::get_locale_info` -> slint-prototype/src/pagedata.rs
+- [x] command `locale_settings::save_locale_choice` -> slint-prototype/src/pagedata.rs
+- [x] command `locale_settings::set_clock_format` -> slint-prototype/src/pagedata.rs
+- [x] view `DateTime` -> slint-prototype/src/pagedata.rs
 
 ## Accessibility
 - [ ] command `a11y::get_a11y_status`
