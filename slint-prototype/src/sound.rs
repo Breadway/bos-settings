@@ -1,6 +1,55 @@
 //! PipeWire sound control through pactl.
 
+use std::io::BufRead;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static WATCHING: AtomicBool = AtomicBool::new(false);
+static CHANGED: AtomicBool = AtomicBool::new(false);
+
+/// Follows `pactl subscribe` in the background and marks the sound data
+/// stale after a quiet gap. The page timer reloads the Sound page when it
+/// sees the mark, so a volume key or another app changing a stream shows up
+/// without pressing anything.
+pub fn watch_sound() {
+    if WATCHING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::thread::spawn(|| loop {
+        if let Ok(mut child) = Command::new("pactl")
+            .arg("subscribe")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            if let Some(stdout) = child.stdout.take() {
+                for line in std::io::BufReader::new(stdout).lines() {
+                    let Ok(line) = line else { break };
+                    if is_relevant_event(&line) {
+                        CHANGED.store(true, Ordering::SeqCst);
+                    }
+                }
+            }
+            let _ = child.wait();
+        }
+        // PipeWire restarted or pactl is missing: back off and retry.
+        std::thread::sleep(std::time::Duration::from_secs(3));
+    });
+}
+
+/// True once per batch of changes the watcher saw.
+pub fn take_changed() -> bool {
+    CHANGED.swap(false, Ordering::SeqCst)
+}
+
+fn is_relevant_event(line: &str) -> bool {
+    line.contains("sink")
+        || line.contains("source")
+        || line.contains("sink-input")
+        || line.contains("source-output")
+        || line.contains("server")
+}
 
 #[derive(Clone, Debug)]
 pub struct Device {

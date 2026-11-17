@@ -421,6 +421,7 @@ fn main() -> anyhow::Result<()> {
     // ---- Pages built from the shared Group/Row pieces -------------------
     // The sidebar owns `page`, so a timer notices a change the way the old
     // router did, loads that page off the UI thread and applies it.
+    crate::sound::watch_sound();
     let loaded = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
     let busy = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let page_timer = slint::Timer::default();
@@ -436,6 +437,9 @@ fn main() -> anyhow::Result<()> {
                     return;
                 };
                 let page = window.get_page().to_string();
+                if page == "sound" && crate::sound::take_changed() {
+                    *loaded.lock().unwrap() = String::new();
+                }
                 if page == *loaded.lock().unwrap() || busy.load(std::sync::atomic::Ordering::SeqCst) {
                     return;
                 }
