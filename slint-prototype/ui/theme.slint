@@ -7,6 +7,8 @@ export global Theme {
     in-out property <color> bg-2: #111316;
     in-out property <color> surface: #17191c;
     in-out property <color> surface-2: #1f2226;
+    // color-mix(surface-2 70%, bg) for the preview's second pane.
+    in-out property <color> surface-2-soft: #191b1e;
     in-out property <color> fg: #e9ecef;
     in-out property <color> muted: #8b9198;
     in-out property <color> faint: #5d636a;
@@ -131,7 +133,11 @@ export component SettingRow inherits Rectangle {
             alignment: center;
             horizontal-stretch: 0;
             padding-right: 3px;
-            @children
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                @children
+            }
         }
     }
 }
@@ -191,21 +197,21 @@ export component AccentSlider inherits Rectangle {
     in property <float> maximum: 100;
     in-out property <float> value;
     callback changed(float);
-    min-width: 150px;
-    preferred-width: 170px;
-    height: 22px;
+    min-width: 80px;
+    preferred-width: 180px;
+    height: 24px;
     property <float> span: maximum - minimum;
     property <float> fraction: span <= 0 ? 0 : (value - minimum) / span;
     Rectangle {
         y: (parent.height - self.height) / 2;
-        height: 4px;
+        height: 6px;
         width: 100%;
-        border-radius: 2px;
-        background: Theme.surface-2;
+        border-radius: 3px;
+        background: Theme.track;
         Rectangle {
             width: parent.width * root.fraction;
             height: 100%;
-            border-radius: 2px;
+            border-radius: 3px;
             background: Theme.accent;
         }
     }
@@ -231,6 +237,48 @@ export component AccentSlider inherits Rectangle {
         value = minimum + fraction * span;
         root.changed(value);
     }
+}
+
+export component ValueText inherits Text {
+    font-family: Theme.body;
+    color: Theme.muted;
+    font-size: 12px;
+    width: 36px;
+    horizontal-alignment: right;
+    vertical-alignment: center;
+}
+
+// Native <select> look: dark field, no visible border, chevron on the right.
+export component SelectBox inherits Rectangle {
+    in property <string> text;
+    callback clicked;
+    height: 36px;
+    width: 132px;
+    border-radius: Theme.radius-sm;
+    background: Theme.bg;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 8px;
+        spacing: 10px;
+        alignment: space-between;
+        Text {
+            text: root.text;
+            font-family: Theme.body;
+            color: Theme.fg;
+            font-size: 13.5px;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            horizontal-stretch: 0;
+            alignment: center;
+            VectorIcon {
+                icon-size: 14px;
+                commands: "M6 9 L12 15 L18 9";
+                tint: Theme.fg;
+            }
+        }
+    }
+    TouchArea { clicked => { root.clicked(); } }
 }
 
 export component Segment inherits Rectangle {

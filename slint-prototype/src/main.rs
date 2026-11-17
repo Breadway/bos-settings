@@ -85,6 +85,15 @@ fn apply_palette(window: &AppWindow) {
     let theme = window.global::<Theme>();
     theme.set_bg(theme::solid(palette.bg));
     theme.set_surface(theme::solid(palette.surface));
+    theme.set_surface_2_soft(theme::solid(theme::mix(
+        theme::Rgba {
+            r: 0x1f,
+            g: 0x22,
+            b: 0x26,
+        },
+        palette.bg,
+        0.3,
+    )));
     // bg-2 and surface-2 are fixed in frontend/src/lib/styles/app.css; the
     // runtime palette only replaces bg, surface and the accent, so leave the
     // defaults from theme.slint alone.
@@ -228,6 +237,12 @@ fn tile(id: &str, title: &str, detail: &str, glyph: &str, on: bool) -> QuickTile
 }
 
 fn apply_appearance(window: &AppWindow, appearance: &data::Appearance) {
+    let (active, active_alpha) = split_border(&appearance.active_border);
+    let (inactive, inactive_alpha) = split_border(&appearance.inactive_border);
+    window.set_active_border(active);
+    window.set_active_border_alpha(active_alpha);
+    window.set_inactive_border(inactive);
+    window.set_inactive_border_alpha(inactive_alpha);
     window.set_gaps_in(appearance.gaps_in as f32);
     window.set_gaps_out(appearance.gaps_out as f32);
     window.set_border_size(appearance.border_size as f32);
@@ -246,6 +261,11 @@ fn read_appearance(window: &AppWindow) -> data::Appearance {
         gaps_in: window.get_gaps_in() as i64,
         gaps_out: window.get_gaps_out() as i64,
         border_size: window.get_border_size() as i64,
+        active_border: join_border(window.get_active_border(), window.get_active_border_alpha()),
+        inactive_border: join_border(
+            window.get_inactive_border(),
+            window.get_inactive_border_alpha(),
+        ),
         rounding: window.get_rounding() as i64,
         blur_enabled: window.get_blur(),
         blur_size: window.get_blur_size() as i64,
@@ -259,6 +279,34 @@ fn read_appearance(window: &AppWindow) -> data::Appearance {
             "dwindle".into()
         },
     }
+}
+
+/// Hyprland stores borders as "rgba(RRGGBBAA)"; the alpha slider edits only
+/// the last byte.
+fn split_border(text: &str) -> (slint::Color, f32) {
+    let inner = text
+        .trim()
+        .strip_prefix("rgba(")
+        .and_then(|s| s.strip_suffix(')'))
+        .filter(|s| s.len() == 8);
+    let Some(inner) = inner else {
+        return (slint::Color::from_rgb_u8(0x80, 0x80, 0x80), 255.0);
+    };
+    let byte = |i: usize| u8::from_str_radix(&inner[i..i + 2], 16).unwrap_or(0x80);
+    (
+        slint::Color::from_rgb_u8(byte(0), byte(2), byte(4)),
+        byte(6) as f32,
+    )
+}
+
+fn join_border(color: slint::Color, alpha: f32) -> String {
+    format!(
+        "rgba({:02x}{:02x}{:02x}{:02x})",
+        color.red(),
+        color.green(),
+        color.blue(),
+        alpha.clamp(0.0, 255.0) as u8
+    )
 }
 
 fn nav_items(home: &data::Home) -> Vec<NavItem> {
