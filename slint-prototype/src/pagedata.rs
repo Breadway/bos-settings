@@ -257,6 +257,19 @@ pub fn load(id: &str) -> Page {
         "restore" => restore(),
         "memory" => memory(),
         "getapps" => getapps(),
+        "aur" => aur(),
+        "packages" => packages(),
+        "firmware" => firmware(),
+        "channel" => channel(),
+        "snapshots" => snapshots(),
+        "backup" => backup(),
+        "systemhub" => systemhub(),
+        "inputhub" => inputhub(),
+        "appshub" => appshub(),
+        "restorehub" => restore(),
+        "privacyhub" => privacy(),
+        "keyboardhub" => keyboard(),
+        "desktophub" => desktop(),
         "desktop" => desktop(),
         "keyboard" => keyboard(),
         other => page(other, "", other, ""),
@@ -4541,6 +4554,268 @@ fn updates_action(id: &str, action: &str) -> Result<(), String> {
 
 // --------------------------------------------------------------------- restore
 
+fn hub(id: &str, title: &str, lede: &str, tabs: &[(&str, &str)]) -> Page {
+    let mut p = page(id, "Settings", title, lede);
+    let mut block = group(title);
+    for (page_id, label) in tabs {
+        block.rows.push(Row {
+            kind: "line".into(),
+            id: format!("hub-{page_id}"),
+            label: (*label).into(),
+            action: format!("open:{page_id}"),
+            ..Row::default()
+        });
+    }
+    p.push(block)
+}
+
+fn systemhub() -> Page {
+    hub(
+        "systemhub",
+        "Updates & backup",
+        "Updates, snapshots, and backups.",
+        &[
+            ("updates", "Updates"),
+            ("packages", "Packages"),
+            ("aur", "AUR"),
+            ("firmware", "Firmware"),
+            ("snapshots", "Snapshots"),
+            ("backup", "Backup"),
+            ("channel", "Channel"),
+        ],
+    )
+}
+
+fn inputhub() -> Page {
+    hub(
+        "inputhub",
+        "Keyboard & mouse",
+        "Shortcuts, input method, and accessibility.",
+        &[("keyboard", "Shortcuts"), ("a11y", "Accessibility")],
+    )
+}
+
+fn appshub() -> Page {
+    hub(
+        "appshub",
+        "Default apps",
+        "Browser, files, terminal, and extras.",
+        &[
+            ("defaults", "Defaults"),
+            ("getapps", "Extras"),
+            ("printers", "Printing"),
+        ],
+    )
+}
+
+fn snapshots() -> Page {
+    let mut p = page(
+        "snapshots",
+        "System",
+        "Snapshots",
+        "BOS saves the system before every update. If something breaks, go back to one of these.",
+    );
+    let (configured, live) = crate::backup::snapshot_available();
+    let mut block = group("System snapshots");
+    if live {
+        block.hint = "Snapshots aren't available in a live session. They start after you install BOS."
+            .into();
+    } else if !configured {
+        block.hint = "Snapshots aren't set up on this system yet. They start after you install BOS."
+            .into();
+    }
+    match crate::backup::snapshots() {
+        Ok(rows) if !rows.is_empty() => {
+            let mut rows = rows;
+            rows.reverse();
+            for snapshot in rows.into_iter().take(5) {
+                block.rows.push(Row {
+                    kind: "line".into(),
+                    id: format!("snapshot-restore-{}", snapshot.number),
+                    label: if snapshot.description.is_empty() {
+                        format!("Snapshot {}", snapshot.number)
+                    } else {
+                        snapshot.description.clone()
+                    },
+                    hint: format!("{} · #{}", snapshot.date, snapshot.number),
+                    action: "Restore".into(),
+                    ..Row::default()
+                });
+                block.rows.push(Row {
+                    kind: "line".into(),
+                    id: format!("snapshot-delete-{}", snapshot.number),
+                    label: format!("Delete snapshot {}", snapshot.number),
+                    hint: "This can't be undone.".into(),
+                    action: "Delete".into(),
+                    ..Row::default()
+                });
+            }
+        }
+        Ok(_) => block.rows.push(Row {
+            kind: "hint".into(),
+            id: "snapshot-none".into(),
+            label: "No snapshots yet. One is taken before every update.".into(),
+            ..Row::default()
+        }),
+        Err(error) => block.rows.push(Row {
+            kind: "hint".into(),
+            id: "snapshot-error".into(),
+            label: format!("Couldn't read snapshots. {error}"),
+            ..Row::default()
+        }),
+    }
+    if configured && !live {
+        block.rows.push(Row {
+            kind: "line".into(),
+            id: "snapshot-create".into(),
+            label: "Take a snapshot now".into(),
+            hint: "Handy before you change something by hand.".into(),
+            action: "Take snapshot".into(),
+            ..Row::default()
+        });
+        block.rows.push(Row {
+            kind: "hint".into(),
+            id: "snapshot-kept".into(),
+            label: "Up to 20 automatic snapshots and 10 important ones are kept, fewer when the disk is getting full.".into(),
+            ..Row::default()
+        });
+    }
+    p.push(block)
+}
+
+fn backup() -> Page {
+    let mut p = page(
+        "backup",
+        "System",
+        "Backup",
+        "Snapshots protect the system, not your home folder. Backups keep copies of your files somewhere else.",
+    );
+    let cfg = crate::backup::load();
+    if !command_exists("restic") {
+        let mut block = group("Back up your files");
+        block.rows.push(Row {
+            kind: "line".into(),
+            id: "backup-install".into(),
+            label: "Set up file backups".into(),
+            hint: "Installs the backup tool (restic). Needs your password.".into(),
+            action: "Set up".into(),
+            primary: true,
+            ..Row::default()
+        });
+        return p.push(block);
+    }
+    let schedule = match crate::backup::schedule().as_str() {
+        "daily" => 1,
+        "weekly" => 2,
+        _ => 0,
+    };
+    let ssh = cfg.repo.starts_with("sftp:");
+    p = p.rows(
+        "Back up your files",
+        vec![
+            Row {
+                kind: "seg".into(),
+                id: "backup-kind".into(),
+                label: "Back up to".into(),
+                options: vec!["A folder or drive".into(), "Another computer".into()],
+                selected: if ssh { 1 } else { 0 },
+                ..Row::default()
+            },
+            Row {
+                kind: "input".into(),
+                id: "backup-repo".into(),
+                label: if ssh {
+                    "Computer and folder".into()
+                } else {
+                    "Folder".into()
+                },
+                hint: if ssh {
+                    "Over SSH, like you@server:/backups/laptop".into()
+                } else if cfg.repo.is_empty() {
+                    "Pick a folder, for example on a USB drive".into()
+                } else {
+                    cfg.repo.clone()
+                },
+                value: cfg.repo.trim_start_matches("sftp:").to_string(),
+                action: "Save".into(),
+                ..Row::default()
+            },
+            Row {
+                kind: "input".into(),
+                id: "backup-password".into(),
+                label: if cfg.has_password {
+                    "Backup password (saved)".into()
+                } else {
+                    "Backup password".into()
+                },
+                hint: "Backups are encrypted with this password. Keep it somewhere safe: without it they can't be read.".into(),
+                value: String::new(),
+                action: "Save".into(),
+                ..Row::default()
+            },
+            Row {
+                kind: "select".into(),
+                id: "backup-schedule".into(),
+                label: "How often".into(),
+                hint: "Missed backups run when you next log in.".into(),
+                value: ["Only when I ask", "Every day", "Every week"][schedule].into(),
+                options: vec!["Only when I ask".into(), "Every day".into(), "Every week".into()],
+                selected: schedule as i32,
+                ..Row::default()
+            },
+            Row {
+                kind: "line".into(),
+                id: "backup-now".into(),
+                label: "Back up now".into(),
+                hint: if cfg.repo.is_empty() {
+                    "Choose where backups go first.".into()
+                } else {
+                    "Only changes since the last backup.".into()
+                },
+                action: "Back up now".into(),
+                primary: true,
+                ..Row::default()
+            },
+        ],
+    );
+    match crate::backup::restic_snapshots() {
+        Ok(rows) if !rows.is_empty() => {
+            let mut block = group("Restore files");
+            block.hint = "Files are copied into bos-restore-<snapshot>, so nothing in your home folder is overwritten.".into();
+            for snapshot in rows {
+                block.rows.push(Row {
+                    kind: "line".into(),
+                    id: format!("restic-check:{}", snapshot.id),
+                    label: format!("Backup {}", snapshot.id),
+                    hint: snapshot.time.clone(),
+                    action: "Preview".into(),
+                    ..Row::default()
+                });
+                block.rows.push(Row {
+                    kind: "line".into(),
+                    id: format!("restic-restore:{}", snapshot.id),
+                    label: format!("Restore backup {}", snapshot.id),
+                    action: "Restore".into(),
+                    ..Row::default()
+                });
+            }
+            p = p.push(block);
+        }
+        Ok(_) => {}
+        Err(error) => {
+            let mut block = group("Restore files");
+            block.rows.push(Row {
+                kind: "hint".into(),
+                id: "backup-error".into(),
+                label: format!("Couldn't read the backup: {error}"),
+                ..Row::default()
+            });
+            p = p.push(block);
+        }
+    }
+    p
+}
+
 fn restore() -> Page {
     let mut p = page(
         "restore",
@@ -4687,8 +4962,55 @@ fn restore() -> Page {
 }
 
 fn backup_action(id: &str, action: &str) -> Result<(), String> {
+    if id == "backup-install" && action == "action" {
+        return crate::updates::pacman_install(&["restic".into()]);
+    }
+    if id == "backup-kind" && action.starts_with("seg:") {
+        let index = action.trim_start_matches("seg:").parse::<usize>().unwrap_or(0);
+        let cfg = crate::backup::load();
+        let bare = cfg.repo.trim_start_matches("sftp:").to_string();
+        let repo = if index == 1 {
+            format!("sftp:{bare}")
+        } else {
+            bare
+        };
+        return crate::backup::save(&repo, None);
+    }
     if id == "backup-repo" && action.starts_with("input:") {
-        return crate::backup::save(action.trim_start_matches("input:"), None);
+        let typed = action.trim_start_matches("input:").trim();
+        let cfg = crate::backup::load();
+        let repo = if cfg.repo.starts_with("sftp:") && !typed.starts_with("sftp:") {
+            format!("sftp:{typed}")
+        } else {
+            typed.to_string()
+        };
+        return crate::backup::save(&repo, None);
+    }
+    if id == "snapshot-create" && action == "action" {
+        crate::backup::create_manual_snapshot()?;
+        return Ok(());
+    }
+    if let Some(number) = id.strip_prefix("snapshot-restore-") {
+        if action == "action" {
+            return crate::backup::restore_snapshot(number);
+        }
+    }
+    if let Some(number) = id.strip_prefix("snapshot-delete-") {
+        if action == "action" {
+            return crate::backup::delete_snapshot(number);
+        }
+    }
+    if let Some(snapshot) = id.strip_prefix("restic-check:") {
+        if action == "action" {
+            let target = crate::backup::default_restore_dir(snapshot);
+            return crate::backup::restic_restore(snapshot, &target, true);
+        }
+    }
+    if let Some(snapshot) = id.strip_prefix("restic-restore:") {
+        if action == "action" {
+            let target = crate::backup::default_restore_dir(snapshot);
+            return crate::backup::restic_restore(snapshot, &target, false);
+        }
     }
     if id == "backup-password" && action.starts_with("input:") {
         let password = action.trim_start_matches("input:");
@@ -6124,6 +6446,236 @@ fn app_results_cell() -> &'static Mutex<(Vec<crate::apps::App>, Vec<String>)> {
     RESULTS.get_or_init(|| Mutex::new((Vec::new(), Vec::new())))
 }
 
+fn aur_results_cell() -> &'static Mutex<(String, Vec<crate::apps::App>, Vec<String>)> {
+    static CELL: OnceLock<Mutex<(String, Vec<crate::apps::App>, Vec<String>)>> = OnceLock::new();
+    CELL.get_or_init(|| Mutex::new((String::new(), Vec::new(), Vec::new())))
+}
+
+fn aur() -> Page {
+    let mut p = page(
+        "aur",
+        "System",
+        "AUR",
+        "Packages built by the community. Review the PKGBUILD before you confirm.",
+    );
+    let (query, results, errors) = aur_results_cell()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clone();
+    p = p.rows(
+        "Search",
+        vec![Row {
+            kind: "input".into(),
+            id: "aur-search".into(),
+            label: "Search the AUR".into(),
+            hint: "Type a name and press Enter.".into(),
+            value: query.clone(),
+            ..Row::default()
+        }],
+    );
+    let mut block = group("Results");
+    for error in &errors {
+        block.rows.push(Row {
+            kind: "hint".into(),
+            id: "aur-error".into(),
+            label: error.clone(),
+            ..Row::default()
+        });
+    }
+    if results.is_empty() {
+        block.rows.push(Row {
+            kind: "hint".into(),
+            id: "aur-empty".into(),
+            label: if query.is_empty() {
+                "Search for a package to see results here.".into()
+            } else {
+                "No results.".into()
+            },
+            ..Row::default()
+        });
+    }
+    for app in results.iter().filter(|app| app.source == "aur") {
+        block.rows.push(Row {
+            kind: "line".into(),
+            id: format!("aur-install-{}", app.id),
+            label: app.name.clone(),
+            hint: format!("{} · {}", app.version, app.description),
+            action: if app.installed { "Installed" } else { "Install" }.into(),
+            enabled: !app.installed,
+            ..Row::default()
+        });
+    }
+    p.push(block)
+}
+
+fn packages() -> Page {
+    let mut p = page(
+        "packages",
+        "System",
+        "Packages",
+        "Bread apps installed with bakery, and the system packages below them.",
+    );
+    let installed = crate::apps::bakery_packages();
+    let outdated: Vec<String> = crate::updates::bakery_updates()
+        .map(|pending| pending.into_iter().map(|item| item.name).collect())
+        .unwrap_or_default();
+    if installed.is_empty() {
+        p = p.rows(
+            "Bread ecosystem (bakery)",
+            vec![Row {
+                kind: "hint".into(),
+                id: "packages-empty".into(),
+                label: "No bakery packages found. ~/.local/state/bakery/installed.json is missing or empty.".into(),
+                ..Row::default()
+            }],
+        );
+    } else {
+        let mut block = group("Bread ecosystem (bakery)");
+        for (name, version) in &installed {
+            let can_update = outdated.iter().any(|outdated| outdated == name);
+            block.rows.push(Row {
+                kind: "line".into(),
+                id: format!("package-update-{name}"),
+                label: name.clone(),
+                hint: version.clone(),
+                action: if can_update { "Update" } else { "" }.into(),
+                enabled: can_update,
+                ..Row::default()
+            });
+        }
+        block.rows.push(Row {
+            kind: "line".into(),
+            id: "packages-update-all".into(),
+            label: "Update all".into(),
+            hint: "Updates every bread app with bakery.".into(),
+            action: "Run".into(),
+            ..Row::default()
+        });
+        p = p.push(block);
+    }
+    let mut system = group("System packages (pacman)");
+    system.hint = "Official repositories. Needs your password.".into();
+    system.rows = vec![Row {
+        kind: "line".into(),
+        id: "packages-system".into(),
+        label: "Update system (pacman -Syu)".into(),
+        action: "Run".into(),
+        ..Row::default()
+    }];
+    p.push(system)
+}
+
+fn firmware() -> Page {
+    let mut p = page(
+        "firmware",
+        "System",
+        "Firmware",
+        "Updates for the computer itself: the BIOS, camera, dock and other parts that support it.",
+    );
+    let devices = crate::updates::firmware();
+    let regular: Vec<&crate::updates::Firmware> =
+        devices.iter().filter(|device| !device.security_database).collect();
+    let databases: Vec<&crate::updates::Firmware> =
+        devices.iter().filter(|device| device.security_database).collect();
+    let mut block = group("Device firmware");
+    if devices.is_empty() {
+        block.rows.push(Row {
+            kind: "hint".into(),
+            id: "firmware-none".into(),
+            label: "No parts of this computer can update their firmware from here.".into(),
+            ..Row::default()
+        });
+    }
+    for device in regular {
+        block.rows.push(Row {
+            kind: "item".into(),
+            id: format!("firmware-{}", device.name),
+            label: device.name.clone(),
+            hint: format!("Version {}", device.version),
+            ..Row::default()
+        });
+    }
+    if !databases.is_empty() {
+        block.rows.push(Row {
+            kind: "hint".into(),
+            id: "firmware-databases".into(),
+            label: format!(
+                "{} secure boot certificate lists. Lists of trusted and revoked boot software; they update with the firmware.",
+                databases.len()
+            ),
+            ..Row::default()
+        });
+        for device in databases {
+            block.rows.push(Row {
+                kind: "value".into(),
+                id: format!("firmware-db-{}", device.name),
+                label: device.name.clone(),
+                value: device.version.clone(),
+                ..Row::default()
+            });
+        }
+    }
+    block.rows.push(Row {
+        kind: "line".into(),
+        id: "firmware-check".into(),
+        label: "Check for firmware updates".into(),
+        action: "Check".into(),
+        ..Row::default()
+    });
+    if !devices.is_empty() {
+        block.rows.push(Row {
+            kind: "line".into(),
+            id: "firmware-install".into(),
+            label: "Install firmware updates".into(),
+            action: "Install".into(),
+            primary: true,
+            ..Row::default()
+        });
+    }
+    p.push(block)
+}
+
+fn channel() -> Page {
+    let mut p = page(
+        "channel",
+        "System",
+        "Update channel",
+        "How new the bread apps you get are. Nothing changes until you update.",
+    );
+    let current = crate::updates::track().unwrap_or_else(|_| "stable".into());
+    let options = vec!["Stable".into(), "Beta".into(), "Development".into()];
+    let selected = match current.as_str() {
+        "beta" => 1,
+        "dev" => 2,
+        _ => 0,
+    };
+    let blurb = match selected {
+        1 => "Releases being tested before they become stable.",
+        2 => "Every change as soon as it is made. Newest, and sometimes broken.",
+        _ => "Finished releases. The safest choice.",
+    };
+    let mut block = group("Bread apps channel");
+    block.hint = blurb.into();
+    block.rows = vec![
+        Row {
+            kind: "seg".into(),
+            id: "channel".into(),
+            label: "Channel".into(),
+            options,
+            selected,
+            ..Row::default()
+        },
+        Row {
+            kind: "line".into(),
+            id: "channel-update".into(),
+            label: "Update bread apps now".into(),
+            action: "Update".into(),
+            ..Row::default()
+        },
+    ];
+    p.push(block)
+}
+
 fn getapps() -> Page {
     let mut p = page(
         "getapps",
@@ -7523,6 +8075,87 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
         let mut reloaded = load(page);
         if let Some(message) = error {
             reloaded.status = format!("Could not save that setting: {message}");
+        }
+        return reloaded;
+    }
+    if matches!(page, "packages" | "aur" | "firmware" | "channel") {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = match page {
+            "packages" => {
+                if action == "action" {
+                    if let Some(name) = id.strip_prefix("package-update-") {
+                        crate::updates::update("bakery", name).err()
+                    } else if id == "packages-update-all" {
+                        crate::updates::update("bakery", "").err()
+                    } else if id == "packages-system" {
+                        crate::updates::update("pacman", "").err()
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            "aur" => {
+                if id == "aur-search" && action.starts_with("input:") {
+                    let query = action.trim_start_matches("input:").trim().to_string();
+                    let (results, errors) = crate::apps::search(&query);
+                    *aur_results_cell()
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner()) = (query, results, errors);
+                    None
+                } else if let Some(name) = id.strip_prefix("aur-install-") {
+                    crate::apps::install(name, "aur").err()
+                } else {
+                    None
+                }
+            }
+            "firmware" => {
+                if id == "firmware-check" {
+                    crate::updates::firmware_refresh().err()
+                } else if id == "firmware-install" {
+                    crate::updates::update("firmware", "").err()
+                } else {
+                    None
+                }
+            }
+            "channel" => {
+                if id == "channel" && action.starts_with("seg:") {
+                    let index = action
+                        .trim_start_matches("seg:")
+                        .parse::<usize>()
+                        .unwrap_or(0);
+                    crate::updates::set_track(["stable", "beta", "dev"][index.min(2)]).err()
+                } else if id == "channel-update" {
+                    crate::updates::update("bakery", "").err()
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = message;
+        }
+        return reloaded;
+    }
+    if matches!(page, "snapshots" | "backup") {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = backup_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = message;
         }
         return reloaded;
     }

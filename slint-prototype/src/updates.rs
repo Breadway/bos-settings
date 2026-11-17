@@ -13,6 +13,9 @@ pub struct Pending {
 pub struct Firmware {
     pub name: String,
     pub version: String,
+    /// Secure Boot certificate lists update with the firmware but are noise
+    /// on the main list.
+    pub security_database: bool,
 }
 
 fn text(program: &str, args: &[&str]) -> Option<(bool, String)> {
@@ -128,13 +131,18 @@ pub fn firmware() -> Vec<Firmware> {
                         .unwrap_or(false)
                 })
                 .filter_map(|device| {
+                    let name = device.get("Name")?.as_str()?.to_string();
+                    let lower = name.to_ascii_lowercase();
                     Some(Firmware {
-                        name: device.get("Name")?.as_str()?.to_string(),
                         version: device
                             .get("Version")
                             .and_then(|value| value.as_str())
                             .unwrap_or("unknown")
                             .to_string(),
+                        security_database: lower.contains("dbx")
+                            || lower.contains("secure boot")
+                            || lower.contains("certificate"),
+                        name,
                     })
                 })
                 .collect()
