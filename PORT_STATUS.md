@@ -300,7 +300,7 @@ parity_check.py fails while any item is not [x].
 - [ ] command `breadbar::save_breadbar_style`
 - [ ] command `breadbox::get_breadbox_contexts`
 - [ ] command `breadbox::save_breadbox_contexts`
-- [ ] command `breadclip::open_breadclip`
+- [x] command `breadclip::open_breadclip` -> slint-prototype/src/pagedata.rs
 - [ ] command `breadhelp::open_breadhelp`
 - [ ] command `breadpad::get_breadpad_config`
 - [ ] command `breadpad::save_breadpad_config`
@@ -376,9 +376,9 @@ parity_check.py fails while any item is not [x].
 - [ ] command `config::set_str_list`
 - [ ] command `config::set_str_or_remove`
 - [ ] command `navigation::get_initial_page`
-- [ ] command `service::get_service_status`
+- [x] command `service::get_service_status` -> slint-prototype/src/pagedata.rs
 - [ ] command `service::open_logs`
-- [ ] command `service::service_action`
+- [x] command `service::service_action` -> slint-prototype/src/pagedata.rs
 - [ ] command `streaming::bakery_install`
 - [ ] command `streaming::bakery_list`
 - [ ] command `streaming::bakery_update`
