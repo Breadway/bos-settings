@@ -334,6 +334,61 @@ pub fn snapshots() -> Result<Vec<Snapshot>, String> {
         .unwrap_or_default())
 }
 
+pub fn create_snapshot(description: &str) -> Result<Option<String>, String> {
+    if !Path::new("/etc/snapper/configs/root").is_file() {
+        return Ok(None);
+    }
+    let out = Command::new("pkexec")
+        .args([
+            "snapper",
+            "-c",
+            "root",
+            "create",
+            "--type",
+            "single",
+            "--description",
+            description,
+            "--cleanup-algorithm",
+            "number",
+            "--print-number",
+        ])
+        .output()
+        .map_err(|error| error.to_string())?;
+    if !out.status.success() {
+        return Err(crate::util::fail_output(&out, "Creating a safety snapshot"));
+    }
+    let number = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if !crate::util::valid_number_id(&number) {
+        return Err("Snapper did not return a snapshot number".into());
+    }
+    Ok(Some(number))
+}
+
+pub fn create_update_snapshot() -> Result<Option<String>, String> {
+    create_snapshot("Before BOS Settings update")
+}
+
+pub fn create_manual_snapshot() -> Result<String, String> {
+    create_snapshot("Manual BOS Settings snapshot")
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "No root snapshot configuration exists".to_string())
+}
+
+pub fn restore_snapshot(number: &str) -> Result<(), String> {
+    if !crate::util::valid_number_id(number) || number.starts_with('0') {
+        return Err("invalid snapshot number".into());
+    }
+    let confirmation = format!("RESTORE {number}\n");
+    if crate::util::run_with_stdin(
+        &["pkexec", "bos-restore-snapshot", number],
+        &confirmation,
+    ) {
+        Ok(())
+    } else {
+        Err("The snapshot could not be restored. The password prompt may have been cancelled.".into())
+    }
+}
+
 pub fn delete_snapshot(number: &str) -> Result<(), String> {
     if !number.chars().all(|ch| ch.is_ascii_digit()) || number.is_empty() {
         return Err("invalid snapshot number".into());

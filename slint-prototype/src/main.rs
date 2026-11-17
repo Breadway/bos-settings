@@ -38,6 +38,7 @@ mod ime;
 mod pagedata;
 mod theme;
 mod updates;
+mod users;
 mod util;
 
 use slint::Model;
