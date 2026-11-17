@@ -3726,82 +3726,138 @@ fn updates() -> Page {
         "Updates",
         "Keep your system, bread apps and firmware up to date.",
     );
-    let pending = run("pacman", &["-Qu"])
-        .map(|s| {
-            s.lines()
-                .filter(|l| !l.trim().is_empty())
-                .map(|l| l.split_whitespace().next().unwrap_or("").to_string())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let count = pending.len();
-    let kernel = pending
+    let pacman = crate::updates::pacman_updates();
+    let bakery = crate::updates::bakery_updates();
+    let firmware = crate::updates::firmware();
+    let (pacman, pacman_error) = match pacman {
+        Ok(list) => (list, None),
+        Err(error) => (Vec::new(), Some(error)),
+    };
+    let (bakery, bakery_error) = match bakery {
+        Ok(list) => (list, None),
+        Err(error) => (Vec::new(), Some(error)),
+    };
+    let total = pacman.len() + bakery.len();
+    let kernel = pacman
         .iter()
-        .any(|name| name == "linux" || name.starts_with("linux-"));
-    let firmware = firmware_devices();
-    let mut h = hero(
-        match count {
-            0 => "You're up to date",
-            1 => "1 update ready",
-            _ => "",
-        },
-        "",
-    );
-    if count > 1 {
-        h.title = format!("{count} updates ready");
-    }
-    if count > 0 {
-        let mut detail = if count == 1 {
-            "1 system package".to_string()
-        } else {
-            format!("{count} system packages")
-        };
-        detail.push_str(" · a safety snapshot is taken first");
-        if kernel {
-            detail.push_str(" · includes a new kernel, restart after");
-        }
-        detail.push_str(&format!(
-            ". {} firmware devices can be checked on the Firmware page.",
-            firmware.len()
-        ));
-        h.hint = detail;
-        h.icon = crate::icons::commands("download").into();
+        .any(|update| update.name == "linux" || update.name.starts_with("linux-"));
+    let mut h = if total == 0 {
+        hero("You're up to date", "System and bread apps are current.")
+    } else {
+        hero(
+            &format!("{total} {} ready", if total == 1 { "update" } else { "updates" }),
+            &format!(
+                "{}{}{}",
+                if pacman.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        "{} system {}",
+                        pacman.len(),
+                        if pacman.len() == 1 { "package" } else { "packages" }
+                    )
+                },
+                if bakery.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        "{}{} bread {}",
+                        if pacman.is_empty() { "" } else { " and " },
+                        bakery.len(),
+                        if bakery.len() == 1 { "app" } else { "apps" }
+                    )
+                },
+                if kernel {
+                    " · includes a new kernel, restart after"
+                } else {
+                    ""
+                }
+            ),
+        )
+    };
+    h.icon = crate::icons::commands(if total == 0 { "check" } else { "download" }).into();
+    if total > 0 {
         h.action = "Update everything".into();
         h.value = "Check again".into();
         h.primary = true;
-    } else {
-        h.hint = "System and bread apps are current.".into();
-        h.icon = crate::icons::commands("check").into();
     }
     p = p.push(h);
+
     let mut what = group("What will update");
-    what.rows = vec![
-        Row {
-            kind: "disclosure".into(),
-            id: "packages".into(),
-            label: if count == 1 {
-                "System packages (1), including a new kernel".into()
-            } else if kernel {
-                format!("System packages ({count}), including a new kernel")
-            } else {
-                format!("System packages ({count})")
-            },
+    if total == 0 && pacman_error.is_none() && bakery_error.is_none() {
+        what.rows.push(Row {
+            kind: "hint".into(),
+            id: "up-to-date".into(),
+            label: "Nothing is waiting to be installed.".into(),
             ..Row::default()
-        },
-        Row {
-            kind: "disclosure".into(),
-            id: "firmware".into(),
-            label: format!("Firmware devices ({})", firmware.len()),
+        });
+    }
+    if let Some(error) = &pacman_error {
+        what.rows.push(Row {
+            kind: "hint".into(),
+            id: "pacman-error".into(),
+            label: format!("Couldn't check system updates: {error}"),
             ..Row::default()
-        },
-        Row {
-            kind: "disclosure".into(),
-            id: "single".into(),
-            label: "Update one part only".into(),
+        });
+    }
+    if let Some(error) = &bakery_error {
+        what.rows.push(Row {
+            kind: "hint".into(),
+            id: "bakery-error".into(),
+            label: format!("Couldn't check bread app updates: {error}"),
             ..Row::default()
-        },
-    ];
+        });
+    }
+    for update in &pacman {
+        what.rows.push(Row {
+            kind: "line".into(),
+            id: format!("upd:pacman:{}", update.name),
+            label: update.name.clone(),
+            hint: format!("{} → {}", update.current, update.latest),
+            action: "Update".into(),
+            ..Row::default()
+        });
+    }
+    for update in &bakery {
+        what.rows.push(Row {
+            kind: "line".into(),
+            id: format!("upd:bakery:{}", update.name),
+            label: update.name.clone(),
+            hint: format!("Bread app · {}", update.latest),
+            action: "Update".into(),
+            ..Row::default()
+        });
+    }
+    for device in &firmware {
+        what.rows.push(Row {
+            kind: "line".into(),
+            id: "upd:firmware:".to_string(),
+            label: device.name.clone(),
+            hint: format!("Firmware · version {}", device.version),
+            action: "Update".into(),
+            ..Row::default()
+        });
+    }
     p = p.push(what);
+
+    let track = crate::updates::track().unwrap_or_else(|_| "stable".into());
+    p = p.rows(
+        "Bread apps",
+        vec![Row {
+            kind: "select".into(),
+            id: "track".into(),
+            label: "Release channel".into(),
+            hint: "Stable is the safe choice. Beta and dev get changes earlier.".into(),
+            value: match track.as_str() {
+                "beta" => "Beta",
+                "dev" => "Developer",
+                _ => "Stable",
+            }
+            .into(),
+            options: vec!["Stable".into(), "Beta".into(), "Developer".into()],
+            ..Row::default()
+        }],
+    );
     p = p.rows(
         "If an update breaks something",
         vec![Row {
@@ -3813,77 +3869,29 @@ fn updates() -> Page {
             ..Row::default()
         }],
     );
-    if !firmware.is_empty() {
-        let mut devices = group("Device firmware");
-        devices.hint = "Updates for the computer itself: the BIOS, camera, dock and other parts that support it.".into();
-        devices.rows = firmware
-            .iter()
-            .map(|(name, version)| Row {
-                kind: "detail".into(),
-                id: format!("fw:{name}"),
-                label: name.clone(),
-                hint: format!("Version {version}"),
-                ..Row::default()
-            })
-            .collect();
-        p = p.push(devices);
-    }
     p
 }
 
-fn firmware_devices() -> Vec<(String, String)> {
-    let Some(text) = run("fwupdmgr", &["get-devices", "--json"]) else {
-        return Vec::new();
-    };
-    let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
-        return Vec::new();
-    };
-    let Some(devices) = json.get("Devices").and_then(|d| d.as_array()) else {
-        return Vec::new();
-    };
-    let mut devices: Vec<(bool, String, String)> = devices
-        .iter()
-        .filter(|d| {
-            d.get("Flags")
-                .and_then(|f| f.as_array())
-                .map(|flags| flags.iter().any(|f| f.as_str() == Some("updatable")))
-                .unwrap_or(false)
-        })
-        .filter_map(|d| {
-            let name = d.get("Name")?.as_str()?.to_string();
-            let security = is_security_database(d);
-            Some((
-                security,
-                name,
-                d.get("Version")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("-")
-                    .to_string(),
-            ))
-        })
-        .collect();
-    // The shipping firmware list shows hardware first and keeps the Secure Boot
-    // databases last; fwupd's own order interleaves them.
-    devices.sort_by_key(|(security, _, _)| *security);
-    devices
-        .into_iter()
-        .map(|(_, name, version)| (name, version))
-        .collect()
-}
-
-fn is_security_database(device: &serde_json::Value) -> bool {
-    let name = device
-        .get("Name")
-        .and_then(|n| n.as_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    name.contains("uefi dbx")
-        || name.contains("uefi ca")
-        || name.contains("kek ca")
-        || device
-            .get("Plugin")
-            .and_then(|n| n.as_str())
-            .is_some_and(|p| ["uefi-dbx", "uefi-kek", "uefi-db", "uefi-pk"].contains(&p))
+fn updates_action(id: &str, action: &str) -> Result<(), String> {
+    if let Some(rest) = id.strip_prefix("upd:") {
+        if action == "action" {
+            let mut parts = rest.splitn(2, ':');
+            let kind = parts.next().unwrap_or("");
+            let name = parts.next().unwrap_or("");
+            return crate::updates::update(kind, name);
+        }
+        return Ok(());
+    }
+    if id == "track" && action == "select" {
+        let current = crate::updates::track().unwrap_or_else(|_| "stable".into());
+        let next = match current.as_str() {
+            "stable" => "beta",
+            "beta" => "dev",
+            _ => "stable",
+        };
+        return crate::updates::set_track(next);
+    }
+    Ok(())
 }
 
 // --------------------------------------------------------------------- restore
@@ -5983,6 +5991,33 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
         let mut reloaded = load(page);
         if let Some(message) = error {
             reloaded.status = format!("Could not apply that setting: {message}");
+        }
+        return reloaded;
+    }
+    if page == "updates" {
+        if let Some(hero) = current.blocks.get(block).filter(|b| b.kind == "hero") {
+            if action == "action" && hero.action == "Update everything" {
+                let error = crate::updates::update("pacman", "").err();
+                let mut reloaded = load(page);
+                if let Some(message) = error {
+                    reloaded.status = format!("Could not start the update: {message}");
+                }
+                return reloaded;
+            }
+            if action == "action2" {
+                return load(page);
+            }
+        }
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = updates_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not update: {message}");
         }
         return reloaded;
     }

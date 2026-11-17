@@ -24,6 +24,7 @@ mod icons;
 mod ime;
 mod pagedata;
 mod theme;
+mod updates;
 
 use slint::Model;
 use std::rc::Rc;
