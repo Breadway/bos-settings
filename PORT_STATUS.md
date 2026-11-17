@@ -267,20 +267,20 @@ parity_check.py fails while any item is not [x].
 - [x] view `DateTime` -> slint-prototype/src/pagedata.rs
 
 ## Accessibility
-- [ ] command `a11y::get_a11y_status`
-- [ ] command `a11y::open_kmag`
-- [ ] command `a11y::set_cursor_zoom`
-- [ ] command `a11y::set_orca_running`
+- [x] command `a11y::get_a11y_status` -> slint-prototype/src/pagedata.rs
+- [x] command `a11y::open_kmag` -> slint-prototype/src/pagedata.rs
+- [x] command `a11y::set_cursor_zoom` -> slint-prototype/src/pagedata.rs
+- [x] command `a11y::set_orca_running` -> slint-prototype/src/pagedata.rs
 
 ## Storage
-- [ ] command `storage::clean_storage`
-- [ ] command `storage::get_cache_entries`
+- [x] command `storage::clean_storage` -> slint-prototype/src/pagedata.rs
+- [x] command `storage::get_cache_entries` -> slint-prototype/src/pagedata.rs
 - [ ] command `storage::get_storage_breakdown`
-- [ ] command `storage::get_storage_info`
-- [ ] command `storage::get_unused_dependencies`
-- [ ] command `storage::open_storage_folder`
+- [x] command `storage::get_storage_info` -> slint-prototype/src/pagedata.rs
+- [x] command `storage::get_unused_dependencies` -> slint-prototype/src/pagedata.rs
+- [x] command `storage::open_storage_folder` -> slint-prototype/src/pagedata.rs
 - [ ] command `storage::remove_unused_dependencies`
-- [ ] view `Storage`
+- [~] view `Storage`
 
 ## Memory
 - [ ] command `breadram::apply_breadram_profile`
