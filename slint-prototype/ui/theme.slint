@@ -16,10 +16,35 @@ export global Theme {
     in-out property <color> line: #e9ecef14;
     in-out property <color> accent-soft: #ce9c652e;
     in-out property <color> accent-line: #ce9c658c;
+    in-out property <color> track: #353535;
     in-out property <length> radius: 14px;
     in-out property <length> radius-sm: 10px;
     in-out property <string> body: "Varela Round";
     in-out property <string> display: "Outfit";
+}
+
+// A lucide glyph as vector geometry. The shipping app draws these with
+// @lucide/svelte; the commands come from src/icons.rs (24x24 viewbox, 2px round
+// stroke). Vector beats the old 64px PNGs, which the software renderer had to
+// rescale and tint, and it lets the stroke follow the theme.
+export component VectorIcon inherits Path {
+    in property <length> icon-size: 16px;
+    in property <brush> tint: Theme.fg;
+    width: icon-size;
+    height: icon-size;
+    // Slint insets the fitted viewbox by stroke-width / 2 on each side and
+    // draws the stroke in device pixels, while a browser scales the 2px SVG
+    // stroke along with the viewbox. Shrink the viewbox by one unit and scale
+    // the stroke with the icon so the weight matches @lucide/svelte exactly.
+    viewbox-x: 1;
+    viewbox-y: 1;
+    viewbox-width: 22;
+    viewbox-height: 22;
+    fill: transparent;
+    stroke: tint;
+    stroke-width: icon-size / 12;
+    stroke-line-cap: round;
+    stroke-line-join: round;
 }
 
 export component PageTitle inherits Text {
@@ -27,6 +52,7 @@ export component PageTitle inherits Text {
     color: Theme.fg;
     font-size: 26px;
     font-weight: 500;
+    letter-spacing: -0.26px;
     horizontal-alignment: left;
 }
 
@@ -48,7 +74,7 @@ export component GroupBox inherits Rectangle {
         padding-left: 16px;
         padding-right: 16px;
         padding-top: 13px;
-        padding-bottom: 6px;
+        padding-bottom: 4px;
         spacing: 0px;
         alignment: start;
         Text {
@@ -73,34 +99,38 @@ export component SettingRow inherits Rectangle {
     if !first: Rectangle { y: 0; height: 1px; background: Theme.line; }
     HorizontalLayout {
         spacing: 14px;
-        alignment: start;
         padding-top: 11px;
-        padding-bottom: 11px;
+        padding-bottom: 12px;
         width: parent.width;
-        VerticalLayout {
-            alignment: center;
-            spacing: 2px;
+        Rectangle {
+            // Take the leftover width so the control stays pinned right.
             horizontal-stretch: 1;
-            Text {
-                text: root.label;
-                font-family: Theme.body;
-                color: Theme.fg;
-                font-size: 13.5px;
-                wrap: word-wrap;
-                horizontal-alignment: left;
-            }
-            if root.hint != "": Text {
-                text: root.hint;
-                font-family: Theme.body;
-                color: Theme.muted;
-                font-size: 12px;
-                wrap: word-wrap;
-                horizontal-alignment: left;
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                width: 100%;
+                Text {
+                    text: root.label;
+                    font-family: Theme.body;
+                    color: Theme.fg;
+                    font-size: 13.5px;
+                    wrap: word-wrap;
+                    horizontal-alignment: left;
+                }
+                if root.hint != "": Text {
+                    text: root.hint;
+                    font-family: Theme.body;
+                    color: Theme.muted;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                    horizontal-alignment: left;
+                }
             }
         }
         VerticalLayout {
             alignment: center;
             horizontal-stretch: 0;
+            padding-right: 3px;
             @children
         }
     }
@@ -110,7 +140,7 @@ export component PillButton inherits Rectangle {
     in property <string> text;
     in property <bool> primary: false;
     callback clicked;
-    height: 30px;
+    height: 34px;
     border-radius: Theme.radius-sm;
     background: primary ? Theme.accent : Theme.surface-2;
     border-width: primary ? 0px : 1px;
