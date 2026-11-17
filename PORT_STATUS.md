@@ -283,15 +283,15 @@ parity_check.py fails while any item is not [x].
 - [~] view `Storage`
 
 ## Memory
-- [ ] command `breadram::apply_breadram_profile`
-- [ ] command `breadram::breadram_actions`
-- [ ] command `breadram::breadram_installed`
-- [ ] command `breadram::breadram_status`
-- [ ] command `breadram::get_breadram_config`
-- [ ] command `breadram::save_breadram_config`
-- [ ] command `breadram::set_breadram_mode`
-- [ ] command `breadram::set_breadram_protection`
-- [ ] view `Memory`
+- [x] command `breadram::apply_breadram_profile` -> slint-prototype/src/breadram.rs
+- [x] command `breadram::breadram_actions` -> slint-prototype/src/breadram.rs
+- [x] command `breadram::breadram_installed` -> slint-prototype/src/breadram.rs
+- [x] command `breadram::breadram_status` -> slint-prototype/src/breadram.rs
+- [x] command `breadram::get_breadram_config` -> slint-prototype/src/breadram.rs
+- [x] command `breadram::save_breadram_config` -> slint-prototype/src/breadram.rs
+- [x] command `breadram::set_breadram_mode` -> slint-prototype/src/breadram.rs
+- [x] command `breadram::set_breadram_protection` -> slint-prototype/src/breadram.rs
+- [x] view `Memory` -> slint-prototype/src/pagedata.rs
 
 ## Desktop
 - [ ] command `breadbar::get_breadbar_css`
