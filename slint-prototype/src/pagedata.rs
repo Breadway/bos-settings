@@ -192,11 +192,7 @@ fn write(program: &str, args: &[&str]) -> Result<(), String> {
 }
 
 fn command_exists(program: &str) -> bool {
-    Command::new("sh")
-        .args(["-c", &format!("command -v {program}")])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    crate::util::command_exists(program)
 }
 
 fn which(program: &str) -> bool {
@@ -1018,7 +1014,7 @@ fn datetime() -> Page {
         id: "clock".into(),
         label: "Clock".into(),
         options: vec!["24-hour".into(), "12-hour".into()],
-        selected: 0,
+        selected: if clock_24h() { 0 } else { 1 },
         ..Row::default()
     });
     p = p.rows("Time", time_rows);
@@ -1055,6 +1051,14 @@ struct LocaleInfo {
     locales: Vec<String>,
     language: String,
     region: String,
+}
+
+fn clock_24h() -> bool {
+    std::fs::read_to_string(config_dir().join("breadbar/clock.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|value| value.get("clock_24h").and_then(|flag| flag.as_bool()))
+        .unwrap_or(true)
 }
 
 fn datetime_action(id: &str, action: &str, checked: bool) -> Result<(), String> {
@@ -1097,17 +1101,11 @@ fn datetime_action(id: &str, action: &str, checked: bool) -> Result<(), String> 
         };
     }
     if id == "clock" && action.starts_with("seg:") {
-        let index = action.strip_prefix("seg:").unwrap_or("0");
-        let format = if index == "1" { "12h" } else { "24h" };
-        let out = Command::new("gsettings")
-            .args(["set", "org.gnome.desktop.interface", "clock-format", format])
-            .output()
-            .map_err(|error| error.to_string())?;
-        return if out.status.success() {
-            Ok(())
-        } else {
-            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
-        };
+        let twelve = action.strip_prefix("seg:").unwrap_or("0") == "1";
+        let path = config_dir().join("breadbar/clock.json");
+        let body = serde_json::json!({ "clock_24h": !twelve }).to_string();
+        crate::config::atomic_write(&path, &body).map_err(|error| error.to_string())?;
+        return Ok(());
     }
     if (id == "language" || id == "region") && action == "select" {
         let Some(locale) = locale_info() else {
@@ -4186,6 +4184,14 @@ fn updates() -> Page {
             toggle("bread-power", "Power events", "", bread.adapter_power),
             toggle("bread-network", "Network events", "", bread.adapter_network),
             toggle("bread-bluetooth", "Bluetooth events", "", bread.adapter_bluetooth),
+            Row {
+                kind: "line".into(),
+                id: "breadd-logs".into(),
+                label: "Daemon logs".into(),
+                hint: "Follow what the daemon is doing.".into(),
+                action: "Open".into(),
+                ..Row::default()
+            },
         ],
     );
     p = p.rows(
@@ -4203,6 +4209,9 @@ fn updates() -> Page {
 }
 
 fn updates_action(id: &str, action: &str) -> Result<(), String> {
+    if id == "breadd-logs" && action == "action" {
+        return crate::service::open_logs("breadd.service");
+    }
     if let Some(rest) = id.strip_prefix("upd:") {
         if action == "action" {
             let mut parts = rest.splitn(2, ':');
