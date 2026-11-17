@@ -18,6 +18,7 @@ export component AppWindow inherits Window {
     default-font-size: 13.5px;
     icon: @image-url("../../src/icons/128x128.png");
     in-out property <string> page: "home";
+    in-out property <string> page-status: "";
 
     // Responsive widths, set from main.rs (a binding to self.width would put
     // the layout and the window size in a dependency cycle).
@@ -223,6 +224,7 @@ export component AppWindow inherits Window {
                                 crumb: "";
                                 title: "";
                                 lede: "";
+                                status: "";
                                 blocks: root.about-blocks;
                                 act(b, r, a) => { root.page-act(b, r, a); }
                                 block-act(b, a) => { root.page-block-act(b, a); }
@@ -232,6 +234,7 @@ export component AppWindow inherits Window {
                                 crumb: root.page-crumb;
                                 title: root.page-title;
                                 lede: root.page-lede;
+                                status: root.page-status;
                                 blocks: root.page-blocks;
                                 act(b, r, a) => { root.page-act(b, r, a); }
                                 block-act(b, a) => { root.page-block-act(b, a); }

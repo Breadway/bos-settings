@@ -383,12 +383,14 @@ fn apply_page(window: &AppWindow, page: pagedata::Page) {
         crumb,
         title,
         lede,
+        status,
         blocks,
         ..
     } = page;
     window.set_page_crumb(crumb.into());
     window.set_page_title(title.into());
     window.set_page_lede(lede.into());
+    window.set_page_status(status.into());
     window.set_page_blocks(slint::ModelRc::new(slint::VecModel::from(
         pagedata::spec_blocks(blocks),
     )));
