@@ -273,6 +273,7 @@ pub fn load(id: &str) -> Page {
         "power-menu" => power_menu(),
         "nightlight" => nightlight(),
         "ime" => ime_page(),
+        "bread" => bread(),
         "desktop" => desktop(),
         "keyboard" => keyboard(),
         other => page(other, "", other, ""),
@@ -642,6 +643,15 @@ fn sharing() -> Page {
     p = p.rows("Nearby devices", nearby);
 
     let mut remote = Vec::new();
+    if !ssh_installed {
+        remote.push(Row {
+            kind: "hint".into(),
+            id: "ssh-missing".into(),
+            label: "The SSH server isn't installed, so this computer can't be reached remotely."
+                .into(),
+            ..Row::default()
+        });
+    }
     if ssh_installed {
         remote.push(toggle(
             "ssh",
@@ -1457,6 +1467,28 @@ fn users_action(id: &str, action: &str) -> Result<(), String> {
     if let Some(name) = id.strip_prefix("user-remove:") {
         return crate::users::remove(name);
     }
+    if let Some(name) = id.strip_prefix("user:") {
+        let valid = name
+            .bytes()
+            .next()
+            .is_some_and(|byte| byte.is_ascii_lowercase() || byte == b'_')
+            && name.bytes().all(|byte| {
+                byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-')
+            });
+        if !valid {
+            return Err("That account name is not usable".into());
+        }
+        let command = if std::env::var("USER").ok().as_deref() == Some(name) {
+            "passwd".to_string()
+        } else {
+            format!("pkexec passwd {name}")
+        };
+        return Command::new("kitty")
+            .args(["-e", "sh", "-c", &command])
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+    }
     if id == "add-user" {
         return Command::new("kitty")
             .args([
@@ -1760,12 +1792,76 @@ fn storage() -> Page {
         },
     ];
     free.retain(|_| true);
+    let mut caches: Vec<(String, u64)> = std::fs::read_dir(home_dir().join(".cache"))
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter_map(|entry| {
+                    let path = entry.path();
+                    if !path.is_dir() {
+                        return None;
+                    }
+                    let bytes = dir_size(&path)?;
+                    (bytes >= 1024 * 1024).then(|| {
+                        (
+                            path.file_name()
+                                .map(|name| name.to_string_lossy().to_string())
+                                .unwrap_or_default(),
+                            bytes,
+                        )
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    caches.sort_by(|a, b| b.1.cmp(&a.1));
+    for (name, bytes) in caches.into_iter().take(8) {
+        free.push(Row {
+            kind: "line".into(),
+            id: format!("cache:{name}"),
+            label: format!("{name} cache"),
+            hint: format!("{} · close the app before cleaning it", size(Some(bytes))),
+            action: "Clean".into(),
+            ..Row::default()
+        });
+    }
+    free.push(Row {
+        kind: "line".into(),
+        id: "storage-refresh".into(),
+        label: "Refresh".into(),
+        action: "Refresh".into(),
+        ..Row::default()
+    });
+    free.push(Row {
+        kind: "line".into(),
+        id: "storage-open".into(),
+        label: "Open your files".into(),
+        action: "Open".into(),
+        ..Row::default()
+    });
     p = p.rows("Free up space", free);
     p
 }
 
 fn storage_action(id: &str, action: &str) -> Result<(), String> {
     if action != "action" {
+        return Ok(());
+    }
+    if let Some(name) = id.strip_prefix("cache:") {
+        if name.is_empty() || name.contains(['/', '\\']) || name == ".." {
+            return Err("That cache name is not usable".into());
+        }
+        return std::fs::remove_dir_all(home_dir().join(".cache").join(name))
+            .map_err(|error| error.to_string());
+    }
+    if id == "storage-open" {
+        return Command::new("xdg-open")
+            .arg(home_dir())
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+    }
+    if id == "storage-refresh" {
         return Ok(());
     }
     match id {
@@ -2135,6 +2231,21 @@ fn power() -> Page {
         ),
     ];
     p = p.push(performance);
+    if crate::data::load_home().power_mode.is_empty() && !command_exists("tlpctl") {
+        p = p.rows(
+            "Performance",
+            vec![Row {
+                kind: "line".into(),
+                id: "power-setup".into(),
+                label: "Set up power modes".into(),
+                hint: "Installs a small helper for TLP so you can pick Battery saver, Balanced or Performance."
+                    .into(),
+                action: "Set up".into(),
+                primary: true,
+                ..Row::default()
+            }],
+        );
+    }
     p = p.rows(
         "Screen",
         vec![Row {
@@ -2148,9 +2259,7 @@ fn power() -> Page {
             ..Row::default()
         }],
     );
-    p = p.rows(
-        "Battery",
-        vec![toggle(
+    let mut battery = vec![toggle(
             "battery-protect",
             "Protect battery",
             if crate::power_settings::protection_info().is_some() {
@@ -2159,8 +2268,30 @@ fn power() -> Page {
                 "This battery has no protection mode to switch."
             },
             crate::power_settings::protection_info().is_some_and(|info| info.enabled),
-        )],
-    );
+        )];
+    if let Some((start, end)) = crate::power_settings::charge_thresholds() {
+        battery.push(Row {
+            kind: "slider".into(),
+            id: "charge-start".into(),
+            label: "Start charging below".into(),
+            value: format!("{start}%"),
+            amount: start as f32,
+            min: 0.0,
+            max: 100.0,
+            ..Row::default()
+        });
+        battery.push(Row {
+            kind: "slider".into(),
+            id: "charge-end".into(),
+            label: "Stop charging at".into(),
+            value: format!("{end}%"),
+            amount: end as f32,
+            min: 0.0,
+            max: 100.0,
+            ..Row::default()
+        });
+    }
+    p = p.rows("Battery", battery);
     let mut away = group("When you step away");
     away.rows = vec![
         Row {
@@ -2279,6 +2410,31 @@ fn timeout_label(seconds: u32) -> String {
 }
 
 fn power_action(id: &str, action: &str) -> Result<(), String> {
+    if id == "power-setup" && action == "action" {
+        crate::updates::pacman_install(&["tlp-pd".to_string()])?;
+        return crate::power_settings::enable_tlp_power_profiles();
+    }
+    if id == "brightness" && action.starts_with("slider:") {
+        let percent = action
+            .trim_start_matches("slider:")
+            .parse::<i64>()
+            .map_err(|_| "Enter a brightness percentage".to_string())?
+            .clamp(1, 100);
+        return match run("brightnessctl", &[&format!("set {percent}%")]) {
+            Some(_) => Ok(()),
+            None => Err("Couldn't set the brightness".into()),
+        };
+    }
+    if (id == "charge-start" || id == "charge-end") && action.starts_with("slider:") {
+        let percent = action
+            .trim_start_matches("slider:")
+            .parse::<i64>()
+            .map_err(|_| "Enter a percentage".to_string())?;
+        return crate::power_settings::set_charge_threshold(
+            if id == "charge-start" { "start" } else { "end" },
+            percent,
+        );
+    }
     if id == "power-mode" && action.starts_with("seg:") {
         let index = action
             .strip_prefix("seg:")
@@ -2676,6 +2832,12 @@ fn displays() -> Page {
                     .into(),
                 ..Row::default()
             });
+            block.rows.push(toggle(
+                &format!("vrr:{}", monitor.name),
+                "Adaptive sync".into(),
+                "Matches the screen's refresh rate to the frame rate.",
+                monitor.vrr > 0,
+            ));
             let mut mirrors = vec!["None".to_string()];
             mirrors.extend(
                 names
@@ -2815,6 +2977,16 @@ fn displays_action(id: &str, action: &str) -> Result<(), String> {
             .spawn()
             .map(|_| ())
             .map_err(|error| error.to_string());
+    }
+    if let Some(name) = id.strip_prefix("vrr:") {
+        if action == "toggle" {
+            let mut layout = display_draft();
+            if let Some(monitor) = layout.iter_mut().find(|monitor| monitor.name == name) {
+                monitor.vrr = if monitor.vrr > 0 { 0 } else { 1 };
+            }
+            set_display_draft(layout);
+            return Ok(());
+        }
     }
     if id == "show-keybinds" && action == "action" {
         return Command::new("breadhelp")
@@ -4187,6 +4359,46 @@ fn privacy() -> Page {
     )];
     match crate::firewall::status() {
         Ok(status) => {
+            let allowed_specs: Vec<String> = status
+                .rules
+                .iter()
+                .filter(|(_, text)| text.contains("ALLOW"))
+                .filter_map(|(_, text)| {
+                    text.split_whitespace().next().map(str::to_string)
+                })
+                .collect();
+            for (index, (name, hint, specs)) in [
+                (
+                    "Remote login (SSH)",
+                    "Others can open a terminal on this computer.",
+                    &["22/tcp"][..],
+                ),
+                (
+                    "LocalSend",
+                    "Receive files from nearby devices.",
+                    &["53317/tcp", "53317/udp"][..],
+                ),
+                (
+                    "KDE Connect",
+                    "Phone link.",
+                    &["1714:1764/tcp", "1714:1764/udp"][..],
+                ),
+                (
+                    "Tailscale",
+                    "Faster direct connections on your private network.",
+                    &["41641/udp"][..],
+                ),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                firewall.rows.push(toggle(
+                    &format!("firewall-app-{index}"),
+                    name,
+                    hint,
+                    specs.iter().all(|spec| allowed_specs.iter().any(|rule| rule == spec)),
+                ));
+            }
             if status.rules.is_empty() {
                 firewall.rows.push(Row {
                     kind: "hint".into(),
@@ -4390,6 +4602,35 @@ struct BugPrefs {
 }
 
 fn firewall_action(id: &str, action: &str) -> Result<(), String> {
+    if let Some(index) = id.strip_prefix("firewall-app-") {
+        if action == "toggle" {
+            let apps: [&[&str]; 4] = [
+                &["22/tcp"],
+                &["53317/tcp", "53317/udp"],
+                &["1714:1764/tcp", "1714:1764/udp"],
+                &["41641/udp"],
+            ];
+            let specs = apps
+                .get(index.parse::<usize>().unwrap_or(99))
+                .ok_or("unknown firewall app")?;
+            let status = crate::firewall::status()?;
+            let allowed: Vec<String> = status
+                .rules
+                .iter()
+                .filter(|(_, text)| text.contains("ALLOW"))
+                .filter_map(|(_, text)| text.split_whitespace().next().map(str::to_string))
+                .collect();
+            let open = specs.iter().all(|spec| allowed.iter().any(|rule| rule == spec));
+            for spec in specs.iter() {
+                if open {
+                    crate::firewall::remove_allow(spec)?;
+                } else {
+                    crate::firewall::add_rule(spec)?;
+                }
+            }
+        }
+        return Ok(());
+    }
     if let Some(number) = id.strip_prefix("firewall-rule-") {
         if action == "action" {
             return crate::firewall::remove_rule(number);
@@ -4668,6 +4909,300 @@ fn updates_action(id: &str, action: &str) -> Result<(), String> {
 }
 
 // --------------------------------------------------------------------- restore
+
+fn bread() -> Page {
+    let mut p = page(
+        "bread",
+        "Personalise",
+        "Automations",
+        "The bread daemon reacts to your devices, screens and network, and runs your automation modules.",
+    );
+    let active = service_active("breadd.service");
+    let mut service = group("Automations");
+    service.hint = "Bread daemon: the part that watches hardware and runs your automation modules."
+        .into();
+    service.rows = vec![
+        Row {
+            kind: "line".into(),
+            id: "breadd-toggle".into(),
+            label: if active {
+                "Bread daemon is running"
+            } else {
+                "Bread daemon is stopped"
+            }
+            .into(),
+            action: if active { "Stop" } else { "Start" }.into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "line".into(),
+            id: "breadd-restart".into(),
+            label: "Restart the daemon".into(),
+            hint: "Reloads the daemon and its Lua modules.".into(),
+            action: "Restart".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "line".into(),
+            id: "breadd-logs-page".into(),
+            label: "Daemon logs".into(),
+            hint: "Follow what the daemon is doing.".into(),
+            action: "Open".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "line".into(),
+            id: "breadd-config".into(),
+            label: "Edit the config file".into(),
+            hint: "~/.config/bread/breadd.toml".into(),
+            action: "Open".into(),
+            ..Row::default()
+        },
+    ];
+    p = p.push(service);
+
+    let cfg = crate::bread::load();
+    p = p.rows(
+        "Daemon",
+        vec![
+            Row {
+                kind: "select".into(),
+                id: "bread-log-level".into(),
+                label: "Log level".into(),
+                value: cfg.log_level.clone(),
+                options: vec![
+                    "error".into(),
+                    "warn".into(),
+                    "info".into(),
+                    "debug".into(),
+                    "trace".into(),
+                ],
+                ..Row::default()
+            },
+            Row {
+                kind: "input".into(),
+                id: "bread-socket".into(),
+                label: "Socket path".into(),
+                hint: "Empty uses the XDG runtime directory.".into(),
+                value: cfg.socket_path.clone(),
+                action: "Save".into(),
+                ..Row::default()
+            },
+            Row {
+                kind: "input".into(),
+                id: "bread-entry".into(),
+                label: "Lua entry point".into(),
+                hint: "~/.config/bread/init.lua".into(),
+                value: cfg.lua_entry_point.clone(),
+                action: "Save".into(),
+                ..Row::default()
+            },
+            Row {
+                kind: "input".into(),
+                id: "bread-module-path".into(),
+                label: "Lua module path".into(),
+                hint: "~/.config/bread/modules".into(),
+                value: cfg.lua_module_path.clone(),
+                action: "Save".into(),
+                ..Row::default()
+            },
+        ],
+    );
+    let mut modules = group("Modules");
+    modules.rows = vec![
+        toggle(
+            "bread-builtin-page",
+            "Load built-in modules",
+            "Monitors, devices, workspaces and keybinds.",
+            cfg.modules_builtin,
+        ),
+        Row {
+            kind: "input".into(),
+            id: "bread-disabled".into(),
+            label: "Disabled modules".into(),
+            hint: format!(
+                "Separate module names with commas. Found: {}",
+                crate::bread::modules().join(", ")
+            ),
+            value: cfg.modules_disable.clone(),
+            action: "Save".into(),
+            ..Row::default()
+        },
+    ];
+    p = p.push(modules);
+    p = p.rows(
+        "Adapters",
+        vec![
+            toggle(
+                "bread-hyprland-page",
+                "Hyprland",
+                "Windows and workspaces.",
+                cfg.adapter_hyprland,
+            ),
+            toggle(
+                "bread-udev-page",
+                "Devices (udev)",
+                "Keyboards, mice and other hardware.",
+                cfg.adapter_udev,
+            ),
+            toggle(
+                "bread-power-page",
+                "Power",
+                "AC and battery changes.",
+                cfg.adapter_power,
+            ),
+            Row {
+                kind: "input".into(),
+                id: "bread-power-interval".into(),
+                label: "Power poll interval (seconds)".into(),
+                value: cfg.power_poll_interval_secs.to_string(),
+                action: "Save".into(),
+                ..Row::default()
+            },
+            toggle(
+                "bread-network-page",
+                "Network",
+                "Going online and offline.",
+                cfg.adapter_network,
+            ),
+            toggle(
+                "bread-bluetooth-page",
+                "Bluetooth",
+                "Devices pairing and connecting.",
+                cfg.adapter_bluetooth,
+            ),
+        ],
+    );
+    p = p.rows(
+        "Notifications",
+        vec![
+            Row {
+                kind: "input".into(),
+                id: "bread-dedup".into(),
+                label: "Dedup window (ms)".into(),
+                value: cfg.dedup_window_ms.to_string(),
+                action: "Save".into(),
+                ..Row::default()
+            },
+            Row {
+                kind: "input".into(),
+                id: "bread-timeout".into(),
+                label: "Default timeout (ms)".into(),
+                value: cfg.notif_default_timeout_ms.to_string(),
+                action: "Save".into(),
+                ..Row::default()
+            },
+            Row {
+                kind: "select".into(),
+                id: "bread-urgency".into(),
+                label: "Default urgency".into(),
+                value: cfg.notif_default_urgency.clone(),
+                options: vec!["low".into(), "normal".into(), "critical".into()],
+                ..Row::default()
+            },
+            Row {
+                kind: "input".into(),
+                id: "bread-notify-path".into(),
+                label: "notify-send path".into(),
+                hint: "Empty finds it automatically.".into(),
+                value: cfg.notif_notify_send_path.clone(),
+                action: "Save".into(),
+                ..Row::default()
+            },
+        ],
+    );
+    p
+}
+
+fn bread_service(verb: &str) -> Result<(), String> {
+    let out = Command::new("systemctl")
+        .args([verb, "breadd.service"])
+        .output()
+        .map_err(|error| error.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+fn bread_action(id: &str, action: &str) -> Result<(), String> {
+    let mut cfg = crate::bread::load();
+    match id {
+        "breadd-toggle" if action == "action" => {
+            return bread_service(if service_active("breadd.service") {
+                "stop"
+            } else {
+                "start"
+            })
+        }
+        "breadd-restart" if action == "action" => return bread_service("restart"),
+        "breadd-logs-page" if action == "action" => {
+            return crate::service::open_logs("breadd.service")
+        }
+        "breadd-config" if action == "action" => {
+            return spawn_editor(&crate::bread::path())
+        }
+        "bread-log-level" if action == "select" => {
+            let levels = ["error", "warn", "info", "debug", "trace"];
+            let index = levels
+                .iter()
+                .position(|level| *level == cfg.log_level)
+                .map(|index| (index + 1) % levels.len())
+                .unwrap_or(0);
+            cfg.log_level = levels[index].into();
+            return crate::bread::save(&cfg);
+        }
+        "bread-urgency" if action == "select" => {
+            let levels = ["low", "normal", "critical"];
+            let index = levels
+                .iter()
+                .position(|level| *level == cfg.notif_default_urgency)
+                .map(|index| (index + 1) % levels.len())
+                .unwrap_or(0);
+            cfg.notif_default_urgency = levels[index].into();
+            return crate::bread::save(&cfg);
+        }
+        _ => {}
+    }
+    if action.starts_with("input:") {
+        let text = action.trim_start_matches("input:").to_string();
+        match id {
+            "bread-socket" => cfg.socket_path = text,
+            "bread-entry" => cfg.lua_entry_point = text,
+            "bread-module-path" => cfg.lua_module_path = text,
+            "bread-disabled" => cfg.modules_disable = text,
+            "bread-notify-path" => cfg.notif_notify_send_path = text,
+            "bread-power-interval" => {
+                cfg.power_poll_interval_secs = text
+                    .parse()
+                    .map_err(|_| "Enter a number of seconds".to_string())?
+            }
+            "bread-dedup" => {
+                cfg.dedup_window_ms = text.parse().map_err(|_| "Enter milliseconds".to_string())?
+            }
+            "bread-timeout" => {
+                cfg.notif_default_timeout_ms =
+                    text.parse().map_err(|_| "Enter milliseconds".to_string())?
+            }
+            _ => return Ok(()),
+        }
+        return crate::bread::save(&cfg);
+    }
+    if action == "toggle" {
+        match id {
+            "bread-builtin-page" => cfg.modules_builtin = !cfg.modules_builtin,
+            "bread-hyprland-page" => cfg.adapter_hyprland = !cfg.adapter_hyprland,
+            "bread-udev-page" => cfg.adapter_udev = !cfg.adapter_udev,
+            "bread-power-page" => cfg.adapter_power = !cfg.adapter_power,
+            "bread-network-page" => cfg.adapter_network = !cfg.adapter_network,
+            "bread-bluetooth-page" => cfg.adapter_bluetooth = !cfg.adapter_bluetooth,
+            _ => return Ok(()),
+        }
+        return crate::bread::save(&cfg);
+    }
+    Ok(())
+}
 
 fn ime_page() -> Page {
     let mut p = page(
@@ -6163,6 +6698,18 @@ fn desktop_action(id: &str, action: &str) -> Result<(), String> {
             return crate::breadshot::save(&shot);
         }
     }
+    if action.starts_with("input:") {
+        let mut cfg = crate::breadshot::load();
+        let text = action.trim_start_matches("input:").trim().to_string();
+        match id {
+            "shot-timeout" => {
+                cfg.notif_timeout = text.parse().map_err(|_| "Enter milliseconds".to_string())?
+            }
+            "shot-format" => cfg.date_format = text,
+            _ => return Ok(()),
+        }
+        return crate::breadshot::save(&cfg);
+    }
     if id == "shot-now" && action == "action" {
         return crate::breadshot::region_to_clipboard();
     }
@@ -7504,6 +8051,23 @@ fn desktop() -> Page {
             shot.freeze,
         ),
         Row {
+            kind: "input".into(),
+            id: "shot-timeout".into(),
+            label: "Notification stays for (ms)".into(),
+            value: shot.notif_timeout.to_string(),
+            action: "Save".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "input".into(),
+            id: "shot-format".into(),
+            label: "File name".into(),
+            hint: "Looks like 2026-11-17-143000_breadshot.png".into(),
+            value: shot.date_format.clone(),
+            action: "Save".into(),
+            ..Row::default()
+        },
+        Row {
             kind: "line".into(),
             id: "shot-now".into(),
             label: "Take a screenshot".into(),
@@ -8672,6 +9236,20 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
             }
             _ => None,
         };
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = message;
+        }
+        return reloaded;
+    }
+    if page == "bread" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = bread_action(&id, action).err();
         let mut reloaded = load(page);
         if let Some(message) = error {
             reloaded.status = message;

@@ -62,7 +62,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `sharing::open_notification_history` -> slint-prototype/src/pagedata.rs
 - [x] command `sharing::open_sharing_app` -> slint-prototype/src/pagedata.rs
 - [x] command `sharing::set_remote_login` -> slint-prototype/src/pagedata.rs
-- [~] view `Sharing`
+- [x] view `Sharing` -> slint-prototype/src/pagedata.rs
 
 ## Displays
 - [x] command `display_guard::apply` -> slint-prototype/src/displays.rs
@@ -105,7 +105,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `nvidia::get_nvidia_offer` -> slint-prototype/src/nvidia.rs
 - [x] command `nvidia::nvidia_setup` -> slint-prototype/src/nvidia.rs
 - [x] command `nvidia::read_nvidia_offer` -> slint-prototype/src/nvidia.rs
-- [~] view `Display`
+- [x] view `Display` -> slint-prototype/src/pagedata.rs
 - [x] view `DisplaysHub` -> slint-prototype/src/pagedata.rs
 - [x] view `NightLight` -> slint-prototype/src/pagedata.rs
 
@@ -136,7 +136,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `power_settings::save_power_settings` -> slint-prototype/src/power_settings.rs
 - [x] command `power_settings::set_automatic_power_mode` -> slint-prototype/src/power_settings.rs
 - [x] command `power_settings::set_power_mode` -> slint-prototype/src/data.rs
-- [~] view `Power`
+- [x] view `Power` -> slint-prototype/src/pagedata.rs
 - [x] view `PowerMenu` -> slint-prototype/src/pagedata.rs
 
 ## Mouse
@@ -216,7 +216,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `channel::set_bakery_track` -> slint-prototype/src/updates.rs
 - [x] command `firmware::get_updatable_firmware` -> slint-prototype/src/updates.rs
 - [x] command `updates::get_updates_status` -> slint-prototype/src/updates.rs
-- [~] view `Bread`
+- [x] view `Bread` -> slint-prototype/src/pagedata.rs
 - [x] view `BugReports` -> slint-prototype/src/pagedata.rs
 - [x] view `Channel` -> slint-prototype/src/pagedata.rs
 - [x] view `Firmware` -> slint-prototype/src/pagedata.rs
@@ -254,7 +254,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `users::change_password` -> slint-prototype/src/users.rs
 - [x] command `users::get_users_info` -> slint-prototype/src/pagedata.rs
 - [x] command `users::remove_user` -> slint-prototype/src/users.rs
-- [~] view `Users`
+- [x] view `Users` -> slint-prototype/src/pagedata.rs
 
 ## Date and time
 - [x] command `datetime::get_datetime_info` -> slint-prototype/src/pagedata.rs
@@ -280,7 +280,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `storage::get_unused_dependencies` -> slint-prototype/src/pagedata.rs
 - [x] command `storage::open_storage_folder` -> slint-prototype/src/pagedata.rs
 - [x] command `storage::remove_unused_dependencies` -> slint-prototype/src/pagedata.rs
-- [~] view `Storage`
+- [x] view `Storage` -> slint-prototype/src/pagedata.rs
 
 ## Memory
 - [x] command `breadram::apply_breadram_profile` -> slint-prototype/src/breadram.rs
@@ -324,7 +324,7 @@ parity_check.py fails while any item is not [x].
 - [x] view `Breadpad` -> slint-prototype/src/pagedata.rs
 - [x] view `Breadpaper` -> slint-prototype/ui/appearance.slint
 - [x] view `Breadsearch` -> slint-prototype/src/pagedata.rs
-- [~] view `Breadshot`
+- [x] view `Breadshot` -> slint-prototype/src/pagedata.rs
 - [x] view `DesktopHub` -> slint-prototype/src/pagedata.rs
 
 ## Privacy and security
@@ -343,7 +343,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `firewall::remove_firewall_allow` -> slint-prototype/src/firewall.rs
 - [x] command `firewall::remove_firewall_rule` -> slint-prototype/src/firewall.rs
 - [x] command `firewall::set_firewall_enabled` -> slint-prototype/src/firewall.rs
-- [~] view `Firewall`
+- [x] view `Firewall` -> slint-prototype/src/pagedata.rs
 - [x] view `PrivacyHub` -> slint-prototype/src/pagedata.rs
 
 ## About

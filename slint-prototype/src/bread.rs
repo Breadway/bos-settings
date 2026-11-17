@@ -17,9 +17,11 @@ pub struct Config {
     pub adapter_power: bool,
     pub adapter_network: bool,
     pub adapter_bluetooth: bool,
+    pub power_poll_interval_secs: i64,
     pub dedup_window_ms: i64,
     pub notif_default_timeout_ms: i64,
     pub notif_default_urgency: String,
+    pub notif_notify_send_path: String,
 }
 
 impl Default for Config {
@@ -36,9 +38,11 @@ impl Default for Config {
             adapter_power: true,
             adapter_network: true,
             adapter_bluetooth: true,
+            power_poll_interval_secs: 5,
             dedup_window_ms: 250,
             notif_default_timeout_ms: 5000,
             notif_default_urgency: "normal".into(),
+            notif_notify_send_path: String::new(),
         }
     }
 }
@@ -136,6 +140,9 @@ pub fn load() -> Config {
             *target = value;
         }
     }
+    if let Some(value) = int_at(&doc, &["adapters", "power", "poll_interval_secs"]) {
+        cfg.power_poll_interval_secs = value;
+    }
     if let Some(value) = int_at(&doc, &["events", "dedup_window_ms"]) {
         cfg.dedup_window_ms = value;
     }
@@ -144,6 +151,9 @@ pub fn load() -> Config {
     }
     if let Some(value) = string_at(&doc, &["notifications", "default_urgency"]) {
         cfg.notif_default_urgency = value;
+    }
+    if let Some(value) = string_at(&doc, &["notifications", "notify_send_path"]) {
+        cfg.notif_notify_send_path = value;
     }
     cfg
 }
@@ -217,6 +227,20 @@ pub fn save(cfg: &Config) -> Result<(), String> {
     ] {
         put_nested_bool(&mut doc, "adapters", key, on);
     }
+    let power = table_with(
+        doc.get("adapters")
+            .and_then(Item::as_table)
+            .and_then(|table| table.get("power"))
+            .and_then(Item::as_table),
+        "poll_interval_secs",
+        value(cfg.power_poll_interval_secs),
+    );
+    let adapters = table_with(
+        doc.get("adapters").and_then(Item::as_table),
+        "power",
+        Item::Table(power),
+    );
+    doc.insert("adapters", Item::Table(adapters));
     let events = table_with(
         doc.get("events").and_then(Item::as_table),
         "dedup_window_ms",
@@ -231,6 +255,10 @@ pub fn save(cfg: &Config) -> Result<(), String> {
     notifications.insert(
         "default_urgency",
         value(cfg.notif_default_urgency.clone()),
+    );
+    notifications.insert(
+        "notify_send_path",
+        value(cfg.notif_notify_send_path.clone()),
     );
     doc.insert("notifications", Item::Table(notifications));
     let Some(parent) = path.parent() else {
