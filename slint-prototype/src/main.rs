@@ -25,9 +25,11 @@ mod network;
 mod sound;
 mod nightlight;
 mod notifications;
+mod nvidia;
 mod prefs;
 mod service;
 mod data;
+mod display_rescue;
 mod displays;
 mod firewall;
 mod extra_icons;
@@ -52,6 +54,13 @@ mod tests {
 }
 
 fn main() -> anyhow::Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|arg| arg == "--display-watchdog") {
+        display_rescue::run_watchdog(&args);
+        return Ok(());
+    }
+    display_rescue::recover_at_start();
+    display_rescue::revert_on_signal();
     let window = AppWindow::new()?;
     apply_palette(&window);
     apply_metrics(&window);

@@ -10,6 +10,11 @@ pub const DEFAULT_TEMP: u32 = 3500;
 pub struct Config {
     pub enabled: bool,
     pub temperature: u32,
+    /// `always`, `sunset` or `custom`.
+    pub mode: String,
+    /// Warm period for the custom schedule, as `HH:MM`.
+    pub start: String,
+    pub end: String,
 }
 
 impl Default for Config {
@@ -17,6 +22,9 @@ impl Default for Config {
         Self {
             enabled: false,
             temperature: DEFAULT_TEMP,
+            mode: "always".into(),
+            start: "22:00".into(),
+            end: "07:00".into(),
         }
     }
 }
@@ -54,7 +62,50 @@ pub fn load_from(path: &std::path::Path) -> Config {
     if let Some(temperature) = doc.get("temperature").and_then(Item::as_integer) {
         cfg.temperature = clamp_temp(temperature as u32);
     }
+    if let Some(mode) = doc.get("mode").and_then(Item::as_str) {
+        if ["always", "sunset", "custom"].contains(&mode) {
+            cfg.mode = mode.to_string();
+        }
+    }
+    if let Some(start) = doc.get("start").and_then(Item::as_str) {
+        cfg.start = start.to_string();
+    }
+    if let Some(end) = doc.get("end").and_then(Item::as_str) {
+        cfg.end = end.to_string();
+    }
     cfg
+}
+
+pub struct Status {
+    pub installed: bool,
+    pub running: bool,
+    pub enabled: bool,
+    pub temperature: u32,
+    pub mode: String,
+    pub start: String,
+    pub end: String,
+}
+
+pub fn status() -> Status {
+    let cfg = load();
+    Status {
+        installed: crate::util::command_exists("hyprsunset"),
+        running: std::process::Command::new("pgrep")
+            .args(["-x", "hyprsunset"])
+            .output()
+            .map(|out| out.status.success())
+            .unwrap_or(false),
+        enabled: cfg.enabled,
+        temperature: cfg.temperature,
+        mode: cfg.mode,
+        start: cfg.start,
+        end: cfg.end,
+    }
+}
+
+pub fn apply(cfg: &Config) -> Result<Status, String> {
+    save(cfg)?;
+    Ok(status())
 }
 
 pub fn clamp_temp(temperature: u32) -> u32 {
@@ -85,7 +136,9 @@ pub fn save_to(
         .unwrap_or_default();
     doc.insert("enabled", value(cfg.enabled));
     doc.insert("temperature", value(clamp_temp(cfg.temperature) as i64));
-    doc.insert("mode", value("always"));
+    doc.insert("mode", value(&cfg.mode));
+    doc.insert("start", value(&cfg.start));
+    doc.insert("end", value(&cfg.end));
     let table: Item = Item::Table(Table::new());
     let _ = table;
     write_atomic(config_path, &doc.to_string())?;
@@ -145,6 +198,7 @@ mod tests {
         let cfg = Config {
             enabled: true,
             temperature: 3000,
+            ..Config::default()
         };
         save_to(&cfg, &config_path, &autostart).unwrap();
         let text = std::fs::read_to_string(&config_path).unwrap();
@@ -158,6 +212,7 @@ mod tests {
         let off = Config {
             enabled: false,
             temperature: 3000,
+            ..Config::default()
         };
         save_to(&off, &config_path, &autostart).unwrap();
         assert!(!autostart.exists());
