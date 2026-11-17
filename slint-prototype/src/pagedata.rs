@@ -2422,7 +2422,29 @@ fn displays() -> Page {
     let mut night_block = group("NIGHT LIGHT");
     night_block.hint = "A warmer screen after dark helps you wind down.".into();
     night_block.rows = vec![toggle("night-light", "Night light", "", night)];
-    p.push(night_block)
+    p = p.push(night_block);
+    p = p.rows(
+        "Advanced",
+        vec![
+            Row {
+                kind: "line".into(),
+                id: "edit-hyprland".into(),
+                label: "Edit the Hyprland config".into(),
+                hint: "Opens hyprland.lua in your editor in a terminal.".into(),
+                action: "Edit".into(),
+                ..Row::default()
+            },
+            Row {
+                kind: "line".into(),
+                id: "show-keybinds".into(),
+                label: "Keyboard shortcuts".into(),
+                hint: "What every key combination does.".into(),
+                action: "Open".into(),
+                ..Row::default()
+            },
+        ],
+    );
+    p
 }
 
 fn displays_action(id: &str, action: &str) -> Result<(), String> {
@@ -2434,6 +2456,22 @@ fn displays_action(id: &str, action: &str) -> Result<(), String> {
     if id == "discard" {
         reset_display_draft();
         return Ok(());
+    }
+    if id == "edit-hyprland" && action == "action" {
+        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "nano".to_string());
+        let path = config_dir().join("hypr/hyprland.lua");
+        return Command::new("kitty")
+            .args(["-e", &editor])
+            .arg(path)
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+    }
+    if id == "show-keybinds" && action == "action" {
+        return Command::new("breadhelp")
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| error.to_string());
     }
     if id == "apply" && action == "action" {
         let layout = display_draft();
