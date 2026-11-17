@@ -3787,16 +3787,54 @@ fn privacy() -> Page {
         "Who can reach this computer, and what apps can do.",
     );
     let mut firewall = group("Firewall");
-    firewall.rows = vec![
-        Row {
-            kind: "line".into(),
-            id: "firewall".into(),
-            label: "Firewall".into(),
-            hint: "Not checked yet. Check it to see whether unknown connections are blocked.".into(),
-            action: "Check firewall".into(),
-            ..Row::default()
+    let active = crate::firewall::service_active();
+    firewall.rows = vec![toggle(
+        "firewall-on",
+        "Firewall",
+        match active {
+            Some(true) => "Unknown connections are blocked.",
+            Some(false) => "Off. Anything on the network can try to connect.",
+            None => "The firewall service could not be checked.",
         },
-    ];
+        active == Some(true),
+    )];
+    match crate::firewall::status() {
+        Ok(status) => {
+            if status.rules.is_empty() {
+                firewall.rows.push(Row {
+                    kind: "hint".into(),
+                    id: "firewall-rules".into(),
+                    label: if status.active {
+                        "No extra rules. Only the defaults apply.".into()
+                    } else {
+                        "No rules while the firewall is off.".into()
+                    },
+                    ..Row::default()
+                });
+            }
+            for (number, text) in status.rules {
+                firewall.rows.push(Row {
+                    kind: "value".into(),
+                    id: format!("firewall-rule-{number}"),
+                    label: format!("Rule {number}"),
+                    value: text,
+                    ..Row::default()
+                });
+            }
+        }
+        Err(_) => firewall.rows.push(Row {
+            kind: "value".into(),
+            id: "firewall-state".into(),
+            label: "Rules".into(),
+            hint: "Listing rules needs your password, so they load only when something changes.".into(),
+            value: match active {
+                Some(true) => "On".into(),
+                Some(false) => "Off".into(),
+                None => "Unknown".into(),
+            },
+            ..Row::default()
+        }),
+    }
     p = p.push(firewall);
 
     let bug = bug_prefs();
@@ -3869,6 +3907,19 @@ fn privacy() -> Page {
 struct BugPrefs {
     upload: bool,
     notify: bool,
+}
+
+fn firewall_action(id: &str, action: &str) -> Result<(), String> {
+    if id == "firewall-on" && action == "toggle" {
+        let active = crate::firewall::service_active().unwrap_or(false);
+        return crate::firewall::set_enabled(!active);
+    }
+    if id == "firewall-state" && action == "action" {
+        let status = crate::firewall::status()?;
+        let _ = status;
+        return Ok(());
+    }
+    Ok(())
 }
 
 fn bug_prefs() -> BugPrefs {
@@ -6282,6 +6333,20 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
         let mut reloaded = load(page);
         if let Some(message) = error {
             reloaded.status = format!("Could not save that setting: {message}");
+        }
+        return reloaded;
+    }
+    if page == "privacy" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = firewall_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not change the firewall: {message}");
         }
         return reloaded;
     }

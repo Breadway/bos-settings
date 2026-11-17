@@ -21,6 +21,7 @@ mod notifications;
 mod prefs;
 mod data;
 mod displays;
+mod firewall;
 mod extra_icons;
 mod icons;
 mod ime;

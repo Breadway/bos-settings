@@ -338,12 +338,12 @@ parity_check.py fails while any item is not [x].
 - [ ] command `breadbug::open_breadbug`
 - [ ] command `breadbug::save_breadbug_settings`
 - [ ] command `firewall::add_firewall_rule`
-- [ ] command `firewall::get_firewall_service_active`
-- [ ] command `firewall::get_firewall_status`
+- [x] command `firewall::get_firewall_service_active` -> slint-prototype/src/firewall.rs
+- [x] command `firewall::get_firewall_status` -> slint-prototype/src/firewall.rs
 - [ ] command `firewall::remove_firewall_allow`
 - [ ] command `firewall::remove_firewall_rule`
-- [ ] command `firewall::set_firewall_enabled`
-- [ ] view `Firewall`
+- [x] command `firewall::set_firewall_enabled` -> slint-prototype/src/firewall.rs
+- [~] view `Firewall`
 - [ ] view `PrivacyHub`
 
 ## About
