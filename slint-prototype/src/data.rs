@@ -22,6 +22,7 @@ pub struct Home {
     pub bluetooth_on: bool,
     pub bluetooth_detail: String,
     pub battery_percent: String,
+    pub battery_fraction: f32,
     pub battery_detail: String,
     pub updates: String,
     pub update_count: usize,
@@ -79,6 +80,7 @@ pub fn load_home() -> Home {
         bluetooth_on: bluetooth.on,
         bluetooth_detail: bluetooth.detail,
         battery_percent: battery.percent,
+        battery_fraction: battery.fraction,
         battery_detail: battery.detail,
         updates: updates.summary,
         update_count: updates.count,
@@ -232,6 +234,7 @@ fn bluetooth() -> Bluetooth {
 
 pub struct Battery {
     pub percent: String,
+    pub fraction: f32,
     pub detail: String,
 }
 
@@ -262,6 +265,12 @@ fn battery_upower() -> Option<Battery> {
         })
     };
     let percent_raw = field("percentage")?;
+    let fraction = percent_raw
+        .trim_end_matches('%')
+        .trim()
+        .parse::<f32>()
+        .unwrap_or(0.0)
+        / 100.0;
     let percent = format!("{}%", percent_raw.trim_end_matches('%').trim());
     let time = field("time to empty").filter(|s| !s.is_empty());
     let state = field("state").unwrap_or_default();
@@ -272,13 +281,18 @@ fn battery_upower() -> Option<Battery> {
     } else {
         String::new()
     };
-    Some(Battery { percent, detail })
+    Some(Battery {
+        percent,
+        fraction,
+        detail,
+    })
 }
 
 fn battery_sysfs() -> Battery {
     let Ok(entries) = std::fs::read_dir("/sys/class/power_supply") else {
         return Battery {
             percent: String::new(),
+            fraction: 0.0,
             detail: String::new(),
         };
     };
@@ -293,6 +307,7 @@ fn battery_sysfs() -> Battery {
             if !cap.is_empty() {
                 return Battery {
                     percent: format!("{cap}%"),
+                    fraction: cap.parse::<f32>().unwrap_or(0.0) / 100.0,
                     detail: String::new(),
                 };
             }
@@ -300,6 +315,7 @@ fn battery_sysfs() -> Battery {
     }
     Battery {
         percent: String::new(),
+        fraction: 0.0,
         detail: String::new(),
     }
 }

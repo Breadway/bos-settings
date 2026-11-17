@@ -27,6 +27,7 @@ mod tests {
 fn main() -> anyhow::Result<()> {
     let window = AppWindow::new()?;
     apply_palette(&window);
+    apply_metrics(&window);
     window.set_search_icon(icons::SEARCH.into());
     let home = data::load_home();
     let nav = nav_items(&home);
@@ -57,6 +58,24 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    window
+        .window()
+        .set_size(slint::PhysicalSize::new(1280, 840));
+
+    // Slint has no resize callback, so poll the window size the way the CSS
+    // media queries react. Cheap: two property writes only when it changes.
+    let metrics = slint::Timer::default();
+    let metrics_weak = window.as_weak();
+    metrics.start(
+        slint::TimerMode::Repeated,
+        std::time::Duration::from_millis(200),
+        move || {
+            if let Some(window) = metrics_weak.upgrade() {
+                apply_metrics(&window);
+            }
+        },
+    );
+
     window.run()?;
     Ok(())
 }
@@ -85,6 +104,31 @@ fn apply_palette(window: &AppWindow) {
     }
     if font_installed("Varela Round") {
         theme.set_body("Varela Round".into());
+    }
+}
+
+/// Match app.css's responsive rules: a 64px rail and 32px page gutters under
+/// 900px, a 716px content cap above it.
+fn apply_metrics(window: &AppWindow) {
+    let slint_window = window.window();
+    let size = slint_window.size();
+    let scale = slint_window.scale_factor();
+    let width = size.width as f32 / scale;
+    if width < 100.0 {
+        // Before the compositor has mapped us there is no useful size.
+        return;
+    }
+    let rail = width <= 900.0;
+    let sidebar = if rail { 64.0 } else { 236.0 };
+    let content = (width - sidebar - 1.0 - 64.0).clamp(0.0, 716.0);
+    if window.get_sidebar_width() != sidebar {
+        window.set_sidebar_width(sidebar);
+    }
+    if window.get_content_width() != content {
+        window.set_content_width(content);
+    }
+    if window.get_rail() != rail {
+        window.set_rail(rail);
     }
 }
 
@@ -146,10 +190,30 @@ fn apply_home(window: &AppWindow, home: &data::Home) {
     ];
     window.set_attention(slint::ModelRc::new(slint::VecModel::from(attention)));
     window.set_battery_label(home.battery_percent.clone().into());
+    window.set_battery_arc(battery_arc(home.battery_fraction).into());
     window.set_battery_detail(home.battery_detail.clone().into());
     window.set_storage_detail(home.storage_detail.clone().into());
     window.set_storage_used(home.storage_used);
     window.set_home_status(home.notes.join(" ").into());
+}
+
+/// SVG arc for the battery ring: a path in a 48-unit box, starting at twelve
+/// o'clock and sweeping clockwise for `fraction` of a turn.
+fn battery_arc(fraction: f32) -> String {
+    let fraction = fraction.clamp(0.0, 1.0);
+    if fraction <= 0.0 {
+        return String::new();
+    }
+    if fraction >= 0.999 {
+        // A single arc with identical endpoints draws nothing, so a full ring
+        // is two half arcs.
+        return "M 24 0 A 24 24 0 1 1 24 48 A 24 24 0 1 1 24 0".into();
+    }
+    let angle = (-90.0 + 360.0 * fraction).to_radians();
+    let x = 24.0 + 24.0 * angle.cos();
+    let y = 24.0 + 24.0 * angle.sin();
+    let large = if fraction > 0.5 { 1 } else { 0 };
+    format!("M 24 0 A 24 24 0 {large} 1 {x:.3} {y:.3}")
 }
 
 fn tile(id: &str, title: &str, detail: &str, glyph: &str, on: bool) -> QuickTile {

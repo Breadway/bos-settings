@@ -7,8 +7,8 @@ export { Theme, NavItem, QuickTile, AttentionRow }
 
 export component AppWindow inherits Window {
     title: "BOS Settings";
-    preferred-width: 1280px;
-    preferred-height: 840px;
+    // The initial size is set from main.rs; binding a preferred size here
+    // would make the layout width feed back into `self.width`.
     min-width: 860px;
     min-height: 640px;
     background: Theme.bg;
@@ -16,6 +16,12 @@ export component AppWindow inherits Window {
     default-font-size: 13.5px;
     icon: @image-url("../../src/icons/128x128.png");
     in-out property <string> page: "home";
+
+    // Responsive widths, set from main.rs (a binding to self.width would put
+    // the layout and the window size in a dependency cycle).
+    in-out property <length> sidebar-width: 236px;
+    in-out property <length> content-width: 716px;
+    in-out property <bool> rail: false;
 
     in property <[NavItem]> nav-items;
     in property <string> account-name;
@@ -29,6 +35,7 @@ export component AppWindow inherits Window {
     in property <[AttentionRow]> attention;
     in property <string> battery-label;
     in property <string> battery-detail;
+    in property <string> battery-arc;
     in property <string> storage-detail;
     in property <float> storage-used;
     in property <string> home-status;
@@ -51,6 +58,8 @@ export component AppWindow inherits Window {
 
     HorizontalLayout {
         Sidebar {
+            width: root.sidebar-width;
+            rail: root.rail;
             items: nav-items;
             current <=> page;
             account-name: account-name;
@@ -68,18 +77,20 @@ export component AppWindow inherits Window {
                     HorizontalLayout {
                         padding-top: 23px;
                         padding-bottom: 48px;
-                        Rectangle { horizontal-stretch: 1; }
+                        Rectangle { horizontal-stretch: 1; min-width: 32px; }
                         VerticalLayout {
-                            width: 716px;
+                            width: root.content-width;
                             spacing: 0px;
                             alignment: start;
                             if page == "home": HomePage {
                                 greeting: greeting;
                                 lede: lede;
+                                content-width: root.content-width;
                                 tiles: tiles;
                                 attention: attention;
                                 battery-label: battery-label;
                                 battery-detail: battery-detail;
+                                battery-arc: battery-arc;
                                 storage-detail: storage-detail;
                                 storage-used: storage-used;
                                 status: home-status;
@@ -119,7 +130,7 @@ export component AppWindow inherits Window {
                                 }
                             }
                         }
-                        Rectangle { horizontal-stretch: 1; }
+                        Rectangle { horizontal-stretch: 1; min-width: 32px; }
                     }
                 }
             }

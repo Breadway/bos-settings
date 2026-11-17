@@ -17,27 +17,29 @@ export component Sidebar inherits Rectangle {
     in property <string> account-initial: "U";
     in property <string> account-host: "Bread OS";
     in property <string> search-icon;
+    // Below 900px app.css collapses the sidebar to a 64px icon rail.
+    in property <bool> rail: false;
     callback selected(string);
     width: 236px;
     background: Theme.bg-2;
     VerticalLayout {
         Rectangle {
             HorizontalLayout {
-                padding-left: 12px;
-                padding-right: 12px;
-                padding-top: 14px;
-                padding-bottom: 10px;
+                padding-left: root.rail ? 8px : 12px;
+                padding-right: root.rail ? 8px : 12px;
+                padding-top: root.rail ? 12px : 14px;
+                padding-bottom: root.rail ? 8px : 10px;
                 Rectangle {
-                    height: 42px;
+                    height: root.rail ? 39px : 42px;
                     border-radius: 10px;
                     background: Theme.surface-2;
                     border-width: 1px;
                     border-color: Theme.line;
                     HorizontalLayout {
-                        padding-left: 11px;
-                        padding-right: 11px;
-                        padding-top: 9px;
-                        padding-bottom: 9px;
+                        padding-left: root.rail ? 0px : 11px;
+                        padding-right: root.rail ? 0px : 11px;
+                        padding-top: root.rail ? 0px : 9px;
+                        padding-bottom: root.rail ? 0px : 9px;
                         spacing: 9px;
                         alignment: center;
                         VerticalLayout {
@@ -49,7 +51,7 @@ export component Sidebar inherits Rectangle {
                                 tint: Theme.muted;
                             }
                         }
-                        Text {
+                        if !root.rail: Text {
                             text: "Search settings";
                             font-family: Theme.body;
                             color: Theme.muted;
@@ -57,7 +59,7 @@ export component Sidebar inherits Rectangle {
                             vertical-alignment: center;
                             horizontal-stretch: 1;
                         }
-                        Rectangle {
+                        if !root.rail: Rectangle {
                             background: Theme.surface;
                             border-width: 1px;
                             border-color: Theme.line;
@@ -87,14 +89,14 @@ export component Sidebar inherits Rectangle {
         Flickable {
             vertical-stretch: 1;
             VerticalLayout {
-                padding-left: 10px;
-                padding-right: 10px;
+                padding-left: root.rail ? 6px : 10px;
+                padding-right: root.rail ? 6px : 10px;
                 padding-bottom: 12px;
                 spacing: 0px;
                 alignment: start;
                 for item in root.items: VerticalLayout {
                     spacing: 0px;
-                    if item.section != "": Rectangle {
+                    if item.section != "" && !root.rail: Rectangle {
                         height: 32px;
                         HorizontalLayout {
                             padding-left: 10px;
@@ -111,13 +113,14 @@ export component Sidebar inherits Rectangle {
                         }
                     }
                     Rectangle {
-                        height: 31px;
+                        height: root.rail ? 39px : 31px;
                         border-radius: 9px;
                         background: item.id == root.current ? Theme.accent-soft : transparent;
                         HorizontalLayout {
-                            padding-left: 10px;
-                            padding-right: 10px;
+                            padding-left: root.rail ? 0px : 10px;
+                            padding-right: root.rail ? 0px : 10px;
                             spacing: 11px;
+                            alignment: root.rail ? center : start;
                             VerticalLayout {
                                 horizontal-stretch: 0;
                                 vertical-stretch: 1;
@@ -128,7 +131,7 @@ export component Sidebar inherits Rectangle {
                                     tint: item.id == root.current ? Theme.accent : Theme.fg;
                                 }
                             }
-                            Rectangle {
+                            if !root.rail: Rectangle {
                                 // Stretch the label so a badge stays pinned right,
                                 // the way the shipping sidebar does.
                                 horizontal-stretch: 1;
@@ -142,30 +145,78 @@ export component Sidebar inherits Rectangle {
                                     overflow: elide;
                                 }
                             }
-                            if item.badge != "": VerticalLayout {
+                            if !root.rail && item.badge != "" && item.badge != "NEW": VerticalLayout {
                                 horizontal-stretch: 0;
                                 alignment: center;
                                 Rectangle {
-                                border-radius: item.badge == "NEW" ? 4px : 9px;
-                                background: item.badge == "NEW" ? transparent : Theme.accent;
-                                border-width: item.badge == "NEW" ? 1px : 0px;
-                                border-color: Theme.accent-soft;
-                                height: item.badge == "NEW" ? 14px : 16px;
-                                horizontal-stretch: 0;
-                                HorizontalLayout {
-                                    padding-left: item.badge == "NEW" ? 3px : 4px;
-                                    padding-right: item.badge == "NEW" ? 3px : 4px;
-                                    alignment: center;
-                                    Text {
-                                        text: item.badge;
-                                        font-family: Theme.body;
-                                        font-size: item.badge == "NEW" ? 8px : 9px;
-                                        font-weight: 600;
-                                        letter-spacing: item.badge == "NEW" ? 0.5px : 0px;
-                                        color: item.badge == "NEW" ? Theme.accent : Theme.on-accent;
-                                        vertical-alignment: center;
+                                    border-radius: 9px;
+                                    background: Theme.accent;
+                                    height: 16px;
+                                    horizontal-stretch: 0;
+                                    HorizontalLayout {
+                                        padding-left: 4px;
+                                        padding-right: 4px;
+                                        alignment: center;
+                                        Text {
+                                            text: item.badge;
+                                            font-family: Theme.body;
+                                            font-size: 9px;
+                                            font-weight: 600;
+                                            color: Theme.on-accent;
+                                            vertical-alignment: center;
+                                        }
                                     }
                                 }
+                            }
+                            if !root.rail && item.badge == "NEW": VerticalLayout {
+                                horizontal-stretch: 0;
+                                alignment: center;
+                                Rectangle {
+                                    border-radius: 4px;
+                                    background: transparent;
+                                    border-width: 1px;
+                                    border-color: Theme.accent-soft;
+                                    height: 14px;
+                                    horizontal-stretch: 0;
+                                    HorizontalLayout {
+                                        padding-left: 3px;
+                                        padding-right: 3px;
+                                        alignment: center;
+                                        Text {
+                                            text: "NEW";
+                                            font-family: Theme.body;
+                                            font-size: 8px;
+                                            font-weight: 600;
+                                            letter-spacing: 0.5px;
+                                            color: Theme.accent;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // In the rail the update count becomes a dot badge at
+                        // the item's top-right, like the media query does.
+                        if root.rail && item.badge != "" && item.badge != "NEW": Rectangle {
+                            x: parent.width - self.width - 2px;
+                            y: 2px;
+                            // Explicit width: a self.width binding would be
+                            // solved before the layout sizes this overlay.
+                            width: 16px;
+                            height: 14px;
+                            border-radius: 7px;
+                            background: Theme.accent;
+                            HorizontalLayout {
+                                padding-left: 3px;
+                                padding-right: 3px;
+                                alignment: center;
+                                Text {
+                                    text: item.badge;
+                                    font-family: Theme.body;
+                                    font-size: 8px;
+                                    font-weight: 600;
+                                    color: Theme.on-accent;
+                                    vertical-alignment: center;
                                 }
                             }
                         }
@@ -179,7 +230,7 @@ export component Sidebar inherits Rectangle {
                 }
             }
         }
-        Rectangle {
+        if !root.rail: Rectangle {
             height: 55px;
             Rectangle { y: 0; height: 1px; width: 100%; background: Theme.line; }
             HorizontalLayout {
