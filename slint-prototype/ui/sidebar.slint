@@ -120,7 +120,11 @@ export component Sidebar inherits Rectangle {
                             padding-left: root.rail ? 0px : 10px;
                             padding-right: root.rail ? 0px : 10px;
                             spacing: 11px;
-                            alignment: root.rail ? center : start;
+                            // No alignment here: a start-aligned layout packs
+                            // its children and ignores the stretching label,
+                            // which left the badges inline. The rail centres
+                            // itself with spacers instead.
+                            if root.rail: Rectangle { horizontal-stretch: 1; }
                             VerticalLayout {
                                 horizontal-stretch: 0;
                                 vertical-stretch: 1;
@@ -131,6 +135,7 @@ export component Sidebar inherits Rectangle {
                                     tint: item.id == root.current ? Theme.accent : Theme.fg;
                                 }
                             }
+                            if root.rail: Rectangle { horizontal-stretch: 1; }
                             if !root.rail: Rectangle {
                                 // Stretch the label so a badge stays pinned right,
                                 // the way the shipping sidebar does.

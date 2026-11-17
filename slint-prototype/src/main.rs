@@ -70,6 +70,10 @@ fn main() -> anyhow::Result<()> {
         if let Some(rgba) = wallpaper
             .as_deref()
             .and_then(|path| decode_image(path, 1400, 800))
+            .map(|mut rgba| {
+                rgba.round_corners(HERO_RADIUS);
+                rgba
+            })
         {
             let weak = extra_weak.clone();
             let _ = slint::invoke_from_event_loop(move || {
@@ -81,7 +85,10 @@ fn main() -> anyhow::Result<()> {
         let thumbs: Vec<(String, String, Option<Rgba>)> = paths
             .into_iter()
             .map(|(name, path)| {
-                let rgba = decode_image(&path, 320, 200);
+                let rgba = decode_image(&path, 320, 200).map(|mut rgba| {
+                    rgba.round_corners(THUMB_RADIUS);
+                    rgba
+                });
                 (name, path, rgba)
             })
             .collect();
@@ -89,13 +96,6 @@ fn main() -> anyhow::Result<()> {
             let Some(window) = extra_weak.upgrade() else {
                 return;
             };
-            eprintln!(
-                "library: {:?}",
-                thumbs
-                    .iter()
-                    .map(|(n, _, r)| (n.clone(), r.is_some()))
-                    .collect::<Vec<_>>()
-            );
             let items: Vec<WallpaperThumb> = thumbs
                 .into_iter()
                 .filter_map(|(name, path, rgba)| {
@@ -152,7 +152,7 @@ fn main() -> anyhow::Result<()> {
     let metrics_weak = window.as_weak();
     metrics.start(
         slint::TimerMode::Repeated,
-        std::time::Duration::from_millis(200),
+        std::time::Duration::from_millis(50),
         move || {
             if let Some(window) = metrics_weak.upgrade() {
                 apply_metrics(&window);
@@ -342,6 +342,45 @@ struct Rgba {
     height: u32,
 }
 
+impl Rgba {
+    /// Zero the alpha outside a rounded rectangle, since Slint clips to the
+    /// bounding box and would otherwise square off a rounded Image.
+    fn round_corners(&mut self, radius: f32) {
+        let w = self.width as f32;
+        let h = self.height as f32;
+        let r = radius.max(0.0).min(w / 2.0).min(h / 2.0);
+        if r <= 0.0 {
+            return;
+        }
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let px = x as f32 + 0.5;
+                let py = y as f32 + 0.5;
+                let cx = if px < r {
+                    r
+                } else if px > w - r {
+                    w - r
+                } else {
+                    px
+                };
+                let cy = if py < r {
+                    r
+                } else if py > h - r {
+                    h - r
+                } else {
+                    py
+                };
+                let dx = px - cx;
+                let dy = py - cy;
+                if dx * dx + dy * dy > r * r {
+                    let i = ((y * self.width + x) * 4 + 3) as usize;
+                    self.pixels[i] = 0;
+                }
+            }
+        }
+    }
+}
+
 fn decode_image(path: &str, max_width: u32, max_height: u32) -> Option<Rgba> {
     let image = image::open(path).ok()?;
     let image = image.thumbnail(max_width, max_height);
@@ -352,6 +391,11 @@ fn decode_image(path: &str, max_width: u32, max_height: u32) -> Option<Rgba> {
         pixels: rgba.into_raw(),
     })
 }
+
+/// Radii are in source pixels: the hero shows 1400px at about 684 wide
+/// (12px on screen) and a thumb shows 320 at about 130 (8px on screen).
+const HERO_RADIUS: f32 = 24.0;
+const THUMB_RADIUS: f32 = 20.0;
 
 fn image_from_rgba(rgba: Rgba) -> slint::Image {
     let buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
@@ -368,7 +412,14 @@ fn apply_wallpaper(window: &AppWindow, path: &str) {
             let name = path.rsplit('/').next().unwrap_or("").to_string();
             window.set_wallpaper_path(path.into());
             window.set_wallpaper_name(name.into());
-            window.set_wallpaper(load_image(path, 1400, 800).unwrap_or_else(slint::Image::default));
+            window.set_wallpaper(
+                load_image(path, 1400, 800)
+                    .map(|mut rgba| {
+                        rgba.round_corners(HERO_RADIUS);
+                        image_from_rgba(rgba)
+                    })
+                    .unwrap_or_else(slint::Image::default),
+            );
             window.set_appearance_status("".into());
         }
         Err(err) => window.set_appearance_status(err.into()),
@@ -377,8 +428,8 @@ fn apply_wallpaper(window: &AppWindow, path: &str) {
 
 /// Decode a wallpaper and downscale it before handing it to Slint; full-size
 /// 4K images are tens of megabytes each and the page shows a dozen of them.
-fn load_image(path: &str, max_width: u32, max_height: u32) -> Option<slint::Image> {
-    decode_image(path, max_width, max_height).map(image_from_rgba)
+fn load_image(path: &str, max_width: u32, max_height: u32) -> Option<Rgba> {
+    decode_image(path, max_width, max_height)
 }
 
 fn apply_home(window: &AppWindow, home: &data::Home) {

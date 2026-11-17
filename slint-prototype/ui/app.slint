@@ -86,11 +86,30 @@ export component AppWindow inherits Window {
             search-icon: search-icon;
         }
         Rectangle { width: 1px; background: Theme.line; }
-        Rectangle {
+        scroller := Rectangle {
             horizontal-stretch: 1;
             background: Theme.bg;
-            Flickable {
-                VerticalLayout {
+            clip: true;
+            // Wheel scrolling by hand: the winit backend turns a wheel notch
+            // into 15-60px depending on the compositor, which feels slow next
+            // to a webview. Multiply it and apply it immediately.
+            property <length> scroll: 0px;
+            property <length> content-height: content-page.height;
+            property <length> max-scroll: max(0px, content-page.height - self.height);
+            TouchArea {
+                scroll-event(event) => {
+                    if (event.delta-y == 0) {
+                        return EventResult.reject;
+                    }
+                    scroller.scroll = min(
+                        scroller.max-scroll,
+                        max(0px, scroller.scroll - event.delta-y * 2.5)
+                    );
+                    return EventResult.accept;
+                }
+                content-page := VerticalLayout {
+                    y: -scroller.scroll;
+                    width: parent.width;
                     alignment: start;
                     HorizontalLayout {
                         padding-top: 23px;
