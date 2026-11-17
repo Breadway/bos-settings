@@ -1499,6 +1499,38 @@ fn storage() -> Page {
     );
     card.amount = pct;
     p = p.push(card);
+    let system_bytes: Option<u64> = ["/usr", "/etc", "/var", "/opt", "/boot"]
+        .iter()
+        .map(|dir| dir_size(&PathBuf::from(dir)))
+        .sum();
+    let files_bytes = dir_size(&home_dir());
+    let snapshots_bytes = dir_size(&PathBuf::from("/.snapshots"));
+    p = p.rows(
+        "Where space goes",
+        vec![
+            Row {
+                kind: "value".into(),
+                id: "breakdown-system".into(),
+                label: "System directories".into(),
+                value: size(system_bytes),
+                ..Row::default()
+            },
+            Row {
+                kind: "value".into(),
+                id: "breakdown-files".into(),
+                label: "Your files".into(),
+                value: size(files_bytes),
+                ..Row::default()
+            },
+            Row {
+                kind: "value".into(),
+                id: "breakdown-snapshots".into(),
+                label: "System snapshots".into(),
+                value: size(snapshots_bytes),
+                ..Row::default()
+            },
+        ],
+    );
     let package_cache = dir_size(&PathBuf::from("/var/cache/pacman/pkg"));
     let app_cache = dir_size(&home_dir().join(".cache"));
     let trash = dir_size(&home_dir().join(".local/share/Trash"));
@@ -1586,15 +1618,27 @@ fn storage_action(id: &str, action: &str) -> Result<(), String> {
                 .arg("-Qtdq")
                 .output()
                 .map_err(|error| error.to_string())?;
-            let list = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            return if list.is_empty() {
-                Err("there are no unused packages".into())
-            } else {
-                Err(format!(
-                    "unused packages: {}",
-                    list.lines().collect::<Vec<_>>().join(", ")
-                ))
-            };
+            let packages: Vec<String> = String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(str::to_string)
+                .collect();
+            if packages.is_empty() {
+                return Err("there are no unused packages".into());
+            }
+            if packages
+                .iter()
+                .any(|name| !crate::util::valid_pkg_name(name))
+            {
+                return Err("pacman listed a package name this app will not remove".into());
+            }
+            return Command::new("kitty")
+                .args(["-e", "pkexec", "pacman", "-R", "--noconfirm", "--"])
+                .args(&packages)
+                .spawn()
+                .map(|_| ())
+                .map_err(|error| error.to_string());
         }
         _ => Ok(()),
     }
@@ -3870,13 +3914,23 @@ fn privacy() -> Page {
             }
             for (number, text) in status.rules {
                 firewall.rows.push(Row {
-                    kind: "value".into(),
+                    kind: "line".into(),
                     id: format!("firewall-rule-{number}"),
-                    label: format!("Rule {number}"),
-                    value: text,
+                    label: text,
+                    hint: format!("Rule {number}"),
+                    action: "Remove".into(),
                     ..Row::default()
                 });
             }
+            firewall.rows.push(Row {
+                kind: "input".into(),
+                id: "firewall-add".into(),
+                label: "Allow a port".into(),
+                hint: "Like 22 or 8080/tcp. Ranges need a protocol.".into(),
+                value: String::new(),
+                action: "Add".into(),
+                ..Row::default()
+            });
         }
         Err(_) => firewall.rows.push(Row {
             kind: "value".into(),
@@ -3920,12 +3974,18 @@ fn privacy() -> Page {
     p = p.push(reports);
 
     let mut included = group("Apps included in reports");
-    included.rows = vec![Row {
-        kind: "hint".into(),
-        id: "bug-apps".into(),
-        label: "Every app on this computer.".into(),
-        ..Row::default()
-    }];
+    included.hint = "Every app on this computer, unless it is listed here.".into();
+    included.rows = vec![
+        Row {
+            kind: "input".into(),
+            id: "bug-excluded".into(),
+            label: "Never include these apps".into(),
+            hint: "Separate app ids with commas.".into(),
+            value: crate::breadbug::load().excluded.join(", "),
+            action: "Save".into(),
+            ..Row::default()
+        },
+    ];
     p = p.push(included);
 
     let mut contains = group("What a report contains");
@@ -4011,6 +4071,14 @@ struct BugPrefs {
 }
 
 fn firewall_action(id: &str, action: &str) -> Result<(), String> {
+    if let Some(number) = id.strip_prefix("firewall-rule-") {
+        if action == "action" {
+            return crate::firewall::remove_rule(number);
+        }
+    }
+    if id == "firewall-add" && action.starts_with("input:") {
+        return crate::firewall::add_rule(action.trim_start_matches("input:"));
+    }
     if id == "firewall-on" && action == "toggle" {
         let active = crate::firewall::service_active().unwrap_or(false);
         return crate::firewall::set_enabled(!active);
@@ -5366,6 +5434,10 @@ fn privacy_action(id: &str, action: &str) -> Result<(), String> {
             prefs.notify
         };
         return set_bug_flag(&path, key, !current);
+    }
+    if id == "bug-excluded" && action.starts_with("input:") {
+        let list = crate::breadbox::split_list(action.trim_start_matches("input:"));
+        return crate::breadbug::save_exclusions(&list);
     }
     if action == "action" && id == "bug-folder" {
         let dir = crate::breadbug::state_dir();

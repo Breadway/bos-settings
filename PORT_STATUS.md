@@ -275,11 +275,11 @@ parity_check.py fails while any item is not [x].
 ## Storage
 - [x] command `storage::clean_storage` -> slint-prototype/src/pagedata.rs
 - [x] command `storage::get_cache_entries` -> slint-prototype/src/pagedata.rs
-- [ ] command `storage::get_storage_breakdown`
+- [x] command `storage::get_storage_breakdown` -> slint-prototype/src/pagedata.rs
 - [x] command `storage::get_storage_info` -> slint-prototype/src/pagedata.rs
 - [x] command `storage::get_unused_dependencies` -> slint-prototype/src/pagedata.rs
 - [x] command `storage::open_storage_folder` -> slint-prototype/src/pagedata.rs
-- [ ] command `storage::remove_unused_dependencies`
+- [x] command `storage::remove_unused_dependencies` -> slint-prototype/src/pagedata.rs
 - [~] view `Storage`
 
 ## Memory
@@ -333,15 +333,15 @@ parity_check.py fails while any item is not [x].
 - [ ] command `breadbug::breadbug_delete_report`
 - [x] command `breadbug::breadbug_history` -> slint-prototype/src/breadbug.rs
 - [x] command `breadbug::breadbug_wipe_local` -> slint-prototype/src/breadbug.rs
-- [ ] command `breadbug::clean_exclusions`
+- [x] command `breadbug::clean_exclusions` -> slint-prototype/src/breadbug.rs
 - [x] command `breadbug::get_breadbug_settings` -> slint-prototype/src/breadbug.rs
 - [x] command `breadbug::open_breadbug` -> slint-prototype/src/breadbug.rs
 - [x] command `breadbug::save_breadbug_settings` -> slint-prototype/src/breadbug.rs
-- [ ] command `firewall::add_firewall_rule`
+- [x] command `firewall::add_firewall_rule` -> slint-prototype/src/firewall.rs
 - [x] command `firewall::get_firewall_service_active` -> slint-prototype/src/firewall.rs
 - [x] command `firewall::get_firewall_status` -> slint-prototype/src/firewall.rs
-- [ ] command `firewall::remove_firewall_allow`
-- [ ] command `firewall::remove_firewall_rule`
+- [x] command `firewall::remove_firewall_allow` -> slint-prototype/src/firewall.rs
+- [x] command `firewall::remove_firewall_rule` -> slint-prototype/src/firewall.rs
 - [x] command `firewall::set_firewall_enabled` -> slint-prototype/src/firewall.rs
 - [~] view `Firewall`
 - [~] view `PrivacyHub`

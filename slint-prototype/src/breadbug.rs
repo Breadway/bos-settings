@@ -74,6 +74,64 @@ pub fn save(upload: bool, notify: bool) -> Result<(), String> {
     std::fs::write(&path, doc.to_string()).map_err(|error| error.to_string())
 }
 
+fn valid_app_id(id: &str) -> bool {
+    let bytes = id.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= 64
+        && bytes[0].is_ascii_lowercase()
+        && bytes.iter().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(*byte, b'.' | b'_' | b'-')
+        })
+}
+
+/// Validate and normalise an exclusion list: valid app ids only, sorted,
+/// without duplicates.
+pub fn clean_exclusions(apps: &[String]) -> Result<Vec<String>, String> {
+    let mut out: Vec<String> = Vec::new();
+    for app in apps {
+        if !valid_app_id(app) {
+            return Err(format!("'{app}' is not a valid app id"));
+        }
+        out.push(app.clone());
+    }
+    out.sort();
+    out.dedup();
+    Ok(out)
+}
+
+pub fn save_exclusions(apps: &[String]) -> Result<(), String> {
+    let clean = clean_exclusions(apps)?;
+    let path = config_path();
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut doc: toml_edit::DocumentMut = text.parse().map_err(|error| format!("{error}"))?;
+    let mut array = toml_edit::Array::new();
+    for app in &clean {
+        array.push(app.as_str());
+    }
+    doc["excluded_apps"] = toml_edit::value(array);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    std::fs::write(&path, doc.to_string()).map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exclusions_are_valid_sorted_and_deduplicated() {
+        let list = clean_exclusions(&["search".into(), "clip".into(), "clip".into()]).unwrap();
+        assert_eq!(list, ["clip", "search"]);
+        for bad in ["../x", "Clip", "a b", "", "x;rm"] {
+            assert!(
+                clean_exclusions(&[bad.to_string()]).is_err(),
+                "{bad:?} should be refused"
+            );
+        }
+    }
+}
+
 pub struct Report {
     pub when: u64,
     pub kind: String,
