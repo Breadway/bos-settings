@@ -1,5 +1,6 @@
 # Rust build artifacts
 /target/
+slint-prototype/target/
 **/*.pdb
 
 # Editor / IDE

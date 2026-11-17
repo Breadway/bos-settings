@@ -9,6 +9,7 @@
 //! anything.
 
 mod data;
+mod icons;
 mod theme;
 
 use std::rc::Rc;
@@ -26,7 +27,7 @@ mod tests {
 fn main() -> anyhow::Result<()> {
     let window = AppWindow::new()?;
     apply_palette(&window);
-    window.set_search_icon(icon("search"));
+    window.set_search_icon(icons::SEARCH.into());
     let home = data::load_home();
     let nav = nav_items(&home);
     window.set_nav_items(slint::ModelRc::new(slint::VecModel::from(nav)));
@@ -64,9 +65,10 @@ fn apply_palette(window: &AppWindow) {
     let Some(palette) = theme::load() else { return };
     let theme = window.global::<Theme>();
     theme.set_bg(theme::solid(palette.bg));
-    theme.set_bg_2(theme::solid(theme::mix(palette.bg, palette.surface, 0.55)));
     theme.set_surface(theme::solid(palette.surface));
-    theme.set_surface_2(theme::solid(theme::mix(palette.surface, palette.fg, 0.06)));
+    // bg-2 and surface-2 are fixed in frontend/src/lib/styles/app.css; the
+    // runtime palette only replaces bg, surface and the accent, so leave the
+    // defaults from theme.slint alone.
     theme.set_fg(theme::solid(palette.fg));
     theme.set_muted(theme::with_alpha(palette.fg, 0.58));
     theme.set_faint(theme::with_alpha(palette.fg, 0.38));
@@ -108,24 +110,18 @@ fn apply_home(window: &AppWindow, home: &data::Home) {
     window.set_greeting(home.greeting.clone().into());
     window.set_lede(home.lede.clone().into());
     let tiles = vec![
-        tile(
-            "wifi",
-            "Wi-Fi",
-            &home.wifi_detail,
-            icon("wifi"),
-            home.wifi_on,
-        ),
+        tile("wifi", "Wi-Fi", &home.wifi_detail, "wifi", home.wifi_on),
         tile(
             "bluetooth",
             "Bluetooth",
             &home.bluetooth_detail,
-            icon("bluetooth"),
+            "bluetooth",
             home.bluetooth_on,
         ),
-        tile("night", "Night light", "Off", icon("moon"), false),
-        tile("dnd", "Do not disturb", "Off", icon("bell"), false),
-        tile("power", "Power mode", "Not available", icon("zap"), false),
-        tile("plane", "Airplane mode", "Off", icon("plane"), false),
+        tile("night", "Night light", "Off", "moon", false),
+        tile("dnd", "Do not disturb", "Off", "bell", false),
+        tile("power", "Power mode", "Not available", "zap", false),
+        tile("plane", "Airplane mode", "Off", "plane", false),
     ];
     window.set_tiles(slint::ModelRc::new(slint::VecModel::from(tiles)));
     let attention = vec![
@@ -150,140 +146,21 @@ fn apply_home(window: &AppWindow, home: &data::Home) {
     ];
     window.set_attention(slint::ModelRc::new(slint::VecModel::from(attention)));
     window.set_battery_label(home.battery_percent.clone().into());
-    window.set_battery_ring(battery_ring(home.battery_fraction, &window));
     window.set_battery_detail(home.battery_detail.clone().into());
     window.set_storage_detail(home.storage_detail.clone().into());
     window.set_storage_used(home.storage_used);
     window.set_home_status(home.notes.join(" ").into());
 }
 
-/// A thin ring: a faint full track, and an accent arc from 12 o'clock that
-/// covers `fraction` of the circle. Drawn here because a conic gradient
-/// filled its whole box and the hole punched in it never showed.
-fn battery_ring(fraction: f32, window: &AppWindow) -> slint::Image {
-    let theme = window.global::<Theme>();
-    let accent = theme.get_accent();
-    let track = theme.get_surface_2();
-    let size = 96u32;
-    let mut pixmap = tiny_skia::Pixmap::new(size, size).expect("pixmap");
-    let mut paint = tiny_skia::Paint::default();
-    let center = size as f32 / 2.0;
-    let radius = 40.0;
-    let stroke = tiny_skia::Stroke {
-        width: 8.0,
-        ..tiny_skia::Stroke::default()
-    };
-    let circle = ring_path(center, radius, 0.0, 360.0);
-    paint.set_color_rgba8(track.red(), track.green(), track.blue(), 255);
-    pixmap.stroke_path(
-        &circle,
-        &paint,
-        &stroke,
-        tiny_skia::Transform::identity(),
-        None,
-    );
-    let sweep = (fraction.clamp(0.0, 1.0) * 360.0).max(1.0);
-    let path = ring_path(center, radius, -90.0, sweep);
-    {
-        paint.set_color_rgba8(accent.red(), accent.green(), accent.blue(), 255);
-        paint.anti_alias = true;
-        let arc_stroke = tiny_skia::Stroke {
-            width: 8.0,
-            line_cap: tiny_skia::LineCap::Round,
-            ..stroke
-        };
-        pixmap.stroke_path(
-            &path,
-            &paint,
-            &arc_stroke,
-            tiny_skia::Transform::identity(),
-            None,
-        );
-    }
-    let buffer =
-        slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(pixmap.data(), size, size);
-    slint::Image::from_rgba8(buffer)
-}
-
-/// An arc of `sweep` degrees starting at `start`. 0 is 3 o'clock and positive
-/// is clockwise, so -90 is 12 o'clock. Built from short lines because this
-/// version of tiny-skia has no arc helper.
-fn ring_path(center: f32, radius: f32, start: f32, sweep: f32) -> tiny_skia::Path {
-    let steps = (sweep.abs() / 4.0).ceil().max(1.0) as i32;
-    let mut path = tiny_skia::PathBuilder::new();
-    for step in 0..=steps {
-        let angle = (start + sweep * step as f32 / steps as f32).to_radians();
-        let (x, y) = (center + radius * angle.cos(), center + radius * angle.sin());
-        if step == 0 {
-            path.move_to(x, y);
-        } else {
-            path.line_to(x, y);
-        }
-    }
-    path.finish().expect("ring path")
-}
-
-fn tile(id: &str, title: &str, detail: &str, image: slint::Image, on: bool) -> QuickTile {
+fn tile(id: &str, title: &str, detail: &str, glyph: &str, on: bool) -> QuickTile {
     QuickTile {
         id: id.into(),
         title: title.into(),
         detail: detail.into(),
-        icon: image,
+        icon: icons::commands(glyph).into(),
         on,
         enabled: false,
     }
-}
-
-fn icon(name: &str) -> slint::Image {
-    // The bytes are compiled in, then unpacked once, because Slint loads an
-    // image from a path. Reading the source tree broke the copy on Hermes.
-    let dir = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(|d| std::path::PathBuf::from(d).join("bos-settings-slint/icons"))
-        .unwrap_or_else(|| std::env::temp_dir().join("bos-settings-slint/icons"));
-    let path = dir.join(format!("{name}.png"));
-    if !path.exists() {
-        if let Some(bytes) = icon_bytes(name) {
-            let _ = std::fs::create_dir_all(&dir);
-            let _ = std::fs::write(&path, bytes);
-        }
-    }
-    slint::Image::load_from_path(&path).unwrap_or_default()
-}
-
-fn icon_bytes(name: &str) -> Option<&'static [u8]> {
-    Some(match name {
-        "home" => include_bytes!("../ui/icons/home.png"),
-        "wifi" => include_bytes!("../ui/icons/wifi.png"),
-        "bluetooth" => include_bytes!("../ui/icons/bluetooth.png"),
-        "share" => include_bytes!("../ui/icons/share.png"),
-        "monitor" => include_bytes!("../ui/icons/monitor.png"),
-        "volume" => include_bytes!("../ui/icons/volume.png"),
-        "battery" => include_bytes!("../ui/icons/battery.png"),
-        "mouse" => include_bytes!("../ui/icons/mouse.png"),
-        "keyboard" => include_bytes!("../ui/icons/keyboard.png"),
-        "printer" => include_bytes!("../ui/icons/printer.png"),
-        "palette" => include_bytes!("../ui/icons/palette.png"),
-        "window" => include_bytes!("../ui/icons/window.png"),
-        "lock" => include_bytes!("../ui/icons/lock.png"),
-        "bell" => include_bytes!("../ui/icons/bell.png"),
-        "grid" => include_bytes!("../ui/icons/grid.png"),
-        "package" => include_bytes!("../ui/icons/package.png"),
-        "power" => include_bytes!("../ui/icons/power.png"),
-        "download" => include_bytes!("../ui/icons/download.png"),
-        "history" => include_bytes!("../ui/icons/history.png"),
-        "drive" => include_bytes!("../ui/icons/drive.png"),
-        "memory" => include_bytes!("../ui/icons/memory.png"),
-        "shield" => include_bytes!("../ui/icons/shield.png"),
-        "users" => include_bytes!("../ui/icons/users.png"),
-        "globe" => include_bytes!("../ui/icons/globe.png"),
-        "a11y" => include_bytes!("../ui/icons/a11y.png"),
-        "info" => include_bytes!("../ui/icons/info.png"),
-        "search" => include_bytes!("../ui/icons/search.png"),
-        "moon" => include_bytes!("../ui/icons/moon.png"),
-        "zap" => include_bytes!("../ui/icons/zap.png"),
-        "plane" => include_bytes!("../ui/icons/plane.png"),
-        _ => return None,
-    })
 }
 
 fn apply_appearance(window: &AppWindow, appearance: &data::Appearance) {
@@ -364,7 +241,7 @@ fn nav_items(home: &data::Home) -> Vec<NavItem> {
             id: id.into(),
             label: label.into(),
             section: section.into(),
-            icon: icon(glyph),
+            icon: icons::commands(glyph).into(),
             badge: if id == "updates" && home.update_count > 0 {
                 home.update_count.to_string().into()
             } else {

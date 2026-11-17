@@ -1,10 +1,11 @@
-import { Theme, PageTitle, Lede, GroupBox, SettingRow, PillButton } from "theme.slint";
+import { Theme, PageTitle, Lede, GroupBox, SettingRow, PillButton, VectorIcon } from "theme.slint";
 
 export struct QuickTile {
     id: string,
     title: string,
     detail: string,
-    icon: image,
+    // SVG path commands for the glyph, from src/icons.rs.
+    icon: string,
     on: bool,
     enabled: bool,
 }
@@ -19,8 +20,8 @@ export struct AttentionRow {
 component Tile inherits Rectangle {
     in property <QuickTile> tile;
     callback clicked(string);
-    min-width: 150px;
-    min-height: 96px;
+    min-width: 170px;
+    min-height: 102px;
     horizontal-stretch: 1;
     border-radius: Theme.radius;
     background: tile.on ? Theme.accent-soft : Theme.surface;
@@ -28,33 +29,33 @@ component Tile inherits Rectangle {
     border-color: tile.on ? Theme.accent-line : Theme.line;
     opacity: tile.enabled ? 1 : 0.7;
     VerticalLayout {
-        padding: 14px;
+        // Same box as the shipping tile: 16px padding, 10px between the icon,
+        // the label and the detail line.
+        padding: 16px;
         spacing: 10px;
         alignment: start;
-        Image {
-            source: tile.icon;
-            width: 20px;
-            height: 20px;
-            colorize: tile.on ? Theme.accent : Theme.fg;
-        }
-        VerticalLayout {
-            spacing: 2px;
+        HorizontalLayout {
             alignment: start;
-            Text {
-                text: tile.title;
-                font-family: Theme.body;
-                color: Theme.fg;
-                font-size: 13.5px;
-                horizontal-alignment: left;
+            VectorIcon {
+                icon-size: 21px;
+                commands: tile.icon;
+                tint: tile.on ? Theme.accent : Theme.fg;
             }
-            Text {
-                text: tile.detail;
-                font-family: Theme.body;
-                color: Theme.muted;
-                font-size: 12px;
-                wrap: word-wrap;
-                horizontal-alignment: left;
-            }
+        }
+        Text {
+            text: tile.title;
+            font-family: Theme.body;
+            color: Theme.fg;
+            font-size: 13.5px;
+            horizontal-alignment: left;
+        }
+        Text {
+            text: tile.detail;
+            font-family: Theme.body;
+            color: Theme.muted;
+            font-size: 12px;
+            wrap: word-wrap;
+            horizontal-alignment: left;
         }
     }
     TouchArea { enabled: tile.enabled; clicked => { root.clicked(tile.id); } }
@@ -66,16 +67,20 @@ export component HomePage inherits VerticalLayout {
     in property <[QuickTile]> tiles;
     in property <[AttentionRow]> attention;
     in property <string> battery-label;
-    in property <image> battery-ring;
     in property <string> battery-detail;
     in property <string> storage-detail;
     in property <float> storage-used;
     in property <string> status;
     callback tile-clicked(string);
-    spacing: 14px;
+    // The shipping view is a CSS box model: 26px page padding, a 1.1 line
+    // height on the title, a 6px gap before the lede and 18px before the
+    // content. The app.slint column supplies the outer padding.
+    spacing: 0px;
     alignment: start;
     PageTitle { text: greeting; }
+    Rectangle { height: 6px; }
     Lede { text: lede; }
+    Rectangle { height: 20px; }
 
     GridLayout {
         spacing: 10px;
@@ -88,6 +93,8 @@ export component HomePage inherits VerticalLayout {
         }
     }
 
+    Rectangle { height: 14px; }
+
     GroupBox {
         title: "NEEDS YOUR ATTENTION";
         for row[index] in attention: SettingRow {
@@ -98,10 +105,12 @@ export component HomePage inherits VerticalLayout {
         }
     }
 
+    Rectangle { height: 14px; }
+
     if storage-detail != "": HorizontalLayout {
         spacing: 10px;
         if battery-label != "": Rectangle {
-            horizontal-stretch: 1;
+            width: (root.width - 10px) / 2;
             border-radius: Theme.radius;
             background: Theme.surface;
             border-width: 1px;
@@ -109,23 +118,26 @@ export component HomePage inherits VerticalLayout {
             HorizontalLayout {
                 padding: 14px;
                 spacing: 12px;
-                alignment: center;
-                Rectangle {
-                    width: 48px;
-                    height: 48px;
+                alignment: start;
+                VerticalLayout {
                     horizontal-stretch: 0;
-                    Image {
-                        source: battery-ring;
+                    alignment: center;
+                    Rectangle {
+                        // The shipping summary draws a plain accent ring, not
+                        // a progress arc.
                         width: 48px;
                         height: 48px;
-                    }
-                    Text {
-                        text: battery-label;
-                        font-family: Theme.body;
-                        color: Theme.fg;
-                        font-size: 11px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
+                        border-radius: 24px;
+                        border-width: 4px;
+                        border-color: Theme.accent;
+                        Text {
+                            text: battery-label;
+                            font-family: Theme.body;
+                            color: Theme.fg;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
                     }
                 }
                 VerticalLayout {
@@ -138,27 +150,38 @@ export component HomePage inherits VerticalLayout {
             }
         }
         Rectangle {
-            horizontal-stretch: 1;
+            width: (root.width - 10px) / 2;
             border-radius: Theme.radius;
             background: Theme.surface;
             border-width: 1px;
             border-color: Theme.line;
             VerticalLayout {
-                padding: 14px;
-                spacing: 8px;
+                padding-left: 14px;
+                padding-right: 14px;
+                padding-top: 16px;
+                padding-bottom: 17px;
+                spacing: 0px;
                 alignment: start;
-                width: parent.width;
-                Text { text: "Storage"; font-family: Theme.body; color: Theme.fg; font-size: 13.5px; horizontal-alignment: left; width: 100%; }
-                Text { text: storage-detail; font-family: Theme.body; color: Theme.muted; font-size: 12px; horizontal-alignment: left; width: 100%; }
-                Rectangle {
-                    height: 6px;
-                    border-radius: 3px;
-                    background: Theme.surface-2;
+                Text { text: "Storage"; font-family: Theme.body; color: Theme.fg; font-size: 13.5px; horizontal-alignment: left; }
+                Text { text: storage-detail; font-family: Theme.body; color: Theme.muted; font-size: 12px; horizontal-alignment: left; }
+                Rectangle { height: 7px; }
+                HorizontalLayout {
+                    alignment: start;
                     Rectangle {
-                        width: parent.width * min(1, max(0, root.storage-used));
-                        height: 100%;
+                        // The shipping app leaves <progress> at its default
+                        // 10em width, so the bar only spans part of the card.
+                        width: 160px;
+                        height: 6px;
                         border-radius: 3px;
-                        background: Theme.accent;
+                        background: Theme.track;
+                        Rectangle {
+                            x: 0;
+                            y: 0;
+                            width: parent.width * min(1, max(0, root.storage-used));
+                            height: 100%;
+                            border-radius: 3px;
+                            background: Theme.accent;
+                        }
                     }
                 }
             }

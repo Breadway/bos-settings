@@ -14,21 +14,20 @@ export component AppWindow inherits Window {
     background: Theme.bg;
     default-font-family: "Varela Round";
     default-font-size: 13.5px;
-    icon: @image-url("icons/home.png");
+    icon: @image-url("../../src/icons/128x128.png");
     in-out property <string> page: "home";
 
     in property <[NavItem]> nav-items;
     in property <string> account-name;
     in property <string> account-initial;
     in property <string> account-host;
-    in property <image> search-icon;
+    in property <string> search-icon;
 
     in property <string> greeting;
     in property <string> lede;
     in property <[QuickTile]> tiles;
     in property <[AttentionRow]> attention;
     in property <string> battery-label;
-    in property <image> battery-ring;
     in property <string> battery-detail;
     in property <string> storage-detail;
     in property <float> storage-used;
@@ -67,7 +66,7 @@ export component AppWindow inherits Window {
                 VerticalLayout {
                     alignment: start;
                     HorizontalLayout {
-                        padding-top: 26px;
+                        padding-top: 23px;
                         padding-bottom: 48px;
                         Rectangle { horizontal-stretch: 1; }
                         VerticalLayout {
@@ -80,7 +79,6 @@ export component AppWindow inherits Window {
                                 tiles: tiles;
                                 attention: attention;
                                 battery-label: battery-label;
-                                battery-ring: battery-ring;
                                 battery-detail: battery-detail;
                                 storage-detail: storage-detail;
                                 storage-used: storage-used;
