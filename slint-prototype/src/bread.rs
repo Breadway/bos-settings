@@ -106,10 +106,7 @@ fn list_at(doc: &DocumentMut, path: &[&str]) -> Option<String> {
     )
 }
 
-pub fn load() -> Config {
-    let Ok(doc) = read_doc(&path()) else {
-        return Config::default();
-    };
+pub fn from_doc(doc: &DocumentMut) -> Config {
     let mut cfg = Config::default();
     if let Some(value) = string_at(&doc, &["daemon", "log_level"]) {
         cfg.log_level = value;
@@ -158,6 +155,13 @@ pub fn load() -> Config {
     cfg
 }
 
+pub fn load() -> Config {
+    let Ok(doc) = read_doc(&path()) else {
+        return Config::default();
+    };
+    from_doc(&doc)
+}
+
 fn table_with(table: Option<&Table>, key: &str, item: Item) -> Table {
     let mut table = table.cloned().unwrap_or_default();
     table.insert(key, item);
@@ -195,9 +199,7 @@ fn put_nested_bool(doc: &mut DocumentMut, outer: &str, inner: &str, on: bool) {
     doc.insert(outer, Item::Table(outer_table));
 }
 
-pub fn save(cfg: &Config) -> Result<(), String> {
-    let path = path();
-    let mut doc = read_doc(&path)?;
+pub fn write_doc(mut doc: DocumentMut, cfg: &Config) -> DocumentMut {
     put_string(&mut doc, "daemon", "log_level", &cfg.log_level);
     put_string(&mut doc, "daemon", "socket_path", &cfg.socket_path);
     put_string(&mut doc, "lua", "entry_point", &cfg.lua_entry_point);
@@ -261,6 +263,12 @@ pub fn save(cfg: &Config) -> Result<(), String> {
         value(cfg.notif_notify_send_path.clone()),
     );
     doc.insert("notifications", Item::Table(notifications));
+    doc
+}
+
+pub fn save(cfg: &Config) -> Result<(), String> {
+    let path = path();
+    let doc = write_doc(read_doc(&path)?, cfg);
     let Some(parent) = path.parent() else {
         return Err("config path has no parent".into());
     };
@@ -308,6 +316,29 @@ mod tests {
         assert_eq!(cfg.log_level, "info");
         assert!(cfg.adapter_hyprland);
         assert_eq!(cfg.dedup_window_ms, 250);
+    }
+
+    #[test]
+    fn reads_power_interval_and_notify_path() {
+        let doc = "[adapters.power]\npoll_interval_secs = 12\n[notifications]\nnotify_send_path = \"/usr/bin/notify-send\"\n"
+            .parse::<DocumentMut>()
+            .unwrap();
+        let cfg = from_doc(&doc);
+        assert_eq!(cfg.power_poll_interval_secs, 12);
+        assert_eq!(cfg.notif_notify_send_path, "/usr/bin/notify-send");
+    }
+
+    #[test]
+    fn writes_nested_power_settings_beside_existing_keys() {
+        let doc = "[adapters.power]\nenabled = false\n".parse::<DocumentMut>().unwrap();
+        let mut cfg = Config::default();
+        cfg.power_poll_interval_secs = 9;
+        cfg.adapter_power = true;
+        let doc = write_doc(doc, &cfg);
+        let text = doc.to_string();
+        assert!(text.contains("poll_interval_secs = 9"));
+        assert!(text.contains("enabled = true"));
+        assert_eq!(from_doc(&doc).power_poll_interval_secs, 9);
     }
 
     #[test]

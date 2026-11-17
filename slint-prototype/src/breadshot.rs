@@ -32,25 +32,64 @@ pub fn load() -> Config {
 }
 
 pub fn save(cfg: &Config) -> Result<(), String> {
+    validate(cfg)?;
     let dir = cfg.save_dir.trim();
-    if dir.is_empty() || dir.contains('\n') || dir.starts_with('-') {
-        return Err("use a folder path".into());
-    }
     let path = path();
     let mut doc = config::load_doc(&path);
     config::set_str(&mut doc, &["save_dir"], dir);
     config::set_bool(&mut doc, &["silent"], cfg.silent);
     config::set_bool(&mut doc, &["freeze"], cfg.freeze);
+    config::set_i64(&mut doc, &["notif_timeout"], cfg.notif_timeout);
+    let format = cfg.date_format.trim();
+    config::set_str(&mut doc, &["date_format"], format);
+    config::save_doc(&path, &doc)
+}
+
+pub fn validate(cfg: &Config) -> Result<(), String> {
+    let dir = cfg.save_dir.trim();
+    if dir.is_empty() || dir.contains('\n') || dir.starts_with('-') {
+        return Err("use a folder path".into());
+    }
     if !(0..=600_000).contains(&cfg.notif_timeout) {
         return Err("the notification timeout is out of range".into());
     }
-    config::set_i64(&mut doc, &["notif_timeout"], cfg.notif_timeout);
     let format = cfg.date_format.trim();
     if format.is_empty() || format.contains('/') || format.contains('\n') {
         return Err("use a date format without slashes".into());
     }
-    config::set_str(&mut doc, &["date_format"], format);
-    config::save_doc(&path, &doc)
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config() -> Config {
+        Config {
+            save_dir: "~/Pictures/Screenshots".into(),
+            silent: false,
+            freeze: false,
+            notif_timeout: 5000,
+            date_format: "%Y-%m-%d-%H%M%S".into(),
+        }
+    }
+
+    #[test]
+    fn accepts_the_defaults() {
+        assert!(validate(&config()).is_ok());
+    }
+
+    #[test]
+    fn rejects_bad_timeouts_and_formats() {
+        let mut cfg = config();
+        cfg.notif_timeout = 900_000;
+        assert!(validate(&cfg).is_err());
+        cfg.notif_timeout = 5000;
+        cfg.date_format = "%Y/%m/%d".into();
+        assert!(validate(&cfg).is_err());
+        cfg.date_format = "".into();
+        assert!(validate(&cfg).is_err());
+    }
 }
 
 /// breadshot exec binds from binds.json, or the documented defaults when no
