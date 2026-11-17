@@ -173,15 +173,15 @@ parity_check.py fails while any item is not [x].
 - [x] view `Breadlock` -> slint-prototype/src/pagedata.rs
 
 ## Notifications
-- [ ] command `notification_settings::get_notification_preferences`
-- [ ] command `notification_settings::save_notification_preferences`
-- [ ] view `Notifications`
+- [x] command `notification_settings::get_notification_preferences` -> slint-prototype/src/notifications.rs
+- [x] command `notification_settings::save_notification_preferences` -> slint-prototype/src/notifications.rs
+- [~] view `Notifications`
 
 ## Default apps
-- [ ] command `defaults::get_default_apps`
+- [x] command `defaults::get_default_apps` -> slint-prototype/src/pagedata.rs
 - [ ] command `defaults::list_startup_apps`
-- [ ] command `defaults::save_default_apps`
-- [ ] view `Defaults`
+- [x] command `defaults::save_default_apps` -> slint-prototype/src/pagedata.rs
+- [x] view `Defaults` -> slint-prototype/src/pagedata.rs
 
 ## Get apps
 - [ ] command `app_store::install_store_app`
@@ -199,14 +199,14 @@ parity_check.py fails while any item is not [x].
 
 ## Startup
 - [ ] command `autostart::command`
-- [ ] command `autostart::get_autostart_entries`
-- [ ] command `autostart::load_entries`
+- [x] command `autostart::get_autostart_entries` -> slint-prototype/src/pagedata.rs
+- [x] command `autostart::load_entries` -> slint-prototype/src/pagedata.rs
 - [ ] command `autostart::new`
-- [ ] command `autostart::remove_entries`
-- [ ] command `autostart::save_autostart_entries`
-- [ ] command `autostart::store_entries`
-- [ ] command `autostart::upsert_entry`
-- [ ] view `Autostart`
+- [x] command `autostart::remove_entries` -> slint-prototype/src/pagedata.rs
+- [x] command `autostart::save_autostart_entries` -> slint-prototype/src/pagedata.rs
+- [x] command `autostart::store_entries` -> slint-prototype/src/pagedata.rs
+- [x] command `autostart::upsert_entry` -> slint-prototype/src/pagedata.rs
+- [~] view `Autostart`
 
 ## Updates
 - [ ] command `bread::get_bread_config`

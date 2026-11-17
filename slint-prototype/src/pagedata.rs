@@ -697,17 +697,156 @@ fn defaults() -> Page {
                 }
             }
         }
+        let options = default_app_options(mimes);
+        let selected = options
+            .iter()
+            .position(|(desktop, _)| desktop == &value)
+            .map(|index| index as i32)
+            .unwrap_or(-1);
         rows.push(Row {
             kind: "select".into(),
             id: format!("cat:{id}"),
             label: (*label).into(),
             value: desktop_name(&value),
             detail: value,
-            selected: index as i32,
+            selected,
+            options: options.into_iter().map(|(_, name)| name).collect(),
             ..Row::default()
         });
     }
     p.rows("Apps", rows)
+}
+
+fn default_mimes(id: &str) -> &'static [&'static str] {
+    match id {
+        "browser" => &["x-scheme-handler/http", "x-scheme-handler/https", "text/html"],
+        "files" => &["inode/directory"],
+        "terminal" => &["x-scheme-handler/terminal"],
+        "image" => &[
+            "image/png",
+            "image/jpeg",
+            "image/webp",
+            "image/gif",
+            "image/svg+xml",
+        ],
+        "pdf" => &["application/pdf"],
+        "editor" => &["text/plain", "text/markdown"],
+        _ => &[],
+    }
+}
+
+fn default_app_options(mimes: &[&str]) -> Vec<(String, String)> {
+    let mut options: Vec<(String, String)> = Vec::new();
+    for dir in [
+        PathBuf::from("/usr/share/applications"),
+        PathBuf::from("/usr/local/share/applications"),
+        home_dir().join(".local/share/applications"),
+    ] {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let file = entry.file_name().to_string_lossy().to_string();
+            if !file.ends_with(".desktop") || options.iter().any(|(id, _)| id == &file) {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(entry.path()) else {
+                continue;
+            };
+            let mut name = String::new();
+            let mut handles = false;
+            let mut in_entry = false;
+            for line in text.lines().map(str::trim) {
+                if line.starts_with('[') {
+                    in_entry = line.eq_ignore_ascii_case("[Desktop Entry]");
+                } else if in_entry {
+                    if let Some(value) = line.strip_prefix("Name=") {
+                        if name.is_empty() {
+                            name = value.to_string();
+                        }
+                    }
+                    if let Some(value) = line.strip_prefix("MimeType=") {
+                        handles = value
+                            .split(';')
+                            .any(|mime| mimes.iter().any(|wanted| wanted == &mime.trim()));
+                    }
+                }
+            }
+            if handles && !name.is_empty() {
+                options.push((file, name));
+            }
+        }
+    }
+    options.sort_by(|a, b| a.1.cmp(&b.1));
+    options
+}
+
+fn defaults_action(id: &str, action: &str) -> Result<(), String> {
+    if action != "select" {
+        return Ok(());
+    }
+    let Some(category) = id.strip_prefix("cat:") else {
+        return Ok(());
+    };
+    let path = config_dir().join("mimeapps.list");
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let mimes = default_mimes(category);
+    let options = default_app_options(mimes);
+    if options.is_empty() {
+        return Err("no installed app handles that".into());
+    }
+    let current = text
+        .lines()
+        .find_map(|line| {
+            let (mime, desktop) = line.split_once('=')?;
+            if mimes.contains(&mime.trim()) {
+                Some(desktop.split(';').next().unwrap_or("").trim().to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default();
+    let index = options
+        .iter()
+        .position(|(desktop, _)| desktop == &current)
+        .map(|index| (index + 1) % options.len())
+        .unwrap_or(0);
+    let desktop = options[index].0.clone();
+    let mut lines: Vec<String> = Vec::new();
+    let mut in_defaults = false;
+    let mut wrote = false;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            if in_defaults && !wrote {
+                for mime in mimes {
+                    lines.push(format!("{mime}={desktop};"));
+                }
+                wrote = true;
+            }
+            in_defaults = trimmed.eq_ignore_ascii_case("[Default Applications]");
+        }
+        if in_defaults {
+            if let Some((mime, _)) = trimmed.split_once('=') {
+                if mimes.contains(&mime.trim()) {
+                    continue;
+                }
+            }
+        }
+        lines.push(line.to_string());
+    }
+    if !wrote {
+        lines.push("[Default Applications]".into());
+        for mime in mimes {
+            lines.push(format!("{mime}={desktop};"));
+        }
+    }
+    std::fs::create_dir_all(config_dir()).map_err(|error| error.to_string())?;
+    std::fs::write(&path, lines.join("\n") + "\n").map_err(|error| error.to_string())?;
+    let _ = Command::new("update-desktop-database")
+        .arg(home_dir().join(".local/share/applications"))
+        .status();
+    Ok(())
 }
 
 fn desktop_name(id: &str) -> String {
@@ -1188,7 +1327,37 @@ fn startup() -> Page {
     } else {
         p = p.rows("Your apps", rows);
     }
+    p = p.rows(
+        "Add a command",
+        vec![Row {
+            kind: "input".into(),
+            id: "new-startup".into(),
+            label: "Command".into(),
+            hint: "Runs once each time you log in.".into(),
+            value: String::new(),
+            action: "Add".into(),
+            ..Row::default()
+        }],
+    );
     p
+}
+
+fn startup_add(command: &str) -> Result<(), String> {
+    let command = command.trim();
+    if command.is_empty() || command.contains('\n') {
+        return Err("enter a command".into());
+    }
+    let dir = config_dir().join("autostart");
+    std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    let slug: String = command
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect();
+    let name = command.split_whitespace().next().unwrap_or("command");
+    let body = format!(
+        "[Desktop Entry]\nType=Application\nName={name}\nExec={command}\nTerminal=false\nX-GNOME-Autostart-enabled=true\n"
+    );
+    std::fs::write(dir.join(format!("{slug}.desktop")), body).map_err(|error| error.to_string())
 }
 
 // --------------------------------------------------------------------- storage
@@ -4364,6 +4533,9 @@ fn storage_action(id: &str, action: &str) -> Result<(), String> {
 }
 
 fn notifications_action(id: &str, action: &str) -> Result<(), String> {
+    if action.starts_with("input:") && id == "new-startup" {
+        return startup_add(action.trim_start_matches("input:"));
+    }
     if action == "toggle" {
         let key = match id {
             "dnd" => "dnd",
@@ -4379,10 +4551,24 @@ fn notifications_action(id: &str, action: &str) -> Result<(), String> {
             return crate::notifications::cycle_app(name);
         }
     }
+    if action == "action" && id == "history" {
+        let out = Command::new("breadbar")
+            .arg("--history")
+            .output()
+            .map_err(|error| error.to_string())?;
+        return if out.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        };
+    }
     Ok(())
 }
 
 fn startup_action(id: &str, action: &str) -> Result<(), String> {
+    if id == "new-startup" && action.starts_with("input:") {
+        return startup_add(action.trim_start_matches("input:"));
+    }
     let Some(path) = id.strip_prefix("startup:") else {
         return Ok(());
     };
@@ -5504,6 +5690,20 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
         let mut reloaded = load(page);
         if let Some(message) = error {
             reloaded.status = format!("Could not apply that setting: {message}");
+        }
+        return reloaded;
+    }
+    if page == "defaults" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = defaults_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not set the default app: {message}");
         }
         return reloaded;
     }
