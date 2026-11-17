@@ -29,6 +29,17 @@ pub struct Home {
     pub storage_detail: String,
     pub storage_used: f32,
     pub notes: Vec<String>,
+    pub night_installed: bool,
+    pub night_on: bool,
+    pub dnd_on: bool,
+    pub dnd_detail: String,
+    pub power_mode: String,
+    pub power_mode_detail: String,
+    pub automatic_power: bool,
+    pub airplane_available: bool,
+    pub airplane_on: bool,
+    pub connected: String,
+    pub backup_ready: bool,
 }
 
 pub fn load_home() -> Home {
@@ -38,6 +49,12 @@ pub fn load_home() -> Home {
     let battery = battery();
     let updates = updates();
     let storage = storage();
+    let night = crate::nightlight::load();
+    let night_installed = command_exists("hyprsunset");
+    let (dnd_on, dnd_detail) = notification_state();
+    let (power_mode, power_mode_detail, automatic_power) = power_state();
+    let (airplane_available, airplane_on) = airplane_state();
+    let backup_ready = backup_repo().is_some();
     let mut notes = Vec::new();
     notes.extend(wifi.note);
     notes.extend(bluetooth.note);
@@ -87,6 +104,17 @@ pub fn load_home() -> Home {
         storage_detail: storage.detail,
         storage_used: storage.fraction,
         notes,
+        night_installed,
+        night_on: night.enabled,
+        dnd_on,
+        dnd_detail,
+        power_mode,
+        power_mode_detail,
+        automatic_power,
+        airplane_available,
+        airplane_on,
+        connected: bluetooth.connected.join(", "),
+        backup_ready,
     }
 }
 
@@ -179,6 +207,7 @@ struct Bluetooth {
     on: bool,
     detail: String,
     note: Option<String>,
+    connected: Vec<String>,
 }
 
 fn bluetooth() -> Bluetooth {
@@ -187,6 +216,7 @@ fn bluetooth() -> Bluetooth {
             on: false,
             detail: "Unavailable".into(),
             note: Some("Bluetooth: bluetoothctl is not installed.".into()),
+            connected: Vec::new(),
         };
     };
     let text = String::from_utf8_lossy(&out.stdout);
@@ -195,6 +225,7 @@ fn bluetooth() -> Bluetooth {
             on: false,
             detail: "No adapter".into(),
             note: None,
+            connected: Vec::new(),
         };
     }
     let on = text.lines().any(|l| l.trim() == "Powered: yes");
@@ -229,6 +260,7 @@ fn bluetooth() -> Bluetooth {
         on,
         detail,
         note: None,
+        connected,
     }
 }
 
@@ -401,6 +433,193 @@ fn storage() -> Storage {
 
 fn gib(bytes: u64) -> String {
     format!("{:.1} GiB", bytes as f64 / 1024_f64.powi(3))
+}
+
+pub fn command_exists(name: &str) -> bool {
+    Command::new("sh")
+        .args(["-c", "command -v \"$1\" >/dev/null 2>&1", "sh", name])
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+fn notification_state() -> (bool, String) {
+    let Ok(prefs) = crate::notifications::load() else {
+        return (false, "Not available".into());
+    };
+    let effective = prefs
+        .get("effective_dnd")
+        .and_then(serde_json::Value::as_bool)
+        .or_else(|| prefs.get("dnd").and_then(serde_json::Value::as_bool))
+        .unwrap_or(false);
+    let scheduled = prefs
+        .get("schedule")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    (
+        effective,
+        if effective {
+            "On".into()
+        } else if scheduled {
+            "Scheduled".into()
+        } else {
+            "Off".into()
+        },
+    )
+}
+
+fn power_state() -> (String, String, bool) {
+    let read = |program: &str| {
+        Command::new(program)
+            .arg("get")
+            .output()
+            .ok()
+            .filter(|out| out.status.success())
+            .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
+    };
+    let current = read("powerprofilesctl")
+        .or_else(|| read("tlpctl"))
+        .unwrap_or_default();
+    let detail = match current.as_str() {
+        "power-saver" => "Battery saver",
+        "balanced" => "Balanced",
+        "performance" => "Performance",
+        _ => "Not available",
+    };
+    let automatic = Command::new("systemctl")
+        .args(["is-enabled", "bos-settings-power-auto.timer"])
+        .output()
+        .is_ok_and(|out| out.status.success());
+    (current, detail.into(), automatic)
+}
+
+fn airplane_state() -> (bool, bool) {
+    let Ok(out) = Command::new("rfkill").args(["--json"]).output() else {
+        return (false, false);
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&out.stdout) else {
+        return (false, false);
+    };
+    let Some(rows) = value.get("rfkilldevices").and_then(|v| v.as_array()) else {
+        return (false, false);
+    };
+    let radios: Vec<_> = rows
+        .iter()
+        .filter(|row| {
+            matches!(
+                row.get("type").and_then(|v| v.as_str()),
+                Some("wlan" | "bluetooth" | "wwan")
+            )
+        })
+        .collect();
+    if radios.is_empty() {
+        return (false, false);
+    }
+    (
+        true,
+        radios.iter().all(|row| {
+            row.get("soft")
+                .and_then(|v| v.as_str())
+                .is_some_and(|state| state == "blocked")
+                || row
+                    .get("hard")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|state| state == "blocked")
+        }),
+    )
+}
+
+pub fn backup_repo() -> Option<String> {
+    let path = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
+        .unwrap_or_else(|| PathBuf::from(".config"))
+        .join("bos-settings/backup.toml");
+    let text = std::fs::read_to_string(path).ok()?;
+    let doc = text.parse::<toml_edit::DocumentMut>().ok()?;
+    doc.get("repo")
+        .and_then(toml_edit::Item::as_str)
+        .map(str::trim)
+        .filter(|repo| !repo.is_empty())
+        .map(str::to_string)
+}
+
+pub fn set_wifi_radio(enabled: bool) -> Result<(), String> {
+    let out = Command::new("nmcli")
+        .args(["radio", "wifi", if enabled { "on" } else { "off" }])
+        .output()
+        .map_err(|error| error.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+pub fn set_bluetooth_power(on: bool) -> Result<(), String> {
+    let out = Command::new("bluetoothctl")
+        .args(["power", if on { "on" } else { "off" }])
+        .output()
+        .map_err(|error| error.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+pub fn set_power_mode(profile: &str) -> Result<(), String> {
+    let program = if command_exists("powerprofilesctl") {
+        "powerprofilesctl"
+    } else {
+        "tlpctl"
+    };
+    let out = Command::new(program)
+        .args(["set", profile])
+        .output()
+        .map_err(|error| error.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+pub fn set_airplane(enabled: bool) -> Result<(), String> {
+    let action = if enabled { "block" } else { "unblock" };
+    let ids = Command::new("rfkill")
+        .args(["--json"])
+        .output()
+        .map_err(|error| error.to_string())?;
+    let value: serde_json::Value =
+        serde_json::from_slice(&ids.stdout).map_err(|error| error.to_string())?;
+    let rows = value
+        .get("rfkilldevices")
+        .and_then(|v| v.as_array())
+        .ok_or("invalid radio status")?;
+    let mut ids = Vec::new();
+    for row in rows {
+        if matches!(
+            row.get("type").and_then(|v| v.as_str()),
+            Some("wlan" | "bluetooth" | "wwan")
+        ) {
+            if let Some(id) = row.get("id").and_then(|v| v.as_u64()) {
+                ids.push(id.to_string());
+            }
+        }
+    }
+    if ids.is_empty() {
+        return Err("No wireless radios found".into());
+    }
+    let out = Command::new("rfkill")
+        .arg(action)
+        .args(&ids)
+        .output()
+        .map_err(|error| error.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
 }
 
 fn local_hour() -> u32 {
