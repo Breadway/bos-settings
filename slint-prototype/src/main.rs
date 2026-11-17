@@ -29,13 +29,86 @@ fn main() -> anyhow::Result<()> {
     apply_palette(&window);
     apply_metrics(&window);
     window.set_search_icon(icons::SEARCH.into());
-    let home = data::load_home();
-    let nav = nav_items(&home);
-    window.set_nav_items(slint::ModelRc::new(slint::VecModel::from(nav)));
-    apply_home(&window, &home);
+    window.set_nav_items(slint::ModelRc::new(slint::VecModel::from(nav_items(0))));
 
-    let appearance = data::load_appearance();
-    apply_appearance(&window, &appearance);
+    // Reading the system state shells out to nmcli, upower and pacman, and
+    // decoding wallpapers takes seconds, so none of it runs before first
+    // paint. Each group applies as soon as its data lands.
+    let load_weak = window.as_weak();
+    std::thread::spawn(move || {
+        let home = data::load_home();
+        let appearance = data::load_appearance();
+        let _ = slint::invoke_from_event_loop(move || {
+            let Some(window) = load_weak.upgrade() else {
+                return;
+            };
+            window.set_nav_items(slint::ModelRc::new(slint::VecModel::from(nav_items(
+                home.update_count,
+            ))));
+            apply_home(&window, &home);
+            apply_appearance(&window, &appearance);
+        });
+    });
+
+    let extra_weak = window.as_weak();
+    std::thread::spawn(move || {
+        let extra = data::load_extra();
+        let wallpaper = extra.wallpaper.clone();
+        let paths: Vec<(String, String)> = extra
+            .library
+            .iter()
+            .map(|item| (item.name.clone(), item.path.clone()))
+            .collect();
+        let meta_weak = extra_weak.clone();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(window) = meta_weak.upgrade() {
+                apply_extra(&window, &extra);
+            }
+        });
+        // Slint image handles are not Send, so decode to pixels here and
+        // build the images back on the event loop.
+        if let Some(rgba) = wallpaper
+            .as_deref()
+            .and_then(|path| decode_image(path, 1400, 800))
+        {
+            let weak = extra_weak.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(window) = weak.upgrade() {
+                    window.set_wallpaper(image_from_rgba(rgba));
+                }
+            });
+        }
+        let thumbs: Vec<(String, String, Option<Rgba>)> = paths
+            .into_iter()
+            .map(|(name, path)| {
+                let rgba = decode_image(&path, 320, 200);
+                (name, path, rgba)
+            })
+            .collect();
+        let _ = slint::invoke_from_event_loop(move || {
+            let Some(window) = extra_weak.upgrade() else {
+                return;
+            };
+            eprintln!(
+                "library: {:?}",
+                thumbs
+                    .iter()
+                    .map(|(n, _, r)| (n.clone(), r.is_some()))
+                    .collect::<Vec<_>>()
+            );
+            let items: Vec<WallpaperThumb> = thumbs
+                .into_iter()
+                .filter_map(|(name, path, rgba)| {
+                    Some(WallpaperThumb {
+                        name: name.into(),
+                        path: path.into(),
+                        image: image_from_rgba(rgba?),
+                    })
+                })
+                .collect();
+            window.set_library(slint::ModelRc::new(slint::VecModel::from(items)));
+        });
+    });
 
     let window_weak = window.as_weak();
     window.on_tile_clicked(move |id| {
@@ -86,6 +159,65 @@ fn main() -> anyhow::Result<()> {
             }
         },
     );
+
+    let weak = window.as_weak();
+    window.on_theme_selected(move |id| {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        match data::set_theme(id.as_str()) {
+            Ok(()) => {
+                window.set_active_theme(id);
+                window.set_appearance_status("".into());
+            }
+            Err(err) => window.set_appearance_status(err.into()),
+        }
+    });
+
+    let weak = window.as_weak();
+    window.on_wallpaper_selected(move |path| {
+        if let Some(window) = weak.upgrade() {
+            apply_wallpaper(&window, path.as_str());
+        }
+    });
+
+    let weak = window.as_weak();
+    window.on_choose_wallpaper(move || {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        if let Some(path) = data::choose_wallpaper() {
+            apply_wallpaper(&window, &path);
+        }
+    });
+
+    let weak = window.as_weak();
+    window.on_restart_shell(move || {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        let status = match data::restart_shell() {
+            Ok(()) => "".to_string(),
+            Err(err) => err,
+        };
+        window.set_appearance_status(status.into());
+    });
+
+    let weak = window.as_weak();
+    window.on_text_changed(move || {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        let sizes = [12, 14, 16, 18];
+        let fonts = ["Varela Round", "Inter", "Noto Sans"];
+        let size = sizes[(window.get_text_size_index().max(0) as usize).min(3)];
+        let font = fonts[(window.get_font_index().max(0) as usize).min(2)];
+        let status = match data::save_text(size, font) {
+            Ok(()) => String::new(),
+            Err(err) => err,
+        };
+        window.set_appearance_status(status.into());
+    });
 
     window.run()?;
     Ok(())
@@ -159,6 +291,92 @@ fn font_installed(family: &str) -> bool {
         .ok()
         .map(|o| o.status.success() && !o.stdout.is_empty())
         .unwrap_or(false)
+}
+
+const TEXT_SIZES: [i64; 4] = [12, 14, 16, 18];
+const FONTS: [&str; 3] = ["Varela Round", "Inter", "Noto Sans"];
+
+fn apply_extra(window: &AppWindow, extra: &data::Extra) {
+    let cards: Vec<ThemeCard> = extra
+        .themes
+        .iter()
+        .map(|theme| ThemeCard {
+            id: theme.id.clone().into(),
+            name: theme.name.clone().into(),
+            sub: if theme.custom {
+                "Custom theme".into()
+            } else {
+                "".into()
+            },
+        })
+        .collect();
+    window.set_themes(slint::ModelRc::new(slint::VecModel::from(cards)));
+    window.set_active_theme(extra.active_theme.clone().into());
+    window.set_wallpaper_name(extra.wallpaper_name.clone().into());
+    window.set_wallpaper_path(extra.wallpaper.clone().unwrap_or_default().into());
+    window.set_library_dir(extra.library_dir.clone().into());
+    // Filled in once the thumbnails have decoded; empty cells would just
+    // flicker transparent.
+    window.set_library(slint::ModelRc::new(slint::VecModel::from(Vec::<
+        WallpaperThumb,
+    >::new())));
+    window.set_text_size_index(
+        TEXT_SIZES
+            .iter()
+            .position(|size| *size == extra.text_size)
+            .unwrap_or(1) as i32,
+    );
+    window.set_font_index(
+        FONTS
+            .iter()
+            .position(|font| *font == extra.font)
+            .unwrap_or(0) as i32,
+    );
+}
+
+struct Rgba {
+    pixels: Vec<u8>,
+    width: u32,
+    height: u32,
+}
+
+fn decode_image(path: &str, max_width: u32, max_height: u32) -> Option<Rgba> {
+    let image = image::open(path).ok()?;
+    let image = image.thumbnail(max_width, max_height);
+    let rgba = image.to_rgba8();
+    Some(Rgba {
+        width: rgba.width(),
+        height: rgba.height(),
+        pixels: rgba.into_raw(),
+    })
+}
+
+fn image_from_rgba(rgba: Rgba) -> slint::Image {
+    let buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+        &rgba.pixels,
+        rgba.width,
+        rgba.height,
+    );
+    slint::Image::from_rgba8(buffer)
+}
+
+fn apply_wallpaper(window: &AppWindow, path: &str) {
+    match data::set_wallpaper(path) {
+        Ok(()) => {
+            let name = path.rsplit('/').next().unwrap_or("").to_string();
+            window.set_wallpaper_path(path.into());
+            window.set_wallpaper_name(name.into());
+            window.set_wallpaper(load_image(path, 1400, 800).unwrap_or_else(slint::Image::default));
+            window.set_appearance_status("".into());
+        }
+        Err(err) => window.set_appearance_status(err.into()),
+    }
+}
+
+/// Decode a wallpaper and downscale it before handing it to Slint; full-size
+/// 4K images are tens of megabytes each and the page shows a dozen of them.
+fn load_image(path: &str, max_width: u32, max_height: u32) -> Option<slint::Image> {
+    decode_image(path, max_width, max_height).map(image_from_rgba)
 }
 
 fn apply_home(window: &AppWindow, home: &data::Home) {
@@ -320,7 +538,7 @@ fn join_border(color: slint::Color, alpha: f32) -> String {
     )
 }
 
-fn nav_items(home: &data::Home) -> Vec<NavItem> {
+fn nav_items(update_count: usize) -> Vec<NavItem> {
     // Same order and labels as frontend/src/lib/sidebar.ts. `badge` is the
     // small mark the shipping sidebar draws; "soon" stands in for pages this
     // prototype does not implement.
@@ -365,8 +583,8 @@ fn nav_items(home: &data::Home) -> Vec<NavItem> {
             label: label.into(),
             section: section.into(),
             icon: icons::commands(glyph).into(),
-            badge: if id == "updates" && home.update_count > 0 {
-                home.update_count.to_string().into()
+            badge: if id == "updates" && update_count > 0 {
+                update_count.to_string().into()
             } else {
                 badge.into()
             },

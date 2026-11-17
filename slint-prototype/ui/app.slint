@@ -1,9 +1,9 @@
 import { Theme } from "theme.slint";
 import { Sidebar, NavItem } from "sidebar.slint";
 import { HomePage, QuickTile, AttentionRow } from "home.slint";
-import { AppearancePage } from "appearance.slint";
+import { AppearancePage, ThemeCard, WallpaperThumb } from "appearance.slint";
 
-export { Theme, NavItem, QuickTile, AttentionRow }
+export { Theme, NavItem, QuickTile, AttentionRow, ThemeCard, WallpaperThumb }
 
 export component AppWindow inherits Window {
     title: "BOS Settings";
@@ -56,9 +56,23 @@ export component AppWindow inherits Window {
     in-out property <bool> resize-on-border;
     in-out property <int> layout-index;
     in-out property <string> appearance-status;
+    in property <[ThemeCard]> themes;
+    in-out property <string> active-theme;
+    in property <image> wallpaper;
+    in property <string> wallpaper-name;
+    in property <string> wallpaper-path;
+    in property <string> library-dir;
+    in property <[WallpaperThumb]> library;
+    in-out property <int> text-size-index;
+    in-out property <int> font-index;
 
     callback tile-clicked(string);
     callback appearance-changed();
+    callback theme-selected(string);
+    callback wallpaper-selected(string);
+    callback choose-wallpaper();
+    callback restart-shell();
+    callback text-changed();
 
     HorizontalLayout {
         Sidebar {
@@ -117,7 +131,21 @@ export component AppWindow inherits Window {
                                 resize-on-border <=> resize-on-border;
                                 layout-index <=> layout-index;
                                 status <=> appearance-status;
+                                themes: root.themes;
+                                active-theme <=> root.active-theme;
+                                wallpaper: root.wallpaper;
+                                wallpaper-name: root.wallpaper-name;
+                                wallpaper-path: root.wallpaper-path;
+                                library-dir: root.library-dir;
+                                library: root.library;
+                                text-size-index <=> root.text-size-index;
+                                font-index <=> root.font-index;
                                 changed => { root.appearance-changed(); }
+                                theme-selected(id) => { root.theme-selected(id); }
+                                wallpaper-selected(path) => { root.wallpaper-selected(path); }
+                                choose-wallpaper => { root.choose-wallpaper(); }
+                                restart-shell => { root.restart-shell(); }
+                                text-changed => { root.text-changed(); }
                             }
                             if page != "home" && page != "appearance": VerticalLayout {
                                 spacing: 8px;
