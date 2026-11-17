@@ -2,8 +2,9 @@ import { Theme } from "theme.slint";
 import { Sidebar, NavItem } from "sidebar.slint";
 import { HomePage, QuickTile, AttentionRow } from "home.slint";
 import { AppearancePage, ThemeCard, WallpaperThumb } from "appearance.slint";
+import { AboutPage, AboutCheck } from "about.slint";
 
-export { Theme, NavItem, QuickTile, AttentionRow, ThemeCard, WallpaperThumb }
+export { Theme, NavItem, QuickTile, AttentionRow, ThemeCard, WallpaperThumb, AboutCheck }
 
 export component AppWindow inherits Window {
     title: "BOS Settings";
@@ -65,6 +66,20 @@ export component AppWindow inherits Window {
     in property <[WallpaperThumb]> library;
     in-out property <int> text-size-index;
     in-out property <int> font-index;
+    in property <string> about-os;
+    in property <string> about-version;
+    in property <string> about-kernel;
+    in property <string> about-cpu;
+    in property <string> about-gpu;
+    in property <string> about-gpu-full;
+    in property <string> about-memory;
+    in property <string> about-disk;
+    in property <string> about-uptime;
+    in property <string> about-hostname;
+    in property <string> about-channel;
+    in property <[AboutCheck]> about-checks;
+    in-out property <bool> about-details-open;
+    in-out property <string> about-status;
 
     callback tile-clicked(string);
     callback appearance-changed();
@@ -73,6 +88,8 @@ export component AppWindow inherits Window {
     callback choose-wallpaper();
     callback restart-shell();
     callback text-changed();
+    callback copy-info();
+    callback run-checks();
 
     HorizontalLayout {
         Sidebar {
@@ -166,7 +183,26 @@ export component AppWindow inherits Window {
                                 restart-shell => { root.restart-shell(); }
                                 text-changed => { root.text-changed(); }
                             }
-                            if page != "home" && page != "appearance": VerticalLayout {
+                            if page == "about": AboutPage {
+                                os: root.about-os;
+                                version: root.about-version;
+                                kernel: root.about-kernel;
+                                cpu: root.about-cpu;
+                                gpu: root.about-gpu;
+                                gpu-full: root.about-gpu-full;
+                                memory: root.about-memory;
+                                disk: root.about-disk;
+                                uptime: root.about-uptime;
+                                hostname: root.about-hostname;
+                                channel: root.about-channel;
+                                checks: root.about-checks;
+                                details-open <=> root.about-details-open;
+                                status <=> root.about-status;
+                                copy-info => { root.copy-info(); }
+                                run-checks => { root.run-checks(); }
+                                navigate(id) => { root.page = id; }
+                            }
+                            if page != "home" && page != "appearance" && page != "about": VerticalLayout {
                                 spacing: 8px;
                                 alignment: start;
                                 Text {
@@ -177,7 +213,7 @@ export component AppWindow inherits Window {
                                     font-weight: 500;
                                 }
                                 Text {
-                                    text: "Home and Appearance are the two wired pages. The rest of the sidebar is here so the shell matches; nothing on those pages writes settings.";
+                                    text: "Home, Appearance and About are the wired pages. The rest of the sidebar is here so the shell matches; nothing on those pages writes settings.";
                                     font-family: Theme.body;
                                     color: Theme.muted;
                                     font-size: 14px;

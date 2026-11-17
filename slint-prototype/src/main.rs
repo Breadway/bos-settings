@@ -38,6 +38,7 @@ fn main() -> anyhow::Result<()> {
     std::thread::spawn(move || {
         let home = data::load_home();
         let appearance = data::load_appearance();
+        let about = data::load_about();
         let _ = slint::invoke_from_event_loop(move || {
             let Some(window) = load_weak.upgrade() else {
                 return;
@@ -47,6 +48,7 @@ fn main() -> anyhow::Result<()> {
             ))));
             apply_home(&window, &home);
             apply_appearance(&window, &appearance);
+            apply_about(&window, &about);
         });
     });
 
@@ -219,6 +221,55 @@ fn main() -> anyhow::Result<()> {
         window.set_appearance_status(status.into());
     });
 
+    let weak = window.as_weak();
+    window.on_copy_info(move || {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        let text = format!(
+            "{} {}\nKernel: {}\nCPU: {}\nGPU: {}\nMemory: {}\nChannel: {}",
+            window.get_about_os(),
+            window.get_about_version(),
+            window.get_about_kernel(),
+            window.get_about_cpu(),
+            window.get_about_gpu(),
+            window.get_about_memory(),
+            window.get_about_channel()
+        );
+        let status = match data::copy_to_clipboard(&text) {
+            Ok(()) => "System info copied.".to_string(),
+            Err(err) => err,
+        };
+        window.set_about_status(status.into());
+    });
+
+    let weak = window.as_weak();
+    window.on_run_checks(move || {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        window.set_about_status("Checking…".into());
+        let check_weak = window.as_weak();
+        std::thread::spawn(move || {
+            let checks = data::health_checks();
+            let _ = slint::invoke_from_event_loop(move || {
+                let Some(window) = check_weak.upgrade() else {
+                    return;
+                };
+                let rows: Vec<AboutCheck> = checks
+                    .iter()
+                    .map(|check| AboutCheck {
+                        name: check.name.clone().into(),
+                        ok: check.ok,
+                        output: check.output.clone().into(),
+                    })
+                    .collect();
+                window.set_about_checks(slint::ModelRc::new(slint::VecModel::from(rows)));
+                window.set_about_status("".into());
+            });
+        });
+    });
+
     window.run()?;
     Ok(())
 }
@@ -296,6 +347,28 @@ fn font_installed(family: &str) -> bool {
 
 const TEXT_SIZES: [i64; 4] = [12, 14, 16, 18];
 const FONTS: [&str; 3] = ["Varela Round", "Inter", "Noto Sans"];
+
+fn apply_about(window: &AppWindow, about: &data::About) {
+    window.set_about_os(about.os.clone().into());
+    window.set_about_version(about.version.clone().unwrap_or_default().into());
+    window.set_about_kernel(about.kernel.clone().into());
+    window.set_about_cpu(about.cpu.clone().into());
+    window.set_about_gpu(about.gpu.clone().into());
+    window.set_about_gpu_full(about.gpu_full.clone().into());
+    window.set_about_memory(about.memory.clone().into());
+    window.set_about_disk(about.disk.clone().into());
+    window.set_about_uptime(about.uptime.clone().into());
+    window.set_about_hostname(about.hostname.clone().into());
+    window.set_about_channel(capitalize(&about.channel).into());
+}
+
+fn capitalize(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
 
 fn apply_extra(window: &AppWindow, extra: &data::Extra) {
     let cards: Vec<ThemeCard> = extra
