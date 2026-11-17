@@ -65,23 +65,23 @@ parity_check.py fails while any item is not [x].
 - [~] view `Sharing`
 
 ## Displays
-- [ ] command `display_guard::apply`
+- [x] command `display_guard::apply` -> slint-prototype/src/displays.rs
 - [x] command `display_guard::apply_display_layout` -> slint-prototype/src/displays.rs
-- [ ] command `display_guard::apply_for`
+- [x] command `display_guard::apply_for` -> slint-prototype/src/displays.rs
 - [x] command `display_guard::disconnect_reason` -> slint-prototype/src/displays.rs
 - [x] command `display_guard::display_guard_status` -> slint-prototype/src/displays.rs
-- [ ] command `display_guard::keep`
+- [x] command `display_guard::keep` -> slint-prototype/src/displays.rs
 - [x] command `display_guard::keep_display_layout` -> slint-prototype/src/displays.rs
 - [x] command `display_guard::layout_mismatch` -> slint-prototype/src/displays.rs
-- [ ] command `display_guard::new`
+- [x] command `display_guard::new` -> slint-prototype/src/displays.rs
 - [x] command `display_guard::plan_statements` -> slint-prototype/src/displays.rs
-- [ ] command `display_guard::production`
-- [ ] command `display_guard::revert`
+- [x] command `display_guard::production` -> slint-prototype/src/displays.rs
+- [x] command `display_guard::revert` -> slint-prototype/src/displays.rs
 - [x] command `display_guard::revert_display_layout` -> slint-prototype/src/displays.rs
-- [ ] command `display_guard::revert_on_exit`
+- [x] command `display_guard::revert_on_exit` -> slint-prototype/src/displays.rs
 - [ ] command `display_guard::revert_on_signal`
 - [ ] command `display_guard::set_rescue`
-- [ ] command `display_guard::status`
+- [x] command `display_guard::status` -> slint-prototype/src/displays.rs
 - [x] command `display_guard::validate_layout` -> slint-prototype/src/displays.rs
 - [ ] command `display_rescue::check_once`
 - [ ] command `display_rescue::clear_record`
@@ -97,8 +97,8 @@ parity_check.py fails while any item is not [x].
 - [ ] command `display_rescue::write_record`
 - [x] command `hyprland::get_live_monitors` -> slint-prototype/src/displays.rs
 - [ ] command `hyprland::get_monitor_rules`
-- [ ] command `hyprland::open_hyprland_conf`
-- [ ] command `hyprland::open_keybinds_viewer`
+- [x] command `hyprland::open_hyprland_conf` -> slint-prototype/src/pagedata.rs
+- [x] command `hyprland::open_keybinds_viewer` -> slint-prototype/src/pagedata.rs
 - [ ] command `hyprland::save_monitor_rules`
 - [ ] command `nightlight::get_nightlight`
 - [ ] command `nightlight::set_nightlight`

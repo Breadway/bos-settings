@@ -502,6 +502,12 @@ fn main() -> anyhow::Result<()> {
         });
     });
 
+    let weak = window.as_weak();
+    window.window().on_close_requested(move || {
+        let _ = weak.upgrade();
+        displays::revert_on_exit();
+        slint::CloseRequestResponse::HideWindow
+    });
     window.run()?;
     Ok(())
 }

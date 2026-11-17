@@ -228,6 +228,7 @@ fn now_ms() -> u64 {
 }
 
 pub fn apply(layout: Vec<Monitor>, seconds: u64) -> Result<u64, String> {
+    let seconds = seconds.clamp(5, 60);
     let previous = load();
     let mut state = guard().lock().unwrap_or_else(|e| e.into_inner());
     if let Some((old_id, _, old_layout)) = state.pending.take() {
@@ -280,6 +281,16 @@ pub fn revert(id: u64) -> Result<(), String> {
             write_layout(&previous)
         }
         _ => Err("That display change is no longer waiting.".into()),
+    }
+}
+
+/// Called on exit: a layout nobody confirmed is put back before the
+/// window goes away.
+pub fn revert_on_exit() {
+    let mut state = guard().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((_, _, previous)) = state.pending.take() {
+        drop(state);
+        let _ = write_layout(&previous);
     }
 }
 
