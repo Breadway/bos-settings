@@ -105,6 +105,7 @@ export component AppWindow inherits Window {
     callback monitor-selected(string);
     callback same-all-changed(bool);
     callback copy-info();
+    callback rename-hostname(string);
     callback run-checks();
 
     HorizontalLayout {
@@ -228,6 +229,7 @@ export component AppWindow inherits Window {
                                 copy-info => { root.copy-info(); }
                                 run-checks => { root.run-checks(); }
                                 navigate(id) => { root.page = id; }
+                                rename-hostname(name) => { root.rename-hostname(name); }
                             }
                             if page == "about": SpecPage {
                                 header: false;

@@ -108,6 +108,9 @@ export component AboutPage inherits VerticalLayout {
     callback copy-info();
     callback run-checks();
     callback navigate(string);
+    callback rename-hostname(string);
+    in-out property <bool> renaming: false;
+    in-out property <string> hostname-draft: "";
     spacing: 0px;
     alignment: start;
     HorizontalLayout {
@@ -181,7 +184,27 @@ export component AboutPage inherits VerticalLayout {
             PillButton { text: "Manage"; ghost: true; small: true; clicked => { root.navigate("storage"); } }
         }
         SettingRow { label: "Name"; hint: root.hostname;
-            PillButton { text: "Change"; ghost: true; small: true; clicked => { root.navigate("sharing"); } }
+            if !root.renaming: PillButton { text: "Change"; ghost: true; small: true; clicked => { root.hostname-draft = root.hostname; root.renaming = true; } }
+            if root.renaming: Rectangle {
+                width: 170px;
+                height: 34px;
+                border-radius: 9px;
+                background: Theme.bg;
+                border-width: 1px;
+                border-color: Theme.line;
+                TextInput {
+                    x: 10px;
+                    width: parent.width - 20px;
+                    height: 100%;
+                    text <=> root.hostname-draft;
+                    font-family: Theme.body;
+                    color: Theme.fg;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                    single-line: true;
+                    accepted => { root.renaming = false; root.rename-hostname(root.hostname-draft); }
+                }
+            }
         }
         Rectangle {
             height: 40px;
