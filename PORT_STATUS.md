@@ -209,14 +209,14 @@ parity_check.py fails while any item is not [x].
 - [~] view `Autostart`
 
 ## Updates
-- [ ] command `bread::get_bread_config`
-- [ ] command `bread::list_bread_modules`
-- [ ] command `bread::save_bread_config`
+- [x] command `bread::get_bread_config` -> slint-prototype/src/bread.rs
+- [x] command `bread::list_bread_modules` -> slint-prototype/src/bread.rs
+- [x] command `bread::save_bread_config` -> slint-prototype/src/bread.rs
 - [x] command `channel::get_bakery_track` -> slint-prototype/src/updates.rs
 - [x] command `channel::set_bakery_track` -> slint-prototype/src/updates.rs
 - [x] command `firmware::get_updatable_firmware` -> slint-prototype/src/updates.rs
 - [x] command `updates::get_updates_status` -> slint-prototype/src/updates.rs
-- [ ] view `Bread`
+- [~] view `Bread`
 - [ ] view `BugReports`
 - [x] view `Channel` -> slint-prototype/src/pagedata.rs
 - [~] view `Firmware`
