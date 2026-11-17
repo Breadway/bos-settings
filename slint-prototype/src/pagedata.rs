@@ -9870,3 +9870,60 @@ mod startup_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+mod link_tests {
+    use std::collections::HashSet;
+
+    fn page_ids() -> HashSet<String> {
+        let src = include_str!("pagedata.rs");
+        let mut ids = HashSet::new();
+        let mut inside = false;
+        for line in src.lines() {
+            if line.starts_with("pub fn load(id: &str)") {
+                inside = true;
+                continue;
+            }
+            if inside && line == "}" {
+                break;
+            }
+            if !inside {
+                continue;
+            }
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix('\"') {
+                if let Some(end) = rest.find("\" =>") {
+                    ids.insert(rest[..end].to_string());
+                }
+            }
+        }
+        ids
+    }
+
+    #[test]
+    fn every_open_link_names_a_real_page() {
+        let ids = page_ids();
+        let full = include_str!("pagedata.rs");
+        let src = &full[..full.find("\nmod link_tests").unwrap_or(full.len())];
+        let mut linked = Vec::new();
+        for part in src.split("open:").skip(1) {
+            let end = part
+                .find(|c: char| !c.is_ascii_alphanumeric() && c != '-')
+                .unwrap_or(0);
+            if end == 0 {
+                continue;
+            }
+            linked.push(&part[..end]);
+        }
+        for target in &linked {
+            // Home and About are built in main.rs.
+            assert!(
+                ids.contains(*target) || matches!(*target, "home" | "about"),
+                "open:{target} has no page"
+            );
+        }
+        for id in ["bread", "nightlight", "ime", "packages", "aur", "power-menu"] {
+            assert!(ids.contains(id), "{id} is not a page");
+            assert!(linked.contains(&id), "no link reaches {id}");
+        }
+    }
+}
