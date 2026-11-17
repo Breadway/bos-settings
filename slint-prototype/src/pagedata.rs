@@ -22,6 +22,8 @@ pub struct Row {
     pub action: String,
     pub tag: String,
     pub avatar: String,
+    pub badges: Vec<String>,
+    pub chip_icons: Vec<String>,
     pub checked: bool,
     pub primary: bool,
     pub enabled: bool,
@@ -45,6 +47,8 @@ impl Default for Row {
             action: String::new(),
             tag: String::new(),
             avatar: String::new(),
+            badges: Vec::new(),
+            chip_icons: Vec::new(),
             checked: false,
             primary: false,
             // Rows are enabled unless a page says otherwise; a plain derive
@@ -73,6 +77,9 @@ pub struct Block {
     pub amount: f32,
     pub chart: String,
     pub chart_area: String,
+    pub arc: String,
+    pub action_icon: String,
+    pub chip_icons: Vec<String>,
     pub rows: Vec<Row>,
     pub chips: Vec<String>,
     pub chip: i32,
@@ -1121,6 +1128,7 @@ fn users() -> Page {
     let mut add = row("leftbutton", "");
     add.id = "add-user".into();
     add.action = "Add a person".into();
+    add.icon = crate::icons::commands("plus").into();
     rows.push(add);
     p.rows("", rows)
 }
@@ -1382,6 +1390,7 @@ fn power() -> Page {
     let (chart, area) = battery_chart();
     h.chart = chart;
     h.chart_area = area;
+    h.arc = ring_arc(info.percent.unwrap_or(0.0));
     p = p.push(h);
     let mut performance = group("Performance");
     performance.rows = vec![
@@ -1527,6 +1536,22 @@ struct BatteryInfo {
     headline: String,
     detail: String,
     percent: Option<f32>,
+}
+
+// A 62px hero ring: start at twelve o'clock and sweep for `percent`.
+fn ring_arc(percent: f32) -> String {
+    let fraction = (percent / 100.0).clamp(0.0, 1.0);
+    if fraction <= 0.0 {
+        return String::new();
+    }
+    if fraction >= 0.999 {
+        return "M 31 2 A 29 29 0 1 1 31 60 A 29 29 0 1 1 31 2".into();
+    }
+    let angle = (-90.0 + 360.0 * fraction).to_radians();
+    let x = 31.0 + 29.0 * angle.cos();
+    let y = 31.0 + 29.0 * angle.sin();
+    let large = if fraction > 0.5 { 1 } else { 0 };
+    format!("M 31 2 A 29 29 0 {large} 1 {x:.3} {y:.3}")
 }
 
 // The shipping hero draws the last 24 hours from UPower's charge history.
@@ -1747,7 +1772,7 @@ fn bluetooth() -> Page {
     let show = run("bluetoothctl", &["show"]).unwrap_or_default();
     let powered = show.lines().any(|l| l.trim() == "Powered: yes");
     let devices = bluetooth_devices();
-    let connected = devices.iter().filter(|d| d.1).count();
+    let connected = devices.iter().filter(|d| d.2).count();
     let mut h = hero(
         &format!("Bluetooth is {}", if powered { "on" } else { "off" }),
         &if powered {
@@ -1761,6 +1786,7 @@ fn bluetooth() -> Page {
     h.icon = crate::icons::commands("bluetooth").into();
     if powered {
         h.action = "Add device".into();
+        h.action_icon = crate::icons::commands("plus").into();
         h.primary = true;
     }
     p = p.push(h);
@@ -1769,20 +1795,30 @@ fn bluetooth() -> Page {
             kind: "devgrid".into(),
             ..Block::default()
         };
-        for (name, is_connected, battery) in devices {
+        let mut seen: HashMap<String, usize> = HashMap::new();
+        for (name, _, _, _) in &devices {
+            *seen.entry(name.clone()).or_default() += 1;
+        }
+        for (name, address, is_connected, battery) in devices {
             block.rows.push(Row {
                 kind: "dev".into(),
-                id: format!("bt:{name}"),
+                id: format!("bt:{address}"),
                 label: name.clone(),
                 hint: format!(
-                    "{}{}",
+                    "{}{}{}",
                     if is_connected { "Connected" } else { "Not connected" },
                     battery
                         .map(|b| format!(" · {b}% battery"))
-                        .unwrap_or_default()
+                        .unwrap_or_default(),
+                    if seen.get(&name).copied().unwrap_or(0) > 1 {
+                        format!(" · {}", short_address(&address))
+                    } else {
+                        String::new()
+                    }
                 ),
                 icon: crate::icons::commands("headphones").into(),
                 action: if is_connected { "Disconnect".into() } else { "Connect".into() },
+                value: "Forget".into(),
                 checked: is_connected,
                 primary: !is_connected,
                 ..Row::default()
@@ -1794,7 +1830,19 @@ fn bluetooth() -> Page {
     }
 }
 
-fn bluetooth_devices() -> Vec<(String, bool, Option<u32>)> {
+fn short_address(address: &str) -> String {
+    let tail: String = address
+        .chars()
+        .rev()
+        .take(5)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    format!("…{tail}")
+}
+
+fn bluetooth_devices() -> Vec<(String, String, bool, Option<u32>)> {
     let out = run("bluetoothctl", &["devices"]).unwrap_or_default();
     let mut rows = Vec::new();
     for line in out.lines() {
@@ -1815,7 +1863,12 @@ fn bluetooth_devices() -> Vec<(String, bool, Option<u32>)> {
                     .and_then(|v| v.trim().parse::<u32>().ok())
             })
         });
-        rows.push((name.trim().to_string(), connected, battery));
+        rows.push((
+            name.trim().to_string(),
+            address.to_string(),
+            connected,
+            battery,
+        ));
     }
     rows
 }
@@ -1849,7 +1902,7 @@ fn network() -> Page {
             &format!("{} saved networks", saved),
         )
     };
-    h.icon = crate::icons::commands(if wired { "ethernet" } else { "wifi" }).into();
+    h.icon = crate::icons::commands(if wired { "cable" } else { "wifi" }).into();
     h.tag = "toggle".into();
     h.on = wifi_on;
     p = p.push(h);
@@ -1864,13 +1917,19 @@ fn network() -> Page {
                 "Away".into(),
                 "Home".into(),
                 "School".into(),
-                "+ Add a place".into(),
+                "Add a place".into(),
+            ],
+            chip_icons: vec![
+                crate::icons::commands("globe").into(),
+                crate::icons::commands("home").into(),
+                crate::icons::commands("map-pin").into(),
+                crate::icons::commands("plus").into(),
             ],
             selected: 1,
             ..Row::default()
         },
         Row {
-            kind: "line".into(),
+            kind: "place".into(),
             id: "place-away".into(),
             label: "Away".into(),
             hint: "Join Totally NCC, or any other saved network.".into(),
@@ -1878,15 +1937,16 @@ fn network() -> Page {
             ..Row::default()
         },
         Row {
-            kind: "line".into(),
+            kind: "place".into(),
             id: "place-home".into(),
-            label: "Home · in use".into(),
-            hint: "Fallback — Join Totally NCC, NetComm 4887_5G or NetComm 4887. Recognised when NetComm 4887 is nearby.".into(),
+            label: "Home".into(),
+            badges: vec!["in use".into(), "Fallback".into()],
+            hint: "Join Totally NCC, NetComm 4887_5G or NetComm 4887. Recognised when NetComm 4887 is nearby.".into(),
             action: "Edit".into(),
             ..Row::default()
         },
         Row {
-            kind: "line".into(),
+            kind: "place".into(),
             id: "place-school".into(),
             label: "School".into(),
             hint: "Join NCC. Recognised when NCC is nearby.".into(),
@@ -1900,7 +1960,7 @@ fn network() -> Page {
     nearby.hint = "Looking for networks...".into();
     nearby.rows = vec![
         Row {
-            kind: "hint".into(),
+            kind: "tagbutton".into(),
             id: "scanning".into(),
             label: "Scanning...".into(),
             ..Row::default()
@@ -1950,6 +2010,7 @@ fn network() -> Page {
         kind: "leftbutton".into(),
         id: "add-vpn".into(),
         action: "Add VPN".into(),
+        icon: crate::icons::commands("plus").into(),
         ..Row::default()
     });
     p = p.push(vpn);
@@ -2558,7 +2619,7 @@ fn memory() -> Page {
             kind: "tags".into(),
             id: "never-touch".into(),
             label: "Never touch".into(),
-            options: vec!["exeHyprland".into(), "units-systemd-logind.service".into()],
+            options: vec!["exe:Hyprland".into(), "unit:systemd-logind.service".into()],
             ..Row::default()
         },
     ];
@@ -2571,8 +2632,9 @@ fn memory() -> Page {
         id: "backend-llama".into(),
         label: "llma-server".into(),
         hint: "http://127.0.0.1:7301".into(),
-        value: "127.0.0.1:7301".into(),
+        value: "http://127.0.0.1:7301".into(),
         detail: "unit:llamacpp.service".into(),
+        tag: "llama-server".into(),
         action: "Remove".into(),
         checked: true,
         ..Row::default()
@@ -3160,6 +3222,15 @@ pub fn spec_blocks(blocks: Vec<Block>) -> Vec<crate::SpecBlock> {
                 amount: block.amount,
                 chart: block.chart.into(),
                 chart_area: block.chart_area.into(),
+                arc: block.arc.into(),
+                action_icon: block.action_icon.into(),
+                chip_icons: slint::ModelRc::new(slint::VecModel::from(
+                    block
+                        .chip_icons
+                        .into_iter()
+                        .map(slint::SharedString::from)
+                        .collect::<Vec<_>>(),
+                )),
                 rows: slint::ModelRc::new(slint::VecModel::from(
                     block
                         .rows
@@ -3175,6 +3246,18 @@ pub fn spec_blocks(blocks: Vec<Block>) -> Vec<crate::SpecBlock> {
                             action: r.action.into(),
                             tag: r.tag.into(),
                             avatar: r.avatar.into(),
+                            badges: slint::ModelRc::new(slint::VecModel::from(
+                                r.badges
+                                    .into_iter()
+                                    .map(slint::SharedString::from)
+                                    .collect::<Vec<_>>(),
+                            )),
+                            chip_icons: slint::ModelRc::new(slint::VecModel::from(
+                                r.chip_icons
+                                    .into_iter()
+                                    .map(slint::SharedString::from)
+                                    .collect::<Vec<_>>(),
+                            )),
                             checked: r.checked,
                             primary: r.primary,
                             enabled: r.enabled,
