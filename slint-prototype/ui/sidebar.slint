@@ -1,0 +1,188 @@
+import { Theme } from "theme.slint";
+
+export struct NavItem {
+    id: string,
+    label: string,
+    section: string,
+    icon: image,
+    badge: string,
+    live: bool,
+}
+
+export component Sidebar inherits Rectangle {
+    in property <[NavItem]> items;
+    in-out property <string> current: "home";
+    in property <string> account-name: "User";
+    in property <string> account-initial: "U";
+    in property <string> account-host: "Bread OS";
+    in property <image> search-icon;
+    callback selected(string);
+    width: 236px;
+    background: Theme.bg-2;
+    VerticalLayout {
+        Rectangle {
+            height: 58px;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                padding-top: 14px;
+                padding-bottom: 8px;
+                Rectangle {
+                    border-radius: 10px;
+                    background: Theme.surface-2;
+                    border-width: 1px;
+                    border-color: Theme.line;
+                    HorizontalLayout {
+                        padding-left: 11px;
+                        padding-right: 11px;
+                        spacing: 9px;
+                        alignment: center;
+                        Image { source: search-icon; width: 15px; height: 15px; colorize: Theme.muted; }
+                        Text {
+                            text: "Search settings";
+                            font-family: Theme.body;
+                            color: Theme.muted;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                        Text {
+                            text: "Ctrl K";
+                            font-family: Theme.body;
+                            color: Theme.faint;
+                            font-size: 10px;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+        Flickable {
+            vertical-stretch: 1;
+            VerticalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                padding-bottom: 12px;
+                spacing: 1px;
+                alignment: start;
+                for item in root.items: VerticalLayout {
+                    spacing: 1px;
+                    if item.section != "": Rectangle {
+                        height: 30px;
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-top: 14px;
+                            alignment: start;
+                            Text {
+                                text: item.section;
+                                font-family: Theme.body;
+                                color: Theme.faint;
+                                font-size: 10px;
+                                font-weight: 500;
+                                letter-spacing: 1.2px;
+                            }
+                        }
+                    }
+                    Rectangle {
+                        height: 32px;
+                        border-radius: 9px;
+                        background: item.id == root.current ? Theme.accent-soft : transparent;
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 11px;
+                            alignment: start;
+                            Image {
+                                source: item.icon;
+                                width: 16px;
+                                height: 16px;
+                                horizontal-stretch: 0;
+                                colorize: item.id == root.current ? Theme.accent : Theme.fg;
+                            }
+                            Text {
+                                text: item.label;
+                                font-family: Theme.body;
+                                color: Theme.fg;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                                overflow: elide;
+                            }
+                            if item.badge != "": Rectangle {
+                                border-radius: 9px;
+                                background: item.badge == "NEW" ? transparent : Theme.accent;
+                                border-width: item.badge == "NEW" ? 1px : 0px;
+                                border-color: Theme.accent-line;
+                                height: 16px;
+                                HorizontalLayout {
+                                    padding-left: 4px;
+                                    padding-right: 4px;
+                                    alignment: center;
+                                    Text {
+                                        text: item.badge;
+                                        font-family: Theme.body;
+                                        font-size: 9px;
+                                        font-weight: 600;
+                                        color: item.badge == "NEW" ? Theme.accent : Theme.on-accent;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                        TouchArea {
+                            clicked => {
+                                root.current = item.id;
+                                root.selected(item.id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Rectangle {
+            height: 58px;
+            Rectangle { y: 0; height: 1px; width: 100%; background: Theme.line; }
+            HorizontalLayout {
+                padding-left: 14px;
+                padding-right: 14px;
+                spacing: 10px;
+                alignment: center;
+                Rectangle {
+                    width: 28px;
+                    height: 28px;
+                    horizontal-stretch: 0;
+                    border-radius: 14px;
+                    background: Theme.accent-soft;
+                    Text {
+                        text: root.account-initial;
+                        font-family: Theme.body;
+                        color: Theme.accent;
+                        font-size: 13px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 0px;
+                    Text {
+                        text: root.account-name;
+                        font-family: Theme.body;
+                        color: Theme.fg;
+                        font-size: 12.5px;
+                        horizontal-alignment: left;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: root.account-host;
+                        font-family: Theme.body;
+                        color: Theme.muted;
+                        font-size: 11px;
+                        horizontal-alignment: left;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+    }
+}
