@@ -1282,8 +1282,39 @@ fn a11y() -> Page {
             orca_running,
         )],
     );
-    let _ = kmag;
+    if kmag {
+        p = p.rows(
+            "Magnifier",
+            vec![Row {
+                kind: "line".into(),
+                id: "kmag".into(),
+                label: "Open the magnifier".into(),
+                hint: "A movable lens that follows the pointer.".into(),
+                action: "Open".into(),
+                ..Row::default()
+            }],
+        );
+    }
     p
+}
+
+fn set_zoom(factor: f64) -> Result<(), String> {
+    let factor = factor.clamp(1.0, 8.0);
+    let eval = format!("hl.config({{ cursor = {{ zoom_factor = {factor:.2} }} }})");
+    let out = Command::new("hyprctl")
+        .args(["eval", &eval])
+        .output()
+        .map_err(|error| error.to_string())?;
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    if out.status.success() && text.to_ascii_lowercase().contains("ok") {
+        Ok(())
+    } else {
+        Err(text.trim().to_string())
+    }
 }
 
 type DesktopPrefs = crate::prefs::Preferences;
@@ -1510,6 +1541,65 @@ fn storage() -> Page {
     free.retain(|_| true);
     p = p.rows("Free up space", free);
     p
+}
+
+fn storage_action(id: &str, action: &str) -> Result<(), String> {
+    if action != "action" {
+        return Ok(());
+    }
+    match id {
+        "package-cache" => {
+            let out = Command::new("paccache")
+                .arg("-r")
+                .output()
+                .map_err(|error| error.to_string())?;
+            if out.status.success() {
+                Ok(())
+            } else {
+                Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+            }
+        }
+        "app-cache" => {
+            Command::new("xdg-open")
+                .arg(home_dir().join(".cache"))
+                .spawn()
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        }
+        "trash" => {
+            let base = home_dir().join(".local/share/Trash");
+            for folder in ["files", "info"] {
+                let dir = base.join(folder);
+                if let Ok(entries) = std::fs::read_dir(&dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            let _ = std::fs::remove_dir_all(&path);
+                        } else {
+                            let _ = std::fs::remove_file(&path);
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+        "unused" => {
+            let out = Command::new("pacman")
+                .arg("-Qtdq")
+                .output()
+                .map_err(|error| error.to_string())?;
+            let list = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            return if list.is_empty() {
+                Err("there are no unused packages".into())
+            } else {
+                Err(format!(
+                    "unused packages: {}",
+                    list.lines().collect::<Vec<_>>().join(", ")
+                ))
+            };
+        }
+        _ => Ok(()),
+    }
 }
 
 fn disk_usage(path: &str) -> (u64, u64) {
@@ -4763,21 +4853,6 @@ fn privacy_action(id: &str, action: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn storage_action(id: &str, action: &str) -> Result<(), String> {
-    if action != "action" {
-        return Ok(());
-    }
-    match id {
-        "trash" => write("gio", &["trash", "--empty"]),
-        "app-cache" => std::process::Command::new("xdg-open")
-            .arg(home_dir().join(".cache"))
-            .spawn()
-            .map(|_| ())
-            .map_err(|error| error.to_string()),
-        _ => Ok(()),
-    }
-}
-
 fn notifications_action(id: &str, action: &str) -> Result<(), String> {
     if action.starts_with("input:") && (id == "notif-start" || id == "notif-end") {
         let value = action.trim_start_matches("input:").trim();
@@ -4986,9 +5061,40 @@ fn preferences_action(page: &str, id: &str, action: &str) -> Result<(), String> 
                 match id {
                     "stronger-borders" => prefs.stronger_borders = !prefs.stronger_borders,
                     "reduce-motion" => prefs.reduce_motion = !prefs.reduce_motion,
+                    "zoom" => {
+                        let zoom = hypr_option("cursor:zoom_factor").unwrap_or(1.0);
+                        return set_zoom(if zoom > 1.0 { 1.0 } else { 2.0 });
+                    }
+                    "orca" => {
+                        let running = Command::new("pgrep")
+                            .args(["-x", "orca"])
+                            .output()
+                            .map(|out| out.status.success())
+                            .unwrap_or(false);
+                        let mut command = Command::new("orca");
+                        if running {
+                            command.arg("--quit");
+                        }
+                        return command
+                            .spawn()
+                            .map(|_| ())
+                            .map_err(|error| error.to_string());
+                    }
                     _ => return Ok(()),
                 }
                 return crate::prefs::save(&prefs);
+            }
+            if action == "action" && id == "kmag" {
+                return Command::new("kmag")
+                    .spawn()
+                    .map(|_| ())
+                    .map_err(|error| error.to_string());
+            }
+            if id == "zoom-level" {
+                if let Some(value) = action.strip_prefix("slider:") {
+                    let factor: f64 = value.parse().map_err(|_| "bad zoom".to_string())?;
+                    return set_zoom(factor);
+                }
             }
             if let Some(index) = action.strip_prefix("seg:").and_then(|v| v.parse::<usize>().ok()) {
                 match id {
@@ -6232,6 +6338,20 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
         let mut reloaded = load(page);
         if let Some(message) = error {
             reloaded.status = format!("Could not change the backup: {message}");
+        }
+        return reloaded;
+    }
+    if page == "storage" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = storage_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not free that space: {message}");
         }
         return reloaded;
     }
