@@ -156,21 +156,22 @@ export component PillButton inherits Rectangle {
     in property <string> text;
     in property <bool> primary: false;
     in property <bool> ghost: false;
+    in property <bool> small: false;
     callback clicked;
-    height: 34px;
-    border-radius: Theme.radius-sm;
+    height: small ? 28px : 34px;
+    border-radius: small ? 8px : Theme.radius-sm;
     background: primary ? Theme.accent : (ghost ? transparent : Theme.surface-2);
     border-width: primary ? 0px : 1px;
     border-color: Theme.line;
     HorizontalLayout {
-        padding-left: 14px;
-        padding-right: 14px;
+        padding-left: small ? 10px : 14px;
+        padding-right: small ? 10px : 14px;
         alignment: center;
         Text {
             text: root.text;
             font-family: Theme.body;
             color: primary ? Theme.on-accent : Theme.fg;
-            font-size: 13px;
+            font-size: small ? 12.5px : 13px;
             font-weight: primary ? 600 : 400;
             vertical-alignment: center;
         }

@@ -879,3 +879,220 @@ fn set_ini_key(text: &str, key: &str, value: &str) -> String {
     }
     lines.join("\n") + "\n"
 }
+
+// ---- About ----
+
+pub struct About {
+    pub os: String,
+    pub version: Option<String>,
+    pub kernel: String,
+    pub cpu: String,
+    pub gpu: String,
+    pub gpu_full: String,
+    pub memory: String,
+    pub disk: String,
+    pub uptime: String,
+    pub hostname: String,
+    pub channel: String,
+}
+
+pub struct HealthCheck {
+    pub name: String,
+    pub ok: bool,
+    pub output: String,
+}
+
+pub fn load_about() -> About {
+    let os_release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
+    let field = |key: &str| {
+        os_release.lines().find_map(|line| {
+            line.strip_prefix(key)
+                .map(|rest| rest.trim_start_matches('=').trim_matches('"').to_string())
+        })
+    };
+    let os = field("PRETTY_NAME").unwrap_or_else(|| "BOS".into());
+    let version = field("VERSION_ID").filter(|v| !v.is_empty());
+    let kernel = command_line("uname", &["-r"]).unwrap_or_else(|| "unknown".into());
+    let gpu_full = gpu_name();
+    About {
+        os,
+        version,
+        kernel,
+        cpu: cpu_name(),
+        gpu: friendly_gpu(&gpu_full),
+        gpu_full,
+        memory: memory_total(),
+        disk: disk_usage(),
+        uptime: command_line("uptime", &["-p"]).unwrap_or_else(|| "unknown".into()),
+        hostname: std::fs::read_to_string("/etc/hostname")
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|_| "unknown".into()),
+        channel: bakery_track(),
+    }
+}
+
+fn command_line(program: &str, args: &[&str]) -> Option<String> {
+    let out = Command::new(program).args(args).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!text.is_empty()).then_some(text)
+}
+
+fn cpu_name() -> String {
+    let model = std::fs::read_to_string("/proc/cpuinfo")
+        .ok()
+        .and_then(|text| {
+            text.lines().find_map(|line| {
+                line.strip_prefix("model name")
+                    .map(|rest| rest.trim_start_matches([':', ' ', '\t']).to_string())
+            })
+        })
+        .unwrap_or_else(|| "unknown".into());
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(0);
+    if threads > 0 {
+        format!("{model} ({threads} threads)")
+    } else {
+        model
+    }
+}
+
+fn gpu_name() -> String {
+    let Some(text) = command_line("lspci", &[]) else {
+        return "unknown".into();
+    };
+    text.lines()
+        .find(|line| {
+            line.contains("VGA compatible controller")
+                || line.contains("3D controller")
+                || line.contains("Display controller")
+        })
+        .and_then(|line| line.split(": ").nth(1))
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+/// Port of About.svelte's friendlyGpu: keep the marketing model out of a
+/// raw lspci string ("... [Radeon 840M / 860M Graphics] (rev c2)").
+fn friendly_gpu(raw: &str) -> String {
+    if raw.is_empty() {
+        return raw.into();
+    }
+    let mut text = raw.trim().to_string();
+    if let Some(start) = text.rfind(" (rev ") {
+        if text.ends_with(')') {
+            text.truncate(start);
+        }
+    }
+    if let Some(open) = text.rfind('[') {
+        if let Some(close) = text[open..].find(']') {
+            text = text[open + 1..open + close].to_string();
+        }
+    } else if let Some(pos) = text.find(", Inc. ") {
+        text = text[pos + 6..].to_string();
+    }
+    if let Some(slash) = text.find(" / ") {
+        let head = text.split_whitespace().next().unwrap_or("").to_string();
+        let tail = text[slash + 3..].split_whitespace().next().unwrap_or("");
+        if !head.is_empty() && !tail.is_empty() {
+            text = format!("{head} {tail}");
+        }
+    }
+    for suffix in [" Graphics", " Controller", " Series"] {
+        if text.ends_with(suffix) {
+            let len = text.len() - suffix.len();
+            text.truncate(len);
+        }
+    }
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        raw.into()
+    } else {
+        text
+    }
+}
+
+fn memory_total() -> String {
+    let kb = std::fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|text| {
+            text.lines()
+                .find(|line| line.starts_with("MemTotal:"))
+                .and_then(|line| line.split_whitespace().nth(1))
+                .and_then(|v| v.parse::<u64>().ok())
+        });
+    match kb {
+        Some(kb) => format!("{:.1} GiB", kb as f64 / 1024.0 / 1024.0),
+        None => "unknown".into(),
+    }
+}
+
+fn disk_usage() -> String {
+    let Some(text) = command_line("df", &["-h", "--output=used,size,pcent", "/"]) else {
+        return "unknown".into();
+    };
+    text.lines()
+        .nth(1)
+        .map(|line| {
+            let cols: Vec<&str> = line.split_whitespace().collect();
+            match cols.as_slice() {
+                [used, size, pcent] => format!("{used} of {size} used ({pcent})"),
+                _ => line.trim().to_string(),
+            }
+        })
+        .unwrap_or_else(|| "unknown".into())
+}
+
+fn bakery_track() -> String {
+    command_line("bakery", &["track", "show"])
+        .and_then(|text| {
+            text.split_whitespace()
+                .last()
+                .map(|track| track.to_string())
+        })
+        .unwrap_or_else(|| "Unavailable".into())
+}
+
+pub fn health_checks() -> Vec<HealthCheck> {
+    let mut out = Vec::new();
+    for (name, program, arg) in [
+        ("Bread daemon and desktop", "bread", "doctor"),
+        ("Packages", "bakery", "doctor"),
+    ] {
+        let (ok, output) = match Command::new(program).arg(arg).output() {
+            Ok(result) => (
+                result.status.success(),
+                format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&result.stdout),
+                    String::from_utf8_lossy(&result.stderr)
+                ),
+            ),
+            Err(err) => (false, err.to_string()),
+        };
+        out.push(HealthCheck {
+            name: name.into(),
+            ok,
+            output: output.trim().to_string(),
+        });
+    }
+    out
+}
+
+pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
+    use std::io::Write;
+    let mut child = Command::new("wl-copy")
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("no clipboard tool: {e}"))?;
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin
+            .write_all(text.as_bytes())
+            .map_err(|e| e.to_string())?;
+    }
+    child.wait().map_err(|e| e.to_string())?;
+    Ok(())
+}

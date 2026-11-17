@@ -1,0 +1,251 @@
+import { Theme, PageTitle, GroupBox, SettingRow, PillButton, VectorIcon } from "theme.slint";
+
+export struct AboutCheck {
+    name: string,
+    ok: bool,
+    output: string,
+}
+
+component InfoRow inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <bool> first: false;
+    if !first: Rectangle { y: 0; height: 1px; width: 100%; background: Theme.line; }
+    // No fixed height: a long value (the full GPU name) wraps to a second
+    // line instead of being elided, the way .control's max-width does.
+    HorizontalLayout {
+        padding-top: 11px;
+        padding-bottom: 11px;
+        spacing: 14px;
+        Rectangle {
+            horizontal-stretch: 1;
+            Text {
+                text: root.label;
+                width: 100%;
+                font-family: Theme.body;
+                color: Theme.fg;
+                font-size: 13.5px;
+                vertical-alignment: center;
+                horizontal-alignment: left;
+                overflow: elide;
+            }
+        }
+        Text {
+            text: root.value;
+            width: parent.width * 0.58;
+            font-family: Theme.body;
+            color: Theme.muted;
+            font-size: 12px;
+            wrap: word-wrap;
+            vertical-alignment: center;
+            horizontal-alignment: right;
+        }
+    }
+}
+
+component CheckRow inherits Rectangle {
+    in property <AboutCheck> check;
+    VerticalLayout {
+        padding-top: 9px;
+        padding-bottom: 9px;
+        spacing: 4px;
+        alignment: start;
+        HorizontalLayout {
+            spacing: 10px;
+            Text {
+                text: root.check.name;
+                font-family: Theme.body;
+                color: Theme.fg;
+                font-size: 13px;
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                border-radius: 5px;
+                background: root.check.ok ? Theme.accent-soft : #d6b25e24;
+                height: 18px;
+                horizontal-stretch: 0;
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    alignment: center;
+                    Text {
+                        text: root.check.ok ? "OK" : "Attention";
+                        font-family: Theme.body;
+                        color: root.check.ok ? Theme.accent : #d6b25e;
+                        font-size: 10.5px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+        Text {
+            text: root.check.output;
+            font-family: "DejaVu Sans Mono";
+            color: Theme.muted;
+            font-size: 11.5px;
+            wrap: word-wrap;
+            horizontal-alignment: left;
+        }
+    }
+}
+
+export component AboutPage inherits VerticalLayout {
+    in property <string> os;
+    in property <string> version;
+    in property <string> kernel;
+    in property <string> cpu;
+    in property <string> gpu;
+    in property <string> gpu-full;
+    in property <string> memory;
+    in property <string> disk;
+    in property <string> uptime;
+    in property <string> hostname;
+    in property <string> channel;
+    in property <[AboutCheck]> checks;
+    in-out property <bool> details-open: false;
+    in-out property <string> status;
+    callback copy-info();
+    callback run-checks();
+    callback navigate(string);
+    spacing: 0px;
+    alignment: start;
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+        Text { text: "System"; font-family: Theme.body; color: Theme.faint; font-size: 12px; }
+        Text { text: "›"; font-family: Theme.body; color: Theme.faint; font-size: 12px; }
+        Text { text: "About"; font-family: Theme.body; color: Theme.muted; font-size: 12px; }
+    }
+    Rectangle { height: 8px; }
+    PageTitle { text: "About"; }
+    Rectangle { height: 18px; }
+
+    Rectangle {
+        height: 90px;
+        border-radius: Theme.radius;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: Theme.line;
+        HorizontalLayout {
+            padding: 18px;
+            spacing: 16px;
+            VerticalLayout {
+                horizontal-stretch: 0;
+                alignment: center;
+                Rectangle {
+                    width: 54px;
+                    height: 54px;
+                    border-radius: 14px;
+                    background: Theme.accent-soft;
+                    Text {
+                        text: "B";
+                        font-family: Theme.display;
+                        color: Theme.accent;
+                        font-size: 24px;
+                        font-weight: 500;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Text {
+                    text: root.version == "" ? root.os : root.os + " " + root.version;
+                    font-family: Theme.body;
+                    color: Theme.fg;
+                    font-size: 18px;
+                    horizontal-alignment: left;
+                }
+                Text {
+                    text: root.channel + " channel · " + root.uptime;
+                    font-family: Theme.body;
+                    color: Theme.muted;
+                    font-size: 13px;
+                    horizontal-alignment: left;
+                }
+            }
+        }
+    }
+
+    Rectangle { height: 14px; }
+
+    GroupBox {
+        title: "THIS COMPUTER";
+        InfoRow { label: "Processor"; value: root.cpu; first: true; }
+        InfoRow { label: "Graphics"; value: root.gpu; }
+        InfoRow { label: "Memory"; value: root.memory; }
+        SettingRow { label: "Storage"; hint: root.disk;
+            PillButton { text: "Manage"; ghost: true; small: true; clicked => { root.navigate("storage"); } }
+        }
+        SettingRow { label: "Name"; hint: root.hostname;
+            PillButton { text: "Change"; ghost: true; small: true; clicked => { root.navigate("sharing"); } }
+        }
+        Rectangle {
+            height: 40px;
+            if !root.details-open: Rectangle { y: 0; height: 1px; width: 100%; background: Theme.line; }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                VerticalLayout {
+                    horizontal-stretch: 0;
+                    alignment: center;
+                    // Disclosure triangle, as the shipping <summary> draws it.
+                    if !root.details-open: Path {
+                        width: 7px;
+                        height: 9px;
+                        viewbox-width: 1;
+                        viewbox-height: 1;
+                        commands: "M 0 0 L 1 0.5 L 0 1 Z";
+                        fill: Theme.muted;
+                    }
+                    if root.details-open: Path {
+                        width: 9px;
+                        height: 7px;
+                        viewbox-width: 1;
+                        viewbox-height: 1;
+                        commands: "M 0 0 L 1 0 L 0.5 1 Z";
+                        fill: Theme.muted;
+                    }
+                }
+                Text {
+                    text: "Technical details";
+                    font-family: Theme.body;
+                    color: Theme.muted;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                }
+            }
+            TouchArea { clicked => { root.details-open = !root.details-open; } }
+        }
+        if root.details-open: InfoRow { label: "Operating system"; value: root.os; }
+        if root.details-open && root.version != "": InfoRow { label: "Version"; value: root.version; }
+        if root.details-open: InfoRow { label: "Kernel"; value: root.kernel; }
+        if root.details-open: InfoRow { label: "Graphics (full name)"; value: root.gpu-full; }
+    }
+
+    Rectangle { height: 14px; }
+
+    GroupBox {
+        title: "HELP";
+        SettingRow { label: "Copy system info"; hint: "Paste it into a bug report."; first: true;
+            PillButton { text: "Copy"; small: true; clicked => { root.copy-info(); } }
+        }
+        SettingRow { label: "Run a health check"; hint: "Checks the bread daemon and adapters, systemd user services, and package tools.";
+            PillButton { text: "Run"; small: true; clicked => { root.run-checks(); } }
+        }
+        for check in root.checks: Rectangle {
+            CheckRow { check: check; }
+        }
+        if root.status != "": Text {
+            text: root.status;
+            font-family: Theme.body;
+            color: Theme.muted;
+            font-size: 12.5px;
+            wrap: word-wrap;
+            horizontal-alignment: left;
+        }
+    }
+}
