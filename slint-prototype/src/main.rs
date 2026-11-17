@@ -13,6 +13,7 @@ mod backup;
 mod bluetooth;
 mod bread;
 mod breadram;
+mod breadbug;
 mod lock;
 mod network;
 mod sound;
