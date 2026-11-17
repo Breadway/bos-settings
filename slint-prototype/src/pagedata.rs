@@ -4897,6 +4897,11 @@ fn memory_action_at(
 
 // --------------------------------------------------------------------- getapps
 
+fn app_results_cell() -> &'static Mutex<(Vec<crate::apps::App>, Vec<String>)> {
+    static RESULTS: OnceLock<Mutex<(Vec<crate::apps::App>, Vec<String>)>> = OnceLock::new();
+    RESULTS.get_or_init(|| Mutex::new((Vec::new(), Vec::new())))
+}
+
 fn getapps() -> Page {
     let mut p = page(
         "getapps",
@@ -4904,93 +4909,132 @@ fn getapps() -> Page {
         "Get apps",
         "Apps from Flathub, the BOS repositories and the AUR, in one place.",
     );
-    let mut search = group("Search apps");
-    search.rows = vec![Row {
-        kind: "input".into(),
-        id: "app-search".into(),
-        label: "Search for an app".into(),
-        value: String::new(),
-        ..Row::default()
-    }];
-    p = p.push(search);
-
-    let mut categories = Block {
-        kind: "chips".into(),
-        chips: vec![
-            "Communication".into(),
-            "Media".into(),
-            "Games".into(),
-            "Creativity".into(),
-            "Development".into(),
-        ],
-        chip: -1,
-        ..Block::default()
-    };
-    categories.value = "sources".into();
-    p = p.push(categories);
-
-    let mut sources = Block {
-        kind: "chips".into(),
-        chips: vec![
-            "All".into(),
-            "BOS repositories".into(),
-            "Flathub".into(),
-            "AUR".into(),
-        ],
-        chip: 0,
-        ..Block::default()
-    };
-    sources.value = "sources".into();
-    p = p.push(sources);
-
-    let mut recommended = group("Recommended apps");
-    recommended.hint = "Optional BOS apps and everyday tools, ready to install.".into();
-    recommended.rows = vec![
-        Row {
-            kind: "line".into(),
-            id: "rec-breadshot".into(),
-            label: "Screenshots".into(),
-            hint: "Capture, annotate and share. Already installed.".into(),
-            ..Row::default()
-        },
-        Row {
-            kind: "line".into(),
-            id: "rec-breadpad".into(),
-            label: "Quick notes".into(),
-            hint: "Notes, reminders and tasks. Already installed.".into(),
-            ..Row::default()
-        },
-        Row {
-            kind: "line".into(),
-            id: "rec-breadmon".into(),
-            label: "System monitor".into(),
-            hint: "CPU, memory and disk at a glance. Already installed.".into(),
-            ..Row::default()
-        },
-    ];
-    p = p.push(recommended);
-
-    let installed = run("pacman", &["-Q"]).map(|s| s.lines().count()).unwrap_or(0);
-    let mut packages = group("Bread ecosystem (bakery)");
-    packages.hint = "Everything installed from the BOS repositories.".into();
-    packages.rows = vec![
-        Row {
-            kind: "line".into(),
-            id: "pkg-count".into(),
-            label: format!("{installed} packages installed"),
-            hint: "Search by name to see versions and remove one.".into(),
-            action: "Open".into(),
-            ..Row::default()
-        },
-        Row {
+    let (results, errors) = app_results_cell()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    p = p.rows(
+        "Search apps",
+        vec![Row {
             kind: "input".into(),
-            id: "pkg-search".into(),
-            label: "Search installed packages".into(),
+            id: "app-search".into(),
+            label: "Search for an app".into(),
+            hint: "Type a name and press Enter. BOS repositories, the AUR and Flathub are all searched.".into(),
             value: String::new(),
             ..Row::default()
-        },
-    ];
-    p.push(packages)
+        }],
+    );
+    if !errors.is_empty() {
+        let mut block = group("Search");
+        block.rows = errors
+            .iter()
+            .map(|error| Row {
+                kind: "hint".into(),
+                id: "app-error".into(),
+                label: error.clone(),
+                ..Row::default()
+            })
+            .collect();
+        p = p.push(block);
+    }
+    if !results.is_empty() {
+        let mut block = group("Results");
+        for app in &results {
+            let source = match app.source.as_str() {
+                "aur" => "AUR · Community",
+                "flathub" => "Flathub",
+                _ => "BOS repositories",
+            };
+            block.rows.push(Row {
+                kind: "line".into(),
+                id: format!("install:{}:{}", app.source, app.id),
+                label: app.name.clone(),
+                hint: format!(
+                    "{source} · {}{}",
+                    app.version,
+                    if app.description.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" · {}", app.description)
+                    }
+                ),
+                action: if app.installed {
+                    "Installed".into()
+                } else {
+                    "Install".into()
+                },
+                enabled: !app.installed,
+                ..Row::default()
+            });
+        }
+        p = p.push(block);
+    }
+    let optional = crate::apps::optional();
+    let mut recommended = group("Recommended apps");
+    recommended.hint = "Optional BOS apps and everyday tools, ready to install.".into();
+    for item in &optional {
+        recommended.rows.push(Row {
+            kind: "line".into(),
+            id: format!("optional:{}", item.id),
+            label: item.title.clone(),
+            hint: item.detail.clone(),
+            action: if item.installed {
+                "Installed".into()
+            } else {
+                "Install".into()
+            },
+            enabled: !item.installed,
+            ..Row::default()
+        });
+    }
+    p = p.push(recommended);
+
+    let packages = crate::apps::bakery_packages();
+    let mut bakery = group("Bread ecosystem (bakery)");
+    bakery.hint = "Everything installed from the BOS repositories.".into();
+    if packages.is_empty() {
+        bakery.rows.push(Row {
+            kind: "hint".into(),
+            id: "pkg-none".into(),
+            label: "No bakery packages recorded.".into(),
+            ..Row::default()
+        });
+    }
+    for (name, version) in packages {
+        bakery.rows.push(Row {
+            kind: "line".into(),
+            id: format!("pkg:{name}"),
+            label: name,
+            hint: version,
+            ..Row::default()
+        });
+    }
+    p.push(bakery)
+}
+
+fn getapps_action(id: &str, action: &str) -> Result<(), String> {
+    if id == "app-search" && action.starts_with("input:") {
+        let query = action.trim_start_matches("input:");
+        let (results, errors) = crate::apps::search(query);
+        *app_results_cell()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = (results, errors);
+        return Ok(());
+    }
+    if let Some(rest) = id.strip_prefix("install:") {
+        if action == "action" {
+            if let Some((source, app)) = rest.split_once(':') {
+                return crate::apps::install(app, source);
+            }
+        }
+        return Ok(());
+    }
+    if let Some(app) = id.strip_prefix("optional:") {
+        if action == "action" {
+            return crate::apps::install_optional(app);
+        }
+    }
+    Ok(())
 }
 
 // --------------------------------------------------------------------- desktop
@@ -5690,6 +5734,20 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
         let mut reloaded = load(page);
         if let Some(message) = error {
             reloaded.status = format!("Could not apply that setting: {message}");
+        }
+        return reloaded;
+    }
+    if page == "getapps" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = getapps_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not install that: {message}");
         }
         return reloaded;
     }
