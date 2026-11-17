@@ -961,8 +961,39 @@ fn printers() -> Page {
             action: "Open".into(),
             ..Row::default()
         },
+        Row {
+            kind: "input".into(),
+            id: "printer-add".into(),
+            label: "Name and address".into(),
+            hint: "Like Office ipp://192.168.1.20/ipp/print".into(),
+            value: String::new(),
+            action: "Add".into(),
+            ..Row::default()
+        },
     ];
     p.push(add_block)
+}
+
+fn add_printer(name: &str, uri: &str) -> Result<(), String> {
+    let args = ["-p", name, "-E", "-v", uri, "-m", "everywhere"];
+    let out = Command::new("lpadmin")
+        .args(args)
+        .output()
+        .map_err(|error| error.to_string())?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let mut privileged = vec!["lpadmin"];
+    privileged.extend(args);
+    let out = Command::new("pkexec")
+        .args(&privileged)
+        .output()
+        .map_err(|error| error.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(crate::util::fail_output(&out, "lpadmin"))
+    }
 }
 
 // ------------------------------------------------------------------- datetime
@@ -5057,6 +5088,33 @@ fn next_layout(current: &str) -> &'static str {
 }
 
 fn keyboard_action(id: &str, action: &str, checked: bool) -> Result<(), String> {
+    if let Some(label) = id.strip_prefix("bind-key:") {
+        if let Some(key) = action.strip_prefix("input:") {
+            let key = key.trim();
+            if key.is_empty() || key.chars().any(char::is_whitespace) {
+                return Err("type one key name, like RETURN or bracketright".into());
+            }
+            let path = config_dir().join("hypr/binds.json");
+            let text = std::fs::read_to_string(&path).map_err(|error| error.to_string())?;
+            let mut root: serde_json::Value =
+                serde_json::from_str(&text).map_err(|error| error.to_string())?;
+            let Some(bindings) = root.get_mut("bindings").and_then(|v| v.as_array_mut()) else {
+                return Err("binds.json has no bindings list".into());
+            };
+            let Some(bind) = bindings
+                .iter_mut()
+                .find(|bind| bind.get("label").and_then(|value| value.as_str()) == Some(label))
+            else {
+                return Err("that shortcut is no longer in the file".into());
+            };
+            bind["key"] = serde_json::Value::String(key.to_string());
+            let body = serde_json::to_string_pretty(&root).map_err(|error| error.to_string())?;
+            crate::config::atomic_write(&path, &body).map_err(|error| error.to_string())?;
+            crate::util::hypr_reload();
+            return Ok(());
+        }
+        return Ok(());
+    }
     if id == "layout" && action == "select" {
         let live = run("hyprctl", &["getoption", "input:kb_layout"])
             .and_then(|text| {
@@ -6305,6 +6363,15 @@ fn desktop() -> Page {
             ..Row::default()
         },
     ];
+    for (shortcut, command) in crate::breadshot::binds() {
+        shots.rows.push(Row {
+            kind: "value".into(),
+            id: format!("shot-bind:{shortcut}"),
+            label: shortcut,
+            value: command,
+            ..Row::default()
+        });
+    }
     p = p.push(shots);
 
     let mut clip = group("Clipboard");
@@ -6866,10 +6933,12 @@ fn keybind_rows() -> Vec<Row> {
                 .unwrap_or_default();
             let keys = format!("{mods} {key}").trim().to_uppercase();
             Some(Row {
-                kind: "line".into(),
-                id: format!("bind:{label}"),
+                kind: "input".into(),
+                id: format!("bind-key:{label}"),
                 label: label.into(),
-                hint: keys,
+                hint: format!("{keys} · type a new key and press Enter"),
+                value: key.to_string(),
+                action: "Set".into(),
                 ..Row::default()
             })
         })
@@ -7153,6 +7222,28 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
                     }
                 }
                 return Ok(());
+            }
+            if id == "printer-add" && action_name.starts_with("input:") {
+                let text = action_name.trim_start_matches("input:");
+                let mut parts = text.splitn(2, char::is_whitespace);
+                let name = parts.next().unwrap_or("").trim();
+                let uri = parts.next().unwrap_or("").trim();
+                if !crate::util::valid_printer_name(name) {
+                    return Err("Printer names use letters, numbers, dots, dashes or underscores".into());
+                }
+                if uri.is_empty()
+                    || uri.contains(char::is_whitespace)
+                    || !(uri.starts_with("ipp://")
+                        || uri.starts_with("ipps://")
+                        || uri.starts_with("socket://")
+                        || uri.starts_with("usb://")
+                        || uri.starts_with("dnssd://"))
+                {
+                    return Err(
+                        "Use an ipp://, ipps://, socket://, usb:// or dnssd:// address".into(),
+                    );
+                }
+                return add_printer(name, uri);
             }
             if (id == "find" || id == "printer-settings") && action_name == "action" {
                 Command::new("system-config-printer")
