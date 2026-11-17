@@ -3858,6 +3858,31 @@ fn updates() -> Page {
             ..Row::default()
         }],
     );
+    let bread = crate::bread::load();
+    p = p.rows(
+        "Bread daemon",
+        vec![
+            Row {
+                kind: "select".into(),
+                id: "bread-log".into(),
+                label: "Log level".into(),
+                value: bread.log_level.clone(),
+                options: vec!["error".into(), "warn".into(), "info".into(), "debug".into()],
+                ..Row::default()
+            },
+            toggle(
+                "bread-builtin",
+                "Built-in modules",
+                "Monitors, devices, workspaces and keybinds.",
+                bread.modules_builtin,
+            ),
+            toggle("bread-hyprland", "Hyprland events", "", bread.adapter_hyprland),
+            toggle("bread-udev", "Device events", "", bread.adapter_udev),
+            toggle("bread-power", "Power events", "", bread.adapter_power),
+            toggle("bread-network", "Network events", "", bread.adapter_network),
+            toggle("bread-bluetooth", "Bluetooth events", "", bread.adapter_bluetooth),
+        ],
+    );
     p = p.rows(
         "If an update breaks something",
         vec![Row {
@@ -3881,6 +3906,33 @@ fn updates_action(id: &str, action: &str) -> Result<(), String> {
             return crate::updates::update(kind, name);
         }
         return Ok(());
+    }
+    if id == "bread-log" && action == "select" {
+        let mut cfg = crate::bread::load();
+        let levels = ["error", "warn", "info", "debug"];
+        let index = levels
+            .iter()
+            .position(|level| *level == cfg.log_level)
+            .map(|index| (index + 1) % levels.len())
+            .unwrap_or(0);
+        cfg.log_level = levels[index].into();
+        return crate::bread::save(&cfg);
+    }
+    if let Some(field) = id.strip_prefix("bread-") {
+        if action != "toggle" {
+            return Ok(());
+        }
+        let mut cfg = crate::bread::load();
+        match field {
+            "builtin" => cfg.modules_builtin = !cfg.modules_builtin,
+            "hyprland" => cfg.adapter_hyprland = !cfg.adapter_hyprland,
+            "udev" => cfg.adapter_udev = !cfg.adapter_udev,
+            "power" => cfg.adapter_power = !cfg.adapter_power,
+            "network" => cfg.adapter_network = !cfg.adapter_network,
+            "bluetooth" => cfg.adapter_bluetooth = !cfg.adapter_bluetooth,
+            _ => return Ok(()),
+        }
+        return crate::bread::save(&cfg);
     }
     if id == "track" && action == "select" {
         let current = crate::updates::track().unwrap_or_else(|_| "stable".into());

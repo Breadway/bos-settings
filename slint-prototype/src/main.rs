@@ -10,6 +10,7 @@
 
 mod apps;
 mod bluetooth;
+mod bread;
 mod breadram;
 mod lock;
 mod network;
