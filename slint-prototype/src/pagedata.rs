@@ -2944,6 +2944,25 @@ fn memory() -> Page {
     p.push(recent)
 }
 
+fn notifications_action(id: &str, action: &str) -> Result<(), String> {
+    if action == "toggle" {
+        let key = match id {
+            "dnd" => "dnd",
+            "schedule" => "schedule",
+            "lock-screen" => "lock_screen",
+            "sound" => "sound",
+            _ => return Ok(()),
+        };
+        return crate::notifications::toggle(key);
+    }
+    if action == "select" {
+        if let Some(name) = id.strip_prefix("app:") {
+            return crate::notifications::cycle_app(name);
+        }
+    }
+    Ok(())
+}
+
 fn displays_action(id: &str, action: &str) -> Result<(), String> {
     if action == "toggle" && id == "night-light" {
         let mut cfg = crate::nightlight::load();
@@ -3973,6 +3992,20 @@ fn run_planned(planned: Option<Planned>) -> Result<(), String> {
 /// state comes from the system again. Errors are returned in Page.status.
 pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page {
     let current = load(page);
+    if page == "notifications" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = notifications_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not save that setting: {message}");
+        }
+        return reloaded;
+    }
     if page == "displays" {
         let id = current
             .blocks
