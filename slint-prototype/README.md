@@ -75,7 +75,9 @@ app at the pixel level.
   Lua include, JSON and GTK sizes as the shipping app. Lock screen edits
   `breadlock/breadlock.toml` and keeps its unmodelled keys. Startup toggles
   `Hidden=true` in the login `.desktop` entry and its Edit button opens the
-  file.
+  file. Displays night light writes the saved state and starts or stops
+  `hyprsunset` with an autostart entry (Always mode; the shipping page's
+  schedule modes and temperature control are not ported yet).
   Every other toggle, select, slider and chip still only remembers its position
   in `~/.local/state/bos-settings-slint/state.toml`. Failures appear under the
   page lede instead of being swallowed.

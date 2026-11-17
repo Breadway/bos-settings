@@ -1730,9 +1730,7 @@ fn displays() -> Page {
         }];
         p = p.push(arrangement);
     }
-    let night = run("hyprctl", &["getoption", "decoration:screen_shader"])
-        .map(|s| !s.contains("[[EMPTY]]"))
-        .unwrap_or(false);
+    let night = crate::nightlight::load().enabled;
     let mut night_block = group("NIGHT LIGHT");
     night_block.hint = "A warmer screen after dark helps you wind down.".into();
     night_block.rows = vec![toggle("night-light", "Night light", "", night)];
@@ -2946,6 +2944,15 @@ fn memory() -> Page {
     p.push(recent)
 }
 
+fn displays_action(id: &str, action: &str) -> Result<(), String> {
+    if action == "toggle" && id == "night-light" {
+        let mut cfg = crate::nightlight::load();
+        cfg.enabled = !cfg.enabled;
+        return crate::nightlight::save(&cfg);
+    }
+    Ok(())
+}
+
 fn startup_action(id: &str, action: &str) -> Result<(), String> {
     let Some(path) = id.strip_prefix("startup:") else {
         return Ok(());
@@ -3966,6 +3973,20 @@ fn run_planned(planned: Option<Planned>) -> Result<(), String> {
 /// state comes from the system again. Errors are returned in Page.status.
 pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page {
     let current = load(page);
+    if page == "displays" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = displays_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not apply that setting: {message}");
+        }
+        return reloaded;
+    }
     if page == "startup" {
         let id = current
             .blocks

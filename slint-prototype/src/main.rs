@@ -10,6 +10,7 @@
 
 mod breadram;
 mod lock;
+mod nightlight;
 mod prefs;
 mod data;
 mod extra_icons;
