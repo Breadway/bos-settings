@@ -159,6 +159,7 @@ export component PillButton inherits Rectangle {
     in property <bool> small: false;
     in property <bool> enabled: true;
     in property <bool> multiline: false;
+    in property <string> icon: "";
     callback clicked;
     opacity: enabled ? 1 : 0.5;
     height: root.multiline ? 46px : (small ? 28px : 34px);
@@ -169,7 +170,13 @@ export component PillButton inherits Rectangle {
     HorizontalLayout {
         padding-left: small ? 10px : 14px;
         padding-right: small ? 10px : 14px;
+        spacing: 6px;
         alignment: center;
+        if root.icon != "": VectorIcon {
+            icon-size: small ? 13px : 15px;
+            commands: root.icon;
+            tint: root.primary ? Theme.on-accent : Theme.fg;
+        }
         Text {
             text: root.text;
             font-family: Theme.body;
