@@ -58,31 +58,31 @@ parity_check.py fails while any item is not [x].
 - [x] view `Bluetooth` -> slint-prototype/src/pagedata.rs
 
 ## Sharing
-- [ ] command `sharing::get_sharing_status`
-- [ ] command `sharing::open_notification_history`
-- [ ] command `sharing::open_sharing_app`
-- [ ] command `sharing::set_remote_login`
-- [ ] view `Sharing`
+- [x] command `sharing::get_sharing_status` -> slint-prototype/src/pagedata.rs
+- [x] command `sharing::open_notification_history` -> slint-prototype/src/pagedata.rs
+- [x] command `sharing::open_sharing_app` -> slint-prototype/src/pagedata.rs
+- [x] command `sharing::set_remote_login` -> slint-prototype/src/pagedata.rs
+- [~] view `Sharing`
 
 ## Displays
 - [ ] command `display_guard::apply`
-- [ ] command `display_guard::apply_display_layout`
+- [x] command `display_guard::apply_display_layout` -> slint-prototype/src/displays.rs
 - [ ] command `display_guard::apply_for`
-- [ ] command `display_guard::disconnect_reason`
-- [ ] command `display_guard::display_guard_status`
+- [x] command `display_guard::disconnect_reason` -> slint-prototype/src/displays.rs
+- [x] command `display_guard::display_guard_status` -> slint-prototype/src/displays.rs
 - [ ] command `display_guard::keep`
-- [ ] command `display_guard::keep_display_layout`
-- [ ] command `display_guard::layout_mismatch`
+- [x] command `display_guard::keep_display_layout` -> slint-prototype/src/displays.rs
+- [x] command `display_guard::layout_mismatch` -> slint-prototype/src/displays.rs
 - [ ] command `display_guard::new`
-- [ ] command `display_guard::plan_statements`
+- [x] command `display_guard::plan_statements` -> slint-prototype/src/displays.rs
 - [ ] command `display_guard::production`
 - [ ] command `display_guard::revert`
-- [ ] command `display_guard::revert_display_layout`
+- [x] command `display_guard::revert_display_layout` -> slint-prototype/src/displays.rs
 - [ ] command `display_guard::revert_on_exit`
 - [ ] command `display_guard::revert_on_signal`
 - [ ] command `display_guard::set_rescue`
 - [ ] command `display_guard::status`
-- [ ] command `display_guard::validate_layout`
+- [x] command `display_guard::validate_layout` -> slint-prototype/src/displays.rs
 - [ ] command `display_rescue::check_once`
 - [ ] command `display_rescue::clear_record`
 - [ ] command `display_rescue::decide`
@@ -95,7 +95,7 @@ parity_check.py fails while any item is not [x].
 - [ ] command `display_rescue::run_watchdog`
 - [ ] command `display_rescue::spawn_watchdog`
 - [ ] command `display_rescue::write_record`
-- [ ] command `hyprland::get_live_monitors`
+- [x] command `hyprland::get_live_monitors` -> slint-prototype/src/displays.rs
 - [ ] command `hyprland::get_monitor_rules`
 - [ ] command `hyprland::open_hyprland_conf`
 - [ ] command `hyprland::open_keybinds_viewer`
@@ -105,9 +105,9 @@ parity_check.py fails while any item is not [x].
 - [ ] command `nvidia::get_nvidia_offer`
 - [ ] command `nvidia::nvidia_setup`
 - [ ] command `nvidia::read_nvidia_offer`
-- [ ] view `Display`
-- [ ] view `DisplaysHub`
-- [ ] view `NightLight`
+- [~] view `Display`
+- [x] view `DisplaysHub` -> slint-prototype/src/pagedata.rs
+- [~] view `NightLight`
 
 ## Sound
 - [ ] command `sound::get_app_streams`

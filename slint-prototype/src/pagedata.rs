@@ -1704,31 +1704,212 @@ fn brightness_percent() -> u32 {
 
 // -------------------------------------------------------------------- displays
 
+fn display_draft_cell() -> &'static Mutex<Option<Vec<crate::displays::Monitor>>> {
+    static DRAFT: OnceLock<Mutex<Option<Vec<crate::displays::Monitor>>>> = OnceLock::new();
+    DRAFT.get_or_init(|| Mutex::new(None))
+}
+
+fn display_draft() -> Vec<crate::displays::Monitor> {
+    let mut draft = display_draft_cell()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    draft
+        .get_or_insert_with(crate::displays::load)
+        .clone()
+}
+
+fn set_display_draft(layout: Vec<crate::displays::Monitor>) {
+    *display_draft_cell()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = Some(layout);
+}
+
+fn reset_display_draft() {
+    *display_draft_cell()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+fn parse_mode(mode: &str) -> Option<(u32, u32, f64)> {
+    let (size, refresh) = mode.split_once('@')?;
+    let (width, height) = size.split_once('x')?;
+    Some((
+        width.parse().ok()?,
+        height.parse().ok()?,
+        refresh.trim_end_matches("Hz").parse().ok()?,
+    ))
+}
+
 fn displays() -> Page {
     let mut p = page(
         "displays",
         "Devices",
         "Displays",
-        "Drag to arrange. Every change can be kept or reverted.",
+        "Arrange your monitors. Every change can be kept or reverted.",
     );
-    let monitors = monitor_count();
-    let mut arrangement = group("Arrangement");
-    if monitors == 0 {
-        arrangement.rows = vec![Row {
-            kind: "hint".into(),
-            id: "no-monitors".into(),
-            label: "No monitors detected.".into(),
-            ..Row::default()
-        }];
-        p = p.push(arrangement);
-    } else {
-        arrangement.rows = vec![Row {
-            kind: "text".into(),
-            id: "monitor-count".into(),
-            label: format!("{monitors} connected"),
-            ..Row::default()
-        }];
-        p = p.push(arrangement);
+    let layout = display_draft();
+    let pending = crate::displays::status();
+    if pending.id != 0 {
+        let mut block = group("Keep this layout?");
+        block.hint = format!(
+            "Reverting in about {} seconds puts the previous arrangement back.",
+            pending.seconds_left
+        );
+        block.rows = vec![
+            Row {
+                kind: "line".into(),
+                id: format!("keep:{}", pending.id),
+                label: "Keep this layout".into(),
+                action: "Keep".into(),
+                primary: true,
+                ..Row::default()
+            },
+            Row {
+                kind: "line".into(),
+                id: format!("revert:{}", pending.id),
+                label: "Go back to how it was".into(),
+                action: "Revert".into(),
+                ..Row::default()
+            },
+        ];
+        p = p.push(block);
+    }
+    if layout.is_empty() {
+        p = p.rows(
+            "Arrangement",
+            vec![Row {
+                kind: "hint".into(),
+                id: "no-monitors".into(),
+                label: "No monitors detected.".into(),
+                ..Row::default()
+            }],
+        );
+    }
+    let names: Vec<String> = layout.iter().map(|m| m.name.clone()).collect();
+    for (index, monitor) in layout.iter().enumerate() {
+        let mut block = group(&monitor.name);
+        block.hint = format!(
+            "{}x{} at {},{}{}",
+            monitor.width,
+            monitor.height,
+            monitor.x,
+            monitor.y,
+            if monitor.disabled { " · off" } else { "" }
+        );
+        block.rows.push(toggle(
+            &format!("on:{}", monitor.name),
+            "Use this display",
+            "",
+            !monitor.disabled,
+        ));
+        if !monitor.disabled {
+            block.rows.push(Row {
+                kind: "select".into(),
+                id: format!("mode:{}", monitor.name),
+                label: "Resolution".into(),
+                value: crate::displays::current_mode(monitor),
+                ..Row::default()
+            });
+            let scales = [1.0, 1.25, 1.5, 2.0];
+            let scale = scales
+                .iter()
+                .copied()
+                .min_by(|a, b| {
+                    (a - monitor.scale)
+                        .abs()
+                        .partial_cmp(&(b - monitor.scale).abs())
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .unwrap_or(1.0);
+            block.rows.push(Row {
+                kind: "select".into(),
+                id: format!("scale:{}", monitor.name),
+                label: "Scale".into(),
+                value: format!("{}%", (scale * 100.0).round() as u32),
+                ..Row::default()
+            });
+            let turns = ["Landscape", "Right", "Upside down", "Left"];
+            block.rows.push(Row {
+                kind: "select".into(),
+                id: format!("turn:{}", monitor.name),
+                label: "Rotation".into(),
+                value: turns
+                    .get(monitor.transform as usize)
+                    .copied()
+                    .unwrap_or("Landscape")
+                    .into(),
+                ..Row::default()
+            });
+            let mut mirrors = vec!["None".to_string()];
+            mirrors.extend(
+                names
+                    .iter()
+                    .filter(|name| {
+                        *name != &monitor.name
+                            && layout
+                                .iter()
+                                .find(|other| &other.name == *name)
+                                .map(|other| other.mirror_of.is_empty() && !other.disabled)
+                                .unwrap_or(false)
+                    })
+                    .cloned(),
+            );
+            block.rows.push(Row {
+                kind: "select".into(),
+                id: format!("mirror:{}", monitor.name),
+                label: "Mirror".into(),
+                value: if monitor.mirror_of.is_empty() {
+                    "None".into()
+                } else {
+                    monitor.mirror_of.clone()
+                },
+                ..Row::default()
+            });
+            block.rows.push(toggle(
+                &format!("sync:{}", monitor.name),
+                "Adaptive sync",
+                "",
+                monitor.vrr > 0,
+            ));
+            block.rows.push(Row {
+                kind: "input".into(),
+                id: format!("x:{}", monitor.name),
+                label: "Horizontal position".into(),
+                value: monitor.x.to_string(),
+                action: "Set".into(),
+                ..Row::default()
+            });
+            block.rows.push(Row {
+                kind: "input".into(),
+                id: format!("y:{}", monitor.name),
+                label: "Vertical position".into(),
+                value: monitor.y.to_string(),
+                action: "Set".into(),
+                ..Row::default()
+            });
+        }
+        let _ = index;
+        p = p.push(block);
+    }
+    if !layout.is_empty() {
+        p = p.rows(
+            "Layout",
+            vec![
+                Row {
+                    kind: "leftbutton".into(),
+                    id: "apply".into(),
+                    action: "Apply layout".into(),
+                    primary: true,
+                    ..Row::default()
+                },
+                Row {
+                    kind: "leftbutton".into(),
+                    id: "discard".into(),
+                    action: "Discard changes".into(),
+                    ..Row::default()
+                },
+            ],
+        );
     }
     let night = crate::nightlight::load().enabled;
     let mut night_block = group("NIGHT LIGHT");
@@ -1737,12 +1918,176 @@ fn displays() -> Page {
     p.push(night_block)
 }
 
+fn displays_action(id: &str, action: &str) -> Result<(), String> {
+    if action == "toggle" && id == "night-light" {
+        let mut cfg = crate::nightlight::load();
+        cfg.enabled = !cfg.enabled;
+        return crate::nightlight::save(&cfg);
+    }
+    if id == "discard" {
+        reset_display_draft();
+        return Ok(());
+    }
+    if id == "apply" && action == "action" {
+        let layout = display_draft();
+        crate::displays::apply(layout, 15)?;
+        return Ok(());
+    }
+    if let Some(value) = id.strip_prefix("keep:") {
+        let number: u64 = value.parse().map_err(|_| "bad change number".to_string())?;
+        crate::displays::keep(number)?;
+        reset_display_draft();
+        return Ok(());
+    }
+    if let Some(value) = id.strip_prefix("revert:") {
+        let number: u64 = value.parse().map_err(|_| "bad change number".to_string())?;
+        let result = crate::displays::revert(number);
+        reset_display_draft();
+        return result;
+    }
+    let mut layout = display_draft();
+    let Some((field, name)) = id.split_once(':') else {
+        return Ok(());
+    };
+    let active_count = layout.iter().filter(|monitor| !monitor.disabled).count();
+    let mirror_choices: Vec<String> = layout
+        .iter()
+        .filter(|other| other.name != name && other.mirror_of.is_empty() && !other.disabled)
+        .map(|other| other.name.clone())
+        .collect();
+    let Some(monitor) = layout.iter_mut().find(|monitor| monitor.name == name) else {
+        return Ok(());
+    };
+    match field {
+        "on" if action == "toggle" => {
+            if monitor.disabled && active_count == 0 {
+                return Err("at least one display has to stay on".into());
+            }
+            monitor.disabled = !monitor.disabled;
+        }
+        "mode" if action == "select" => {
+            let current = crate::displays::current_mode(monitor);
+            let index = monitor
+                .available_modes
+                .iter()
+                .position(|mode| mode == &current)
+                .map(|index| (index + 1) % monitor.available_modes.len())
+                .unwrap_or(0);
+            if let Some(mode) = monitor.available_modes.get(index) {
+                if let Some((width, height, refresh)) = parse_mode(mode) {
+                    monitor.width = width;
+                    monitor.height = height;
+                    monitor.refresh = refresh;
+                }
+            }
+        }
+        "scale" if action == "select" => {
+            let scales = [1.0, 1.25, 1.5, 2.0];
+            let index = scales
+                .iter()
+                .position(|scale| (scale - monitor.scale).abs() < 0.01)
+                .map(|index| (index + 1) % scales.len())
+                .unwrap_or(0);
+            monitor.scale = scales[index];
+        }
+        "turn" if action == "select" => monitor.transform = (monitor.transform + 1) % 4,
+        "mirror" if action == "select" => {
+            let mut choices = vec![String::new()];
+            choices.extend(mirror_choices.iter().cloned());
+            let index = choices
+                .iter()
+                .position(|choice| choice == &monitor.mirror_of)
+                .map(|index| (index + 1) % choices.len())
+                .unwrap_or(0);
+            monitor.mirror_of = choices[index].clone();
+        }
+        "sync" if action == "toggle" => monitor.vrr = if monitor.vrr > 0 { 0 } else { 1 },
+        "x" if action.starts_with("input:") => {
+            monitor.x = action
+                .trim_start_matches("input:")
+                .trim()
+                .parse()
+                .map_err(|_| "positions must be whole numbers".to_string())?;
+        }
+        "y" if action.starts_with("input:") => {
+            monitor.y = action
+                .trim_start_matches("input:")
+                .trim()
+                .parse()
+                .map_err(|_| "positions must be whole numbers".to_string())?;
+        }
+        _ => return Ok(()),
+    }
+    set_display_draft(layout);
+    Ok(())
+}
+
 fn monitor_count() -> usize {
     let out = run("hyprctl", &["monitors", "-j"]).unwrap_or_default();
     out.matches("\"name\"").count()
 }
 
 // ------------------------------------------------------------------- bluetooth
+
+fn sharing_action(id: &str, action: &str, checked: bool) -> Result<(), String> {
+    if id == "ssh" && action == "toggle" {
+        let verb = if checked { "disable" } else { "enable" };
+        let out = Command::new("systemctl")
+            .args([verb, "--now", "sshd.service"])
+            .output()
+            .map_err(|error| error.to_string())?;
+        return if out.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        };
+    }
+    if id == "hostname" && action.starts_with("input:") {
+        let name = action.trim_start_matches("input:").trim();
+        if name.is_empty() || name.contains(char::is_whitespace) {
+            return Err("enter a single name".into());
+        }
+        let out = Command::new("hostnamectl")
+            .args(["set-hostname", name])
+            .output()
+            .map_err(|error| error.to_string())?;
+        return if out.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        };
+    }
+    if id == "receive-files" && action == "action" {
+        let flatpak = run("flatpak", &["info", "org.localsend.localsend_app"]).is_some();
+        let mut command = if which("localsend") {
+            Command::new("localsend")
+        } else if flatpak {
+            let mut command = Command::new("flatpak");
+            command.args(["run", "org.localsend.localsend_app"]);
+            command
+        } else {
+            return Err("install LocalSend first".into());
+        };
+        command
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+    if id == "phone-link" && action == "action" {
+        if !which("kdeconnect-settings") {
+            return Err("install KDE Connect first".into());
+        }
+        return Command::new("kdeconnect-settings")
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+    }
+    if id == "firewall" && action == "action" {
+        return Ok(());
+    }
+    Ok(())
+}
 
 fn bluetooth() -> Page {
     use crate::bluetooth::State;
@@ -3814,15 +4159,6 @@ fn notifications_action(id: &str, action: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn displays_action(id: &str, action: &str) -> Result<(), String> {
-    if action == "toggle" && id == "night-light" {
-        let mut cfg = crate::nightlight::load();
-        cfg.enabled = !cfg.enabled;
-        return crate::nightlight::save(&cfg);
-    }
-    Ok(())
-}
-
 fn startup_action(id: &str, action: &str) -> Result<(), String> {
     let Some(path) = id.strip_prefix("startup:") else {
         return Ok(());
@@ -4873,6 +5209,26 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
             .map(|r| r.checked)
             .unwrap_or(false);
         let error = network_action(&id, action, checked).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not apply that setting: {message}");
+        }
+        return reloaded;
+    }
+    if page == "sharing" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let checked = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.checked)
+            .unwrap_or(false);
+        let error = sharing_action(&id, action, checked).err();
         let mut reloaded = load(page);
         if let Some(message) = error {
             reloaded.status = format!("Could not apply that setting: {message}");

@@ -16,6 +16,7 @@ mod nightlight;
 mod notifications;
 mod prefs;
 mod data;
+mod displays;
 mod extra_icons;
 mod icons;
 mod pagedata;
