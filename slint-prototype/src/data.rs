@@ -535,3 +535,317 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+// ---- Appearance hub: shell themes, wallpapers, text settings ----
+
+pub struct ThemeInfo {
+    pub id: String,
+    pub name: String,
+    pub custom: bool,
+}
+
+pub struct LibItem {
+    pub name: String,
+    pub path: String,
+}
+
+pub struct Extra {
+    pub themes: Vec<ThemeInfo>,
+    pub active_theme: String,
+    pub wallpaper: Option<String>,
+    pub wallpaper_name: String,
+    pub library_dir: String,
+    pub library: Vec<LibItem>,
+    pub text_size: i64,
+    pub font: String,
+}
+
+/// bread_theme's compiled-in themes, in presentation order.
+const BUILTIN_THEMES: &[(&str, &str)] = &[
+    ("liquid-motion", "Liquid Motion"),
+    ("glass-workbench", "Glass Workbench"),
+    ("spotlight", "Spotlight"),
+    ("daylight", "Daylight"),
+    ("loaf", "Loaf"),
+];
+
+const WALLPAPER_EXTS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif", "bmp"];
+const MAX_THUMBS: usize = 12;
+
+fn config_dir() -> PathBuf {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        .unwrap_or_else(|| PathBuf::from(".config"))
+}
+
+fn home_dir() -> PathBuf {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/root"))
+}
+
+fn shell_toml() -> PathBuf {
+    config_dir().join("bread/shell.toml")
+}
+
+pub fn load_extra() -> Extra {
+    let (themes, active_theme) = themes();
+    let (wallpaper, wallpaper_name) = current_wallpaper();
+    let library_dir = home_dir().join("Pictures/Backgrounds");
+    Extra {
+        themes,
+        active_theme,
+        wallpaper,
+        wallpaper_name,
+        library_dir: library_dir.to_string_lossy().to_string(),
+        library: library(&library_dir),
+        text_size: text_prefs().0,
+        font: text_prefs().1,
+    }
+}
+
+fn themes() -> (Vec<ThemeInfo>, String) {
+    let mut out: Vec<ThemeInfo> = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
+    for dir in [
+        config_dir().join("bread/themes"),
+        PathBuf::from("/usr/share/bread/themes"),
+    ] {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let id = entry.file_name().to_string_lossy().to_string();
+            if seen.contains(&id) {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(entry.path().join("theme.toml")) else {
+                continue;
+            };
+            let Ok(value) = text.parse::<toml::Value>() else {
+                continue;
+            };
+            let name = value
+                .get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or(&id)
+                .to_string();
+            seen.push(id.clone());
+            out.push(ThemeInfo {
+                id,
+                name,
+                custom: true,
+            });
+        }
+    }
+    for (id, name) in BUILTIN_THEMES {
+        if !seen.iter().any(|s| s == id) {
+            out.push(ThemeInfo {
+                id: (*id).into(),
+                name: (*name).into(),
+                custom: false,
+            });
+        }
+    }
+    (out, active_theme())
+}
+
+fn active_theme() -> String {
+    std::fs::read_to_string(shell_toml())
+        .ok()
+        .and_then(|s| s.parse::<toml::Value>().ok())
+        .and_then(|v| v.get("active").and_then(|a| a.as_str()).map(str::to_string))
+        .unwrap_or_else(|| "liquid-motion".into())
+}
+
+pub fn set_theme(id: &str) -> Result<(), String> {
+    let path = shell_toml();
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let line = format!("active = \"{id}\"");
+    let mut out: Vec<String> = Vec::new();
+    let mut replaced = false;
+    for existing in text.lines() {
+        if !replaced && existing.trim_start().starts_with("active") && existing.contains('=') {
+            out.push(line.clone());
+            replaced = true;
+        } else {
+            out.push(existing.to_string());
+        }
+    }
+    if !replaced {
+        out.push(line);
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&path, out.join("\n") + "\n").map_err(|e| e.to_string())
+}
+
+pub fn restart_shell() -> Result<(), String> {
+    use std::process::{Command, Stdio};
+    for app in ["breadbar", "breadbox"] {
+        let _ = Command::new("pkill").args(["-x", app]).status();
+    }
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    let spawn = |prog: &str, args: &[&str]| {
+        let _ = Command::new("setsid")
+            .arg("-f")
+            .arg(prog)
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    };
+    spawn("breadbar", &[]);
+    spawn("breadbox", &["listen"]);
+    Ok(())
+}
+
+fn current_wallpaper() -> (Option<String>, String) {
+    let out = Command::new("breadpaper").arg("get").output();
+    let path = out
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty());
+    let name = path
+        .as_deref()
+        .and_then(|p| p.rsplit('/').next())
+        .unwrap_or("")
+        .to_string();
+    (path, name)
+}
+
+fn library(dir: &PathBuf) -> Vec<LibItem> {
+    fn walk(dir: &std::path::Path, depth: usize, out: &mut Vec<PathBuf>) {
+        if depth == 0 || out.len() >= MAX_THUMBS {
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        let mut entries: Vec<_> = entries.flatten().collect();
+        entries.sort_by_key(|e| e.file_name());
+        for entry in entries {
+            if out.len() >= MAX_THUMBS {
+                return;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, depth - 1, out);
+            } else if path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| WALLPAPER_EXTS.iter().any(|x| x.eq_ignore_ascii_case(e)))
+                .unwrap_or(false)
+            {
+                out.push(path);
+            }
+        }
+    }
+    let mut paths = Vec::new();
+    walk(dir, 2, &mut paths);
+    paths
+        .into_iter()
+        .map(|p| LibItem {
+            name: p
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            path: p.to_string_lossy().to_string(),
+        })
+        .collect()
+}
+
+pub fn set_wallpaper(path: &str) -> Result<(), String> {
+    let status = Command::new("breadpaper")
+        .args(["set", path])
+        .status()
+        .map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("breadpaper refused the wallpaper".into())
+    }
+}
+
+pub fn choose_wallpaper() -> Option<String> {
+    let out = Command::new("zenity")
+        .args([
+            "--file-selection",
+            "--title=Choose a wallpaper",
+            "--file-filter=Images | *.png *.jpg *.jpeg *.webp *.gif *.bmp",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!path.is_empty()).then_some(path)
+}
+
+fn text_prefs() -> (i64, String) {
+    let path = config_dir().join("hypr/bos-settings-v2.json");
+    let value: serde_json::Value = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    (
+        value
+            .get("text_size")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(14) as i64,
+        value
+            .get("font_family")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Varela Round")
+            .to_string(),
+    )
+}
+
+pub fn save_text(size: i64, font: &str) -> Result<(), String> {
+    let path = config_dir().join("hypr/bos-settings-v2.json");
+    let mut value: serde_json::Value = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    value["text_size"] = serde_json::json!(size);
+    value["font_family"] = serde_json::json!(font);
+    let json = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    // GTK apps read gtk-font-name from their settings.ini.
+    for folder in ["gtk-3.0", "gtk-4.0"] {
+        let ini = config_dir().join(folder).join("settings.ini");
+        let text = std::fs::read_to_string(&ini).unwrap_or_default();
+        let text = set_ini_key(&text, "gtk-font-name", &format!("{font} {size}"));
+        let _ = std::fs::create_dir_all(ini.parent().unwrap_or(&config_dir()));
+        let _ = std::fs::write(&ini, text);
+    }
+    Ok(())
+}
+
+fn set_ini_key(text: &str, key: &str, value: &str) -> String {
+    let mut lines: Vec<String> = text.lines().map(String::from).collect();
+    let start = lines.iter().position(|l| l.trim() == "[Settings]");
+    let Some(start) = start else {
+        lines.push("[Settings]".into());
+        lines.push(format!("{key}={value}"));
+        return lines.join("\n") + "\n";
+    };
+    let end = (start + 1..lines.len())
+        .find(|&i| lines[i].trim().starts_with('['))
+        .unwrap_or(lines.len());
+    let found = (start + 1..end).find(|&i| {
+        lines[i]
+            .split_once('=')
+            .is_some_and(|(k, _)| k.trim() == key)
+    });
+    match found {
+        Some(i) => lines[i] = format!("{key}={value}"),
+        None => lines.insert(end, format!("{key}={value}")),
+    }
+    lines.join("\n") + "\n"
+}

@@ -68,6 +68,7 @@ export component Lede inherits Text {
 
 export component GroupBox inherits Rectangle {
     in property <string> title;
+    in property <string> hint: "";
     background: Theme.surface;
     border-width: 1px;
     border-color: Theme.line;
@@ -86,6 +87,15 @@ export component GroupBox inherits Rectangle {
             font-size: 11px;
             font-weight: 500;
             letter-spacing: 1.1px;
+            horizontal-alignment: left;
+        }
+        if root.hint != "": Rectangle { height: 2px; }
+        if root.hint != "": Text {
+            text: root.hint;
+            font-family: Theme.body;
+            color: Theme.muted;
+            font-size: 12px;
+            wrap: word-wrap;
             horizontal-alignment: left;
         }
         Rectangle { height: 6px; }
@@ -145,10 +155,11 @@ export component SettingRow inherits Rectangle {
 export component PillButton inherits Rectangle {
     in property <string> text;
     in property <bool> primary: false;
+    in property <bool> ghost: false;
     callback clicked;
     height: 34px;
     border-radius: Theme.radius-sm;
-    background: primary ? Theme.accent : Theme.surface-2;
+    background: primary ? Theme.accent : (ghost ? transparent : Theme.surface-2);
     border-width: primary ? 0px : 1px;
     border-color: Theme.line;
     HorizontalLayout {
@@ -209,6 +220,8 @@ export component AccentSlider inherits Rectangle {
         border-radius: 3px;
         background: Theme.track;
         Rectangle {
+            x: 0;
+            y: 0;
             width: parent.width * root.fraction;
             height: 100%;
             border-radius: 3px;

@@ -1,6 +1,100 @@
-import { Theme, PageTitle, Lede, GroupBox, SettingRow, Toggle, AccentSlider, SelectBox, ValueText } from "theme.slint";
+import { Theme, PageTitle, Lede, GroupBox, SettingRow, Toggle, AccentSlider, SelectBox, ValueText, PillButton } from "theme.slint";
+
+export struct ThemeCard {
+    id: string,
+    name: string,
+    sub: string,
+}
+
+export struct WallpaperThumb {
+    name: string,
+    path: string,
+    image: image,
+}
+
+// The per-theme mini preview from ShellTheme.svelte's CSS: a gradient wash,
+// the bar shape the theme uses, and a mini window on top.
+component ThemePreview inherits Rectangle {
+    in property <string> theme-id;
+    property <bool> special:
+        theme-id == "console" || theme-id == "strata" || theme-id == "kuro"
+        || theme-id == "glass-workbench" || theme-id == "liquid-motion"
+        || theme-id == "daylight" || theme-id == "loaf" || theme-id == "spotlight";
+    clip: true;
+    border-radius: 8px;
+    background: @linear-gradient(140deg, Theme.accent-soft 0%, Theme.bg 100%);
+
+    if theme-id == "daylight": Rectangle {
+        width: 100%; height: 100%;
+        background: @linear-gradient(140deg, #e8dccb 0%, #c9b8a0 100%);
+    }
+    if !special: Rectangle {
+        x: 8px;
+        y: 6px;
+        width: parent.width - 16px;
+        height: 8px;
+        border-radius: 5px;
+        background: Theme.accent;
+    }
+    if theme-id == "console": Rectangle {
+        x: 0; y: 0; width: 100%; height: 8px; background: #0b0d0b;
+    }
+    if theme-id == "strata": Rectangle {
+        x: 0; y: 0; width: 12px; height: 100%; background: Theme.accent;
+    }
+    if theme-id == "kuro": Rectangle {
+        x: 0; y: parent.height - 8px; width: 100%; height: 8px; background: #000000;
+    }
+    if theme-id == "glass-workbench": Rectangle {
+        x: 8px;
+        y: 6px;
+        width: parent.width - 16px;
+        height: 8px;
+        border-radius: 5px;
+        background: #ffffff2e;
+        border-width: 1px;
+        border-color: #ffffff4d;
+    }
+    if theme-id == "liquid-motion": Rectangle {
+        x: parent.width * 0.2;
+        y: parent.height - 15px;
+        width: parent.width * 0.6;
+        height: 10px;
+        background: #ffffff33;
+    }
+    if theme-id == "daylight": Rectangle {
+        x: 0; y: 0; width: 100%; height: 8px; background: #f2efe8;
+    }
+    if theme-id == "loaf": Rectangle {
+        x: parent.width * 0.3;
+        y: 6px;
+        width: parent.width * 0.4;
+        height: 8px;
+        border-radius: 4px;
+        background: #d9a066;
+    }
+    if theme-id == "spotlight": Rectangle {
+        x: parent.width * 0.38;
+        y: 6px;
+        width: parent.width * 0.24;
+        height: 7px;
+        border-radius: 4px;
+        background: #0a0c0ed9;
+    }
+    Rectangle {
+        x: 16px;
+        y: 22px;
+        width: parent.width - 32px;
+        height: parent.height - 38px;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: Theme.line;
+        background: Theme.surface;
+    }
+}
 
 export component AppearancePage inherits VerticalLayout {
+    in property <length> content-width: 716px;
     in-out property <float> gaps-in;
     in-out property <float> gaps-out;
     in-out property <float> border-size;
@@ -17,9 +111,21 @@ export component AppearancePage inherits VerticalLayout {
     in-out property <bool> resize-on-border;
     in-out property <int> layout-index;
     in-out property <string> status;
+    in property <[ThemeCard]> themes;
+    in-out property <string> active-theme;
+    in property <image> wallpaper;
+    in property <string> wallpaper-name;
+    in property <string> wallpaper-path;
+    in property <string> library-dir;
+    in property <[WallpaperThumb]> library;
+    in-out property <int> text-size-index;
+    in-out property <int> font-index;
     callback changed();
-    // Same rhythm as the shipping ViewScaffold: breadcrumb, then the title,
-    // the lede and the sections.
+    callback theme-selected(string);
+    callback wallpaper-selected(string);
+    callback choose-wallpaper();
+    callback restart-shell();
+    callback text-changed();
     spacing: 0px;
     alignment: start;
     HorizontalLayout {
@@ -34,6 +140,169 @@ export component AppearancePage inherits VerticalLayout {
     Rectangle { height: 6px; }
     Lede { text: "Wallpaper sets the colors. Windows follow."; }
     Rectangle { height: 18px; }
+
+    GroupBox {
+        title: "THEME";
+        GridLayout {
+            spacing: 8px;
+            property <int> cols: max(1, Math.floor((root.content-width / 1px + 8) / 208));
+            for card[index] in root.themes: Rectangle {
+                row: Math.floor(index / cols);
+                col: Math.mod(index, cols);
+                height: 145px;
+                border-radius: 10px;
+                background: Theme.bg;
+                border-width: 2px;
+                border-color: card.id == root.active-theme ? Theme.accent : transparent;
+                VerticalLayout {
+                    padding-left: 14px;
+                    padding-right: 14px;
+                    padding-top: 12px;
+                    padding-bottom: 12px;
+                    spacing: 10px;
+                    alignment: start;
+                    ThemePreview {
+                        height: 66px;
+                        theme-id: card.id;
+                        horizontal-stretch: 1;
+                    }
+                    VerticalLayout {
+                        spacing: 0px;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: card.name;
+                            height: 20px;
+                            font-family: Theme.body;
+                            color: Theme.fg;
+                            font-size: 14px;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: card.sub;
+                            height: 15px;
+                            font-family: Theme.body;
+                            color: Theme.muted;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                        }
+                    }
+                }
+                TouchArea {
+                    clicked => { root.theme-selected(card.id); }
+                }
+            }
+        }
+        Rectangle { height: 12px; }
+        HorizontalLayout {
+            alignment: start;
+            spacing: 12px;
+            PillButton {
+                text: "Restart bar and launcher";
+                ghost: true;
+                clicked => { root.restart-shell(); }
+            }
+        }
+    }
+
+    Rectangle { height: 14px; }
+
+    GroupBox {
+        title: "WALLPAPER";
+        hint: "This also sets the desktop colors: each monitor's accent comes from its own wallpaper.";
+        if root.wallpaper-name != "": Rectangle {
+            height: 180px;
+            border-radius: 12px;
+            clip: true;
+            background: Theme.bg;
+            Image {
+                source: root.wallpaper;
+                width: 100%;
+                height: 100%;
+                image-fit: cover;
+            }
+            Rectangle {
+                x: 12px;
+                y: parent.height - 34px;
+                width: caption.width + 16px;
+                height: 24px;
+                border-radius: 6px;
+                background: #00000066;
+                caption := Text {
+                    x: 8px;
+                    y: 0;
+                    height: 100%;
+                    text: root.wallpaper-name;
+                    font-family: Theme.body;
+                    color: #ffffffcc;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        if root.wallpaper-name == "": Rectangle {
+            height: 180px;
+            border-radius: 12px;
+            background: Theme.bg;
+            Text {
+                text: "No wallpaper";
+                font-family: Theme.body;
+                color: Theme.muted;
+                font-size: 12px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        Rectangle { height: 12px; }
+        HorizontalLayout {
+            alignment: start;
+            spacing: 12px;
+            PillButton {
+                text: "Choose image";
+                primary: true;
+                clicked => { root.choose-wallpaper(); }
+            }
+        }
+    }
+
+    Rectangle { height: 14px; }
+
+    GroupBox {
+        title: "LIBRARY";
+        GridLayout {
+            spacing: 8px;
+            property <int> cols: max(1, Math.floor((root.content-width / 1px + 8) / 128));
+            for thumb[index] in root.library: Rectangle {
+                row: Math.floor(index / cols);
+                col: Math.mod(index, cols);
+                height: 81px;
+                border-radius: 8px;
+                border-width: 2px;
+                border-color: thumb.path == root.wallpaper-path ? Theme.accent : transparent;
+                clip: true;
+                Image {
+                    source: thumb.image;
+                    width: 100%;
+                    height: 100%;
+                    image-fit: cover;
+                }
+                TouchArea {
+                    clicked => { root.wallpaper-selected(thumb.path); }
+                }
+            }
+        }
+        if root.library.length == 0: Text {
+            text: "Nothing in " + root.library-dir;
+            font-family: Theme.body;
+            color: Theme.muted;
+            font-size: 12px;
+            horizontal-alignment: left;
+        }
+    }
+
+    Rectangle { height: 14px; }
 
     GroupBox {
         title: "WINDOWS";
@@ -166,6 +435,33 @@ export component AppearancePage inherits VerticalLayout {
         if shadows: SettingRow { label: "Shadow size";
             AccentSlider { minimum: 0; maximum: 40; value <=> shadow-range; changed(_) => { root.changed(); } }
             ValueText { text: round(shadow-range); }
+        }
+    }
+
+    Rectangle { height: 14px; }
+
+    GroupBox {
+        title: "TEXT";
+        hint: "Settings, GTK apps and the bar. Other apps may use their own font settings.";
+        SettingRow { label: "Text size"; first: true;
+            SelectBox {
+                width: 132px;
+                text: ["Small", "Default", "Large", "Larger"][root.text-size-index];
+                clicked => {
+                    root.text-size-index = Math.mod(root.text-size-index + 1, 4);
+                    root.text-changed();
+                }
+            }
+        }
+        SettingRow { label: "Font";
+            SelectBox {
+                width: 132px;
+                text: ["Varela Round", "Inter", "Noto Sans"][root.font-index];
+                clicked => {
+                    root.font-index = Math.mod(root.font-index + 1, 3);
+                    root.text-changed();
+                }
+            }
         }
     }
 
