@@ -1745,71 +1745,233 @@ fn monitor_count() -> usize {
 // ------------------------------------------------------------------- bluetooth
 
 fn bluetooth() -> Page {
+    use crate::bluetooth::State;
     let mut p = page(
         "bluetooth",
         "Connect",
         "Bluetooth",
         "Your devices, with battery where they report it.",
     );
-    let show = run("bluetoothctl", &["show"]).unwrap_or_default();
-    let powered = show.lines().any(|l| l.trim() == "Powered: yes");
-    let devices = bluetooth_devices();
-    let connected = devices.iter().filter(|d| d.2).count();
-    let mut h = hero(
-        &format!("Bluetooth is {}", if powered { "on" } else { "off" }),
-        &if powered {
-            format!("{connected} connected · {} paired", devices.len())
-        } else {
-            "Turn it on to use your headphones, controllers and other devices.".into()
-        },
-    );
-    h.tag = "toggle".into();
-    h.on = powered;
+    let state = crate::bluetooth::state();
+    let mut devices = crate::bluetooth::devices();
+    devices.retain(|device| device.paired);
+    let connected = devices.iter().filter(|device| device.connected).count();
+    let mut h = match &state {
+        State::ServiceOff => hero(
+            "Bluetooth service is off",
+            "This computer has Bluetooth, but the service that runs it isn't started. Starting it asks for your password.",
+        ),
+        State::NoAdapter => hero(
+            "No Bluetooth adapter found",
+            "This computer doesn't have Bluetooth, or it is switched off in the firmware settings.",
+        ),
+        State::Ready { powered: false } => hero(
+            "Bluetooth is off",
+            "Turn it on to use your headphones, controllers and other devices.",
+        ),
+        State::Ready { powered: true } => hero(
+            "Bluetooth is on",
+            &format!("{connected} connected · {} paired", devices.len()),
+        ),
+    };
     h.icon = crate::icons::commands("bluetooth").into();
-    if powered {
-        h.action = "Add device".into();
-        h.action_icon = crate::icons::commands("plus").into();
-        h.primary = true;
+    if let State::Ready { powered } = state {
+        h.tag = "toggle".into();
+        h.on = powered;
+        if powered {
+            h.action = "Add device".into();
+            h.action_icon = crate::icons::commands("plus").into();
+            h.primary = true;
+        }
     }
     p = p.push(h);
-    if powered {
-        let mut block = Block {
-            kind: "devgrid".into(),
-            ..Block::default()
-        };
-        let mut seen: HashMap<String, usize> = HashMap::new();
-        for (name, _, _, _) in &devices {
-            *seen.entry(name.clone()).or_default() += 1;
+
+    match state {
+        State::ServiceOff => {
+            p = p.rows(
+                "Bluetooth service",
+                vec![
+                    Row {
+                        kind: "line".into(),
+                        id: "bt-start".into(),
+                        label: "Start Bluetooth".into(),
+                        hint: "Starts the background service now.".into(),
+                        action: "Start".into(),
+                        primary: true,
+                        ..Row::default()
+                    },
+                    Row {
+                        kind: "line".into(),
+                        id: "bt-check".into(),
+                        label: "Check again".into(),
+                        action: "Check".into(),
+                        ..Row::default()
+                    },
+                ],
+            );
+            return p;
         }
-        for (name, address, is_connected, battery) in devices {
+        State::NoAdapter => return p,
+        State::Ready { powered: false } => return p,
+        State::Ready { powered: true } => {}
+    }
+
+    let adding = bluetooth_adding();
+    if adding {
+        let found = bluetooth_found();
+        let mut block = group("Add a device");
+        block.hint = "Put your device in pairing mode. It shows up here.".into();
+        if found.is_empty() {
             block.rows.push(Row {
-                kind: "dev".into(),
-                id: format!("bt:{address}"),
-                label: name.clone(),
-                hint: format!(
-                    "{}{}{}",
-                    if is_connected { "Connected" } else { "Not connected" },
-                    battery
-                        .map(|b| format!(" · {b}% battery"))
-                        .unwrap_or_default(),
-                    if seen.get(&name).copied().unwrap_or(0) > 1 {
-                        format!(" · {}", short_address(&address))
-                    } else {
-                        String::new()
-                    }
-                ),
-                icon: crate::icons::commands("headphones").into(),
-                action: if is_connected { "Disconnect".into() } else { "Connect".into() },
-                value: "Forget".into(),
-                checked: is_connected,
-                primary: !is_connected,
+                kind: "hint".into(),
+                id: "bt-none".into(),
+                label: "Nothing found yet. Check the device is in pairing mode, then scan again."
+                    .into(),
                 ..Row::default()
             });
         }
-        p.push(block)
-    } else {
-        p
+        for device in found.iter().filter(|device| device.paired == false) {
+            block.rows.push(Row {
+                kind: "line".into(),
+                id: format!("pair:{}", device.address),
+                label: device.name.clone(),
+                hint: device.address.clone(),
+                action: "Pair".into(),
+                ..Row::default()
+            });
+        }
+        block.rows.push(Row {
+            kind: "line".into(),
+            id: "bt-scan".into(),
+            label: "Scan again".into(),
+            action: "Scan".into(),
+            ..Row::default()
+        });
+        block.rows.push(Row {
+            kind: "leftbutton".into(),
+            id: "bt-done".into(),
+            action: "Done".into(),
+            primary: true,
+            ..Row::default()
+        });
+        p = p.push(block);
     }
+
+    let mut block = Block {
+        kind: "devgrid".into(),
+        ..Block::default()
+    };
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    for device in &devices {
+        *seen.entry(device.name.clone()).or_default() += 1;
+    }
+    for device in devices {
+        block.rows.push(Row {
+            kind: "dev".into(),
+            id: format!("bt:{}", device.address),
+            label: device.name.clone(),
+            hint: format!(
+                "{}{}{}",
+                if device.connected {
+                    "Connected"
+                } else {
+                    "Not connected"
+                },
+                device
+                    .battery
+                    .map(|battery| format!(" · {battery}% battery"))
+                    .unwrap_or_default(),
+                if seen.get(&device.name).copied().unwrap_or(0) > 1 {
+                    format!(" · {}", short_address(&device.address))
+                } else {
+                    String::new()
+                }
+            ),
+            icon: crate::icons::commands("headphones").into(),
+            action: if device.connected {
+                "Disconnect".into()
+            } else {
+                "Connect".into()
+            },
+            value: "Forget".into(),
+            checked: device.connected,
+            primary: !device.connected,
+            ..Row::default()
+        });
+    }
+    p.push(block)
+}
+
+fn bluetooth_adding_cell() -> &'static Mutex<bool> {
+    static ADDING: OnceLock<Mutex<bool>> = OnceLock::new();
+    ADDING.get_or_init(|| Mutex::new(false))
+}
+
+fn bluetooth_adding() -> bool {
+    *bluetooth_adding_cell()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+fn bluetooth_found_cell() -> &'static Mutex<Vec<crate::bluetooth::Device>> {
+    static FOUND: OnceLock<Mutex<Vec<crate::bluetooth::Device>>> = OnceLock::new();
+    FOUND.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn bluetooth_found() -> Vec<crate::bluetooth::Device> {
+    bluetooth_found_cell()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+fn bluetooth_action(id: &str, action: &str, checked: bool) -> Result<(), String> {
+    if id == "bt-start" && action == "action" {
+        crate::bluetooth::start_service()?;
+        return Ok(());
+    }
+    if id == "bt-check" {
+        return Ok(());
+    }
+    if id == "add-device" && action == "action" {
+        let found = crate::bluetooth::scan();
+        *bluetooth_found_cell()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = found;
+        *bluetooth_adding_cell()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = true;
+        return Ok(());
+    }
+    if id == "bt-scan" && action == "action" {
+        let found = crate::bluetooth::scan();
+        *bluetooth_found_cell()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = found;
+        return Ok(());
+    }
+    if id == "bt-done" {
+        *bluetooth_adding_cell()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = false;
+        return Ok(());
+    }
+    if let Some(address) = id.strip_prefix("pair:") {
+        if action == "action" {
+            crate::bluetooth::pair(address)?;
+            *bluetooth_adding_cell()
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = false;
+        }
+        return Ok(());
+    }
+    if let Some(address) = id.strip_prefix("bt:") {
+        return match action {
+            "action2" => crate::bluetooth::forget(address),
+            _ => crate::bluetooth::connect(address, !checked),
+        };
+    }
+    Ok(())
 }
 
 fn short_address(address: &str) -> String {
@@ -4711,6 +4873,48 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
             .map(|r| r.checked)
             .unwrap_or(false);
         let error = network_action(&id, action, checked).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not apply that setting: {message}");
+        }
+        return reloaded;
+    }
+    if page == "bluetooth" {
+        if action == "toggle" {
+            if let Some(hero) = current.blocks.get(block).filter(|b| b.kind == "hero") {
+                let error = crate::bluetooth::set_power(!hero.on).err();
+                let mut reloaded = load(page);
+                if let Some(message) = error {
+                    reloaded.status = format!("Could not apply that setting: {message}");
+                }
+                return reloaded;
+            }
+        }
+        if action == "action" {
+            if let Some(hero) = current.blocks.get(block).filter(|b| b.kind == "hero") {
+                if hero.action == "Add device" {
+                    let error = bluetooth_action("add-device", "action", false).err();
+                    let mut reloaded = load(page);
+                    if let Some(message) = error {
+                        reloaded.status = format!("Could not scan: {message}");
+                    }
+                    return reloaded;
+                }
+            }
+        }
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let checked = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.checked)
+            .unwrap_or(false);
+        let error = bluetooth_action(&id, action, checked).err();
         let mut reloaded = load(page);
         if let Some(message) = error {
             reloaded.status = format!("Could not apply that setting: {message}");
