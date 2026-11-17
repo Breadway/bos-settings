@@ -198,10 +198,10 @@ parity_check.py fails while any item is not [x].
 - [~] view `Packages`
 
 ## Startup
-- [ ] command `autostart::command`
+- [x] command `autostart::command` -> slint-prototype/src/pagedata.rs
 - [x] command `autostart::get_autostart_entries` -> slint-prototype/src/pagedata.rs
 - [x] command `autostart::load_entries` -> slint-prototype/src/pagedata.rs
-- [ ] command `autostart::new`
+- [x] command `autostart::new` -> slint-prototype/src/pagedata.rs
 - [x] command `autostart::remove_entries` -> slint-prototype/src/pagedata.rs
 - [x] command `autostart::save_autostart_entries` -> slint-prototype/src/pagedata.rs
 - [x] command `autostart::store_entries` -> slint-prototype/src/pagedata.rs
@@ -355,9 +355,9 @@ parity_check.py fails while any item is not [x].
 
 ## System
 - [ ] command `breadcrumbs::get_breadcrumbs_config`
-- [ ] command `breadcrumbs::get_current_place`
+- [x] command `breadcrumbs::get_current_place` -> slint-prototype/src/network.rs
 - [ ] command `breadcrumbs::save_breadcrumbs_config`
-- [ ] command `breadcrumbs::set_current_place`
+- [x] command `breadcrumbs::set_current_place` -> slint-prototype/src/network.rs
 - [x] command `config::atomic_write` -> slint-prototype/src/config.rs
 - [x] command `config::config_dir` -> slint-prototype/src/config.rs
 - [x] command `config::get_bool` -> slint-prototype/src/config.rs
