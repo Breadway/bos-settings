@@ -58,6 +58,17 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Same hand-off the shipping app has: `--page appearance` opens on that
+    // page instead of Home.
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "--page" {
+            if let Some(page) = args.next() {
+                window.set_page(page.into());
+            }
+        }
+    }
+
     window
         .window()
         .set_size(slint::PhysicalSize::new(1280, 840));
