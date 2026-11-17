@@ -112,10 +112,179 @@ pub fn clamp_temp(temperature: u32) -> u32 {
     temperature.clamp(1000, 6500)
 }
 
-fn desktop_entry(temperature: u32) -> String {
+const CONF_HEADER: &str =
+    "# Managed by BOS Settings (Displays > Night light). Edits here are overwritten.\n";
+
+fn conf_path() -> PathBuf {
+    config_dir().join("hypr/hyprsunset.conf")
+}
+
+fn fmt_hhmm(minutes: u32) -> String {
+    format!("{:02}:{:02}", minutes / 60 % 24, minutes % 60)
+}
+
+fn parse_iso6709(text: &str) -> Option<(f64, f64)> {
+    let split = text[1..].find(['+', '-'])? + 1;
+    let (latitude, longitude) = text.split_at(split);
+    let part = |value: &str, degree_digits: usize| -> Option<f64> {
+        let sign = match value.as_bytes().first()? {
+            b'+' => 1.0,
+            b'-' => -1.0,
+            _ => return None,
+        };
+        let digits = &value[1..];
+        if !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+            return None;
+        }
+        let degrees: f64 = digits.get(..degree_digits)?.parse().ok()?;
+        let minutes: f64 = digits.get(degree_digits..degree_digits + 2)?.parse().ok()?;
+        let seconds: f64 = match digits.get(degree_digits + 2..) {
+            Some("") | None => 0.0,
+            Some(rest) => rest.parse().ok()?,
+        };
+        Some(sign * (degrees + minutes / 60.0 + seconds / 3600.0))
+    };
+    Some((part(latitude, 2)?, part(longitude, 3)?))
+}
+
+fn zone_coordinates(zone_tab: &str, zone: &str) -> Option<(f64, f64)> {
+    zone_tab.lines().find_map(|line| {
+        if line.starts_with('#') {
+            return None;
+        }
+        let mut columns = line.split('\t');
+        columns.next()?;
+        let coordinates = columns.next()?;
+        (columns.next()? == zone)
+            .then(|| parse_iso6709(coordinates))
+            .flatten()
+    })
+}
+
+fn sun_times(
+    latitude: f64,
+    longitude: f64,
+    year: i32,
+    month: u32,
+    day: u32,
+    utc_offset_min: i32,
+) -> Option<(u32, u32)> {
+    let n1 = (275.0 * month as f64 / 9.0).floor();
+    let n2 = ((month as f64 + 9.0) / 12.0).floor();
+    let n3 = 1.0 + (((year - 4 * (year / 4)) as f64 + 2.0) / 3.0).floor();
+    let n = n1 - n2 * n3 + day as f64 - 30.0;
+    let longitude_hour = longitude / 15.0;
+    let calculate = |rising: bool| -> Option<f64> {
+        let t = n + ((if rising { 6.0 } else { 18.0 }) - longitude_hour) / 24.0;
+        let m = 0.9856 * t - 3.289;
+        let rad = std::f64::consts::PI / 180.0;
+        let mut l = m + 1.916 * (m * rad).sin() + 0.020 * (2.0 * m * rad).sin() + 282.634;
+        l = l.rem_euclid(360.0);
+        let mut ra = (0.91764 * (l * rad).tan()).atan() / rad;
+        ra = ra.rem_euclid(360.0);
+        ra += (l / 90.0).floor() * 90.0 - (ra / 90.0).floor() * 90.0;
+        ra /= 15.0;
+        let sin_dec = 0.39782 * (l * rad).sin();
+        let cos_dec = sin_dec.asin().cos();
+        let cos_h = ((90.833 * rad).cos() - sin_dec * (latitude * rad).sin())
+            / (cos_dec * (latitude * rad).cos());
+        if !(-1.0..=1.0).contains(&cos_h) {
+            return None;
+        }
+        let h_degrees = if rising {
+            360.0 - cos_h.acos() / rad
+        } else {
+            cos_h.acos() / rad
+        };
+        let h = h_degrees / 15.0;
+        let local = h + ra - 0.06571 * t - 6.622;
+        let ut = (local - longitude_hour).rem_euclid(24.0);
+        Some((ut + utc_offset_min as f64 / 60.0).rem_euclid(24.0))
+    };
+    let rise = calculate(true)?;
+    let set = calculate(false)?;
+    Some((
+        (rise * 60.0).round() as u32 % 1440,
+        (set * 60.0).round() as u32 % 1440,
+    ))
+}
+
+fn local_date_and_offset() -> Option<(i32, u32, u32, i32)> {
+    let out = std::process::Command::new("date")
+        .arg("+%Y %m %d %z")
+        .output()
+        .ok()?;
+    let line = String::from_utf8_lossy(&out.stdout);
+    let mut parts = line.split_whitespace();
+    let year: i32 = parts.next()?.parse().ok()?;
+    let month: u32 = parts.next()?.parse().ok()?;
+    let day: u32 = parts.next()?.parse().ok()?;
+    let zone = parts.next()?;
+    let sign = match zone.as_bytes().first()? {
+        b'+' => 1,
+        b'-' => -1,
+        _ => return None,
+    };
+    let hours: i32 = zone.get(1..3)?.parse().ok()?;
+    let minutes: i32 = zone.get(3..5)?.parse().ok()?;
+    Some((year, month, day, sign * (hours * 60 + minutes)))
+}
+
+fn current_timezone() -> Option<String> {
+    let target = std::fs::read_link("/etc/localtime").ok()?;
+    let text = target.to_string_lossy().into_owned();
+    text.split_once("zoneinfo/")
+        .map(|(_, zone)| zone.to_string())
+}
+
+pub struct Sun {
+    pub sunrise: String,
+    pub sunset: String,
+    pub zone: String,
+}
+
+/// Today's sunrise and sunset where the system's time zone is.
+pub fn todays_sun() -> Option<Sun> {
+    let zone = current_timezone()?;
+    let table = std::fs::read_to_string("/usr/share/zoneinfo/zone.tab").ok()?;
+    let (latitude, longitude) = zone_coordinates(&table, &zone)?;
+    let (year, month, day, offset) = local_date_and_offset()?;
+    let (rise, set) = sun_times(latitude, longitude, year, month, day, offset)?;
+    Some(Sun {
+        sunrise: fmt_hhmm(rise),
+        sunset: fmt_hhmm(set),
+        zone,
+    })
+}
+
+fn schedule_for(cfg: &Config) -> Result<Option<(String, String)>, String> {
+    match cfg.mode.as_str() {
+        "always" => Ok(None),
+        "custom" => Ok(Some((cfg.start.clone(), cfg.end.clone()))),
+        "sunset" => match todays_sun() {
+            Some(sun) => Ok(Some((sun.sunset, sun.sunrise))),
+            None => Err(
+                "Can't work out sunset for this time zone. Use custom hours instead.".into(),
+            ),
+        },
+        _ => Err("Unknown night light schedule".into()),
+    }
+}
+
+fn build_conf(warm_start: &str, warm_end: &str, temperature: u32) -> String {
     format!(
-        "[Desktop Entry]\nType=Application\nName=Night light\nComment=Warm the screen after dark\nExec=hyprsunset -t {}\nX-GNOME-Autostart-enabled=true\n",
-        clamp_temp(temperature)
+        "{CONF_HEADER}\nprofile {{\n    time = {warm_end}\n    identity = true\n}}\n\nprofile {{\n    time = {warm_start}\n    temperature = {temperature}\n}}\n"
+    )
+}
+
+fn desktop_entry_for(cfg: &Config) -> String {
+    let command = if schedule_for(cfg).ok().flatten().is_some() {
+        "hyprsunset".to_string()
+    } else {
+        format!("hyprsunset -t {}", clamp_temp(cfg.temperature))
+    };
+    format!(
+        "[Desktop Entry]\nType=Application\nName=Night light\nComment=Warm the screen after dark\nExec={command}\nX-GNOME-Autostart-enabled=true\n"
     )
 }
 
@@ -142,11 +311,31 @@ pub fn save_to(
     let table: Item = Item::Table(Table::new());
     let _ = table;
     write_atomic(config_path, &doc.to_string())?;
+    let conf = conf_path();
+    let schedule = if cfg.enabled {
+        schedule_for(cfg)?
+    } else {
+        None
+    };
+    if let Some((start, end)) = &schedule {
+        if std::fs::read_to_string(&conf).is_ok_and(|text| !text.starts_with(CONF_HEADER)) {
+            return Err(
+                "~/.config/hypr/hyprsunset.conf already exists and is not managed by Settings; move it aside to use a schedule."
+                    .into(),
+            );
+        }
+        write_atomic(&conf, &build_conf(start, end, cfg.temperature))?;
+    } else if std::fs::read_to_string(&conf).is_ok_and(|text| text.starts_with(CONF_HEADER)) {
+        let _ = std::fs::remove_file(&conf);
+    }
     if cfg.enabled {
-        write_atomic(autostart, &desktop_entry(cfg.temperature))?;
+        write_atomic(autostart, &desktop_entry_for(cfg))?;
         let _ = std::process::Command::new("pkill").args(["-x", "hyprsunset"]).status();
-        std::process::Command::new("hyprsunset")
-            .args(["-t", &clamp_temp(cfg.temperature).to_string()])
+        let mut command = std::process::Command::new("hyprsunset");
+        if schedule.is_none() {
+            command.args(["-t", &clamp_temp(cfg.temperature).to_string()]);
+        }
+        command
             .spawn()
             .map_err(|error| format!("hyprsunset: {error}"))?;
     } else {
