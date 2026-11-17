@@ -1,0 +1,236 @@
+// Defaults match frontend/src/lib/styles/app.css. main.rs overwrites the
+// colours from the live bread-theme stylesheet, so the accent follows the
+// wallpaper the same way the shipping app does.
+
+export global Theme {
+    in-out property <color> bg: #0e0f11;
+    in-out property <color> bg-2: #111316;
+    in-out property <color> surface: #17191c;
+    in-out property <color> surface-2: #1f2226;
+    in-out property <color> fg: #e9ecef;
+    in-out property <color> muted: #8b9198;
+    in-out property <color> faint: #5d636a;
+    in-out property <color> accent: #ce9c65;
+    in-out property <color> on-accent: #11111b;
+    in-out property <color> red: #e0736a;
+    in-out property <color> line: #e9ecef14;
+    in-out property <color> accent-soft: #ce9c652e;
+    in-out property <color> accent-line: #ce9c658c;
+    in-out property <length> radius: 14px;
+    in-out property <length> radius-sm: 10px;
+    in-out property <string> body: "Varela Round";
+    in-out property <string> display: "Outfit";
+}
+
+export component PageTitle inherits Text {
+    font-family: Theme.display;
+    color: Theme.fg;
+    font-size: 26px;
+    font-weight: 500;
+    horizontal-alignment: left;
+}
+
+export component Lede inherits Text {
+    font-family: Theme.body;
+    color: Theme.muted;
+    font-size: 14px;
+    wrap: word-wrap;
+    horizontal-alignment: left;
+}
+
+export component GroupBox inherits Rectangle {
+    in property <string> title;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.line;
+    border-radius: Theme.radius;
+    VerticalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 13px;
+        padding-bottom: 6px;
+        spacing: 0px;
+        alignment: start;
+        Text {
+            text: root.title;
+            font-family: Theme.body;
+            color: Theme.muted;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 1.1px;
+            horizontal-alignment: left;
+        }
+        Rectangle { height: 6px; }
+        @children
+    }
+}
+
+export component SettingRow inherits Rectangle {
+    in property <string> label;
+    in property <string> hint: "";
+    in property <bool> first: false;
+    horizontal-stretch: 1;
+    if !first: Rectangle { y: 0; height: 1px; background: Theme.line; }
+    HorizontalLayout {
+        spacing: 14px;
+        alignment: start;
+        padding-top: 11px;
+        padding-bottom: 11px;
+        width: parent.width;
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.label;
+                font-family: Theme.body;
+                color: Theme.fg;
+                font-size: 13.5px;
+                wrap: word-wrap;
+                horizontal-alignment: left;
+            }
+            if root.hint != "": Text {
+                text: root.hint;
+                font-family: Theme.body;
+                color: Theme.muted;
+                font-size: 12px;
+                wrap: word-wrap;
+                horizontal-alignment: left;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            @children
+        }
+    }
+}
+
+export component PillButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary: false;
+    callback clicked;
+    height: 30px;
+    border-radius: Theme.radius-sm;
+    background: primary ? Theme.accent : Theme.surface-2;
+    border-width: primary ? 0px : 1px;
+    border-color: Theme.line;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        alignment: center;
+        Text {
+            text: root.text;
+            font-family: Theme.body;
+            color: primary ? Theme.on-accent : Theme.fg;
+            font-size: 13px;
+            font-weight: primary ? 600 : 400;
+            vertical-alignment: center;
+        }
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+export component Toggle inherits Rectangle {
+    in-out property <bool> checked;
+    callback toggled(bool);
+    width: 42px;
+    height: 24px;
+    border-radius: 12px;
+    background: checked ? Theme.accent : #e9ecef1f;
+    animate background { duration: 160ms; }
+    Rectangle {
+        x: root.checked ? 20px : 2px;
+        y: 2px;
+        width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        background: root.checked ? Theme.on-accent : #efe8e6;
+        animate x { duration: 180ms; easing: ease-out; }
+    }
+    TouchArea {
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+}
+
+export component AccentSlider inherits Rectangle {
+    in property <float> minimum: 0;
+    in property <float> maximum: 100;
+    in-out property <float> value;
+    callback changed(float);
+    min-width: 150px;
+    preferred-width: 170px;
+    height: 22px;
+    property <float> span: maximum - minimum;
+    property <float> fraction: span <= 0 ? 0 : (value - minimum) / span;
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        height: 4px;
+        width: 100%;
+        border-radius: 2px;
+        background: Theme.surface-2;
+        Rectangle {
+            width: parent.width * root.fraction;
+            height: 100%;
+            border-radius: 2px;
+            background: Theme.accent;
+        }
+    }
+    Rectangle {
+        x: (parent.width - self.width) * root.fraction;
+        y: (parent.height - self.height) / 2;
+        width: 14px;
+        height: 14px;
+        border-radius: 7px;
+        background: Theme.fg;
+    }
+    TouchArea {
+        moved => { if (self.pressed) { root.apply(self.mouse-x); } }
+        pointer-event(event) => {
+            if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                root.apply(self.mouse-x);
+            }
+        }
+    }
+    function apply(x: length) {
+        if (self.width <= 0px) { return; }
+        fraction = max(0, min(1, x / self.width));
+        value = minimum + fraction * span;
+        root.changed(value);
+    }
+}
+
+export component Segment inherits Rectangle {
+    in property <[string]> options;
+    in-out property <int> current;
+    callback changed(int);
+    height: 34px;
+    border-radius: Theme.radius-sm;
+    background: Theme.surface-2;
+    HorizontalLayout {
+        padding: 3px;
+        spacing: 2px;
+        for option[index] in options: Rectangle {
+            border-radius: 8px;
+            background: index == root.current ? Theme.accent-soft : transparent;
+            border-width: index == root.current ? 1px : 0px;
+            border-color: Theme.accent-line;
+            HorizontalLayout {
+                padding-left: 11px;
+                padding-right: 11px;
+                alignment: center;
+                Text {
+                    text: option;
+                    font-family: Theme.body;
+                    font-size: 12.5px;
+                    color: index == root.current ? Theme.fg : Theme.muted;
+                    vertical-alignment: center;
+                }
+            }
+            TouchArea { clicked => { root.current = index; root.changed(index); } }
+        }
+    }
+}

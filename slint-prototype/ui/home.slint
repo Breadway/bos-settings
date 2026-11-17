@@ -1,0 +1,176 @@
+import { Theme, PageTitle, Lede, GroupBox, SettingRow, PillButton } from "theme.slint";
+
+export struct QuickTile {
+    id: string,
+    title: string,
+    detail: string,
+    icon: image,
+    on: bool,
+    enabled: bool,
+}
+
+export struct AttentionRow {
+    label: string,
+    hint: string,
+    action: string,
+    primary: bool,
+}
+
+component Tile inherits Rectangle {
+    in property <QuickTile> tile;
+    callback clicked(string);
+    min-width: 150px;
+    min-height: 96px;
+    horizontal-stretch: 1;
+    border-radius: Theme.radius;
+    background: tile.on ? Theme.accent-soft : Theme.surface;
+    border-width: 1px;
+    border-color: tile.on ? Theme.accent-line : Theme.line;
+    opacity: tile.enabled ? 1 : 0.7;
+    VerticalLayout {
+        padding: 14px;
+        spacing: 10px;
+        alignment: start;
+        Image {
+            source: tile.icon;
+            width: 20px;
+            height: 20px;
+            colorize: tile.on ? Theme.accent : Theme.fg;
+        }
+        VerticalLayout {
+            spacing: 2px;
+            alignment: start;
+            Text {
+                text: tile.title;
+                font-family: Theme.body;
+                color: Theme.fg;
+                font-size: 13.5px;
+                horizontal-alignment: left;
+            }
+            Text {
+                text: tile.detail;
+                font-family: Theme.body;
+                color: Theme.muted;
+                font-size: 12px;
+                wrap: word-wrap;
+                horizontal-alignment: left;
+            }
+        }
+    }
+    TouchArea { enabled: tile.enabled; clicked => { root.clicked(tile.id); } }
+}
+
+export component HomePage inherits VerticalLayout {
+    in property <string> greeting;
+    in property <string> lede;
+    in property <[QuickTile]> tiles;
+    in property <[AttentionRow]> attention;
+    in property <string> battery-label;
+    in property <image> battery-ring;
+    in property <string> battery-detail;
+    in property <string> storage-detail;
+    in property <float> storage-used;
+    in property <string> status;
+    callback tile-clicked(string);
+    spacing: 14px;
+    alignment: start;
+    PageTitle { text: greeting; }
+    Lede { text: lede; }
+
+    GridLayout {
+        spacing: 10px;
+        min-width: 716px;
+        for tile[index] in root.tiles: Tile {
+            tile: tile;
+            row: Math.floor(index / 4);
+            col: Math.mod(index, 4);
+            clicked(id) => { root.tile-clicked(id); }
+        }
+    }
+
+    GroupBox {
+        title: "NEEDS YOUR ATTENTION";
+        for row[index] in attention: SettingRow {
+            label: row.label;
+            hint: row.hint;
+            first: index == 0;
+            PillButton { text: row.action; primary: row.primary; }
+        }
+    }
+
+    if storage-detail != "": HorizontalLayout {
+        spacing: 10px;
+        if battery-label != "": Rectangle {
+            horizontal-stretch: 1;
+            border-radius: Theme.radius;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.line;
+            HorizontalLayout {
+                padding: 14px;
+                spacing: 12px;
+                alignment: center;
+                Rectangle {
+                    width: 48px;
+                    height: 48px;
+                    horizontal-stretch: 0;
+                    Image {
+                        source: battery-ring;
+                        width: 48px;
+                        height: 48px;
+                    }
+                    Text {
+                        text: battery-label;
+                        font-family: Theme.body;
+                        color: Theme.fg;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    horizontal-stretch: 1;
+                    Text { text: "Battery"; font-family: Theme.body; color: Theme.fg; font-size: 13.5px; horizontal-alignment: left; }
+                    Text { text: battery-detail; font-family: Theme.body; color: Theme.muted; font-size: 12px; wrap: word-wrap; horizontal-alignment: left; }
+                }
+            }
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            border-radius: Theme.radius;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.line;
+            VerticalLayout {
+                padding: 14px;
+                spacing: 8px;
+                alignment: start;
+                width: parent.width;
+                Text { text: "Storage"; font-family: Theme.body; color: Theme.fg; font-size: 13.5px; horizontal-alignment: left; width: 100%; }
+                Text { text: storage-detail; font-family: Theme.body; color: Theme.muted; font-size: 12px; horizontal-alignment: left; width: 100%; }
+                Rectangle {
+                    height: 6px;
+                    border-radius: 3px;
+                    background: Theme.surface-2;
+                    Rectangle {
+                        width: parent.width * min(1, max(0, root.storage-used));
+                        height: 100%;
+                        border-radius: 3px;
+                        background: Theme.accent;
+                    }
+                }
+            }
+        }
+    }
+
+    if status != "": Text {
+        text: status;
+        font-family: Theme.body;
+        color: Theme.faint;
+        font-size: 12px;
+        wrap: word-wrap;
+        horizontal-alignment: left;
+    }
+}

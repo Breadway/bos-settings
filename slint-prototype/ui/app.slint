@@ -1,0 +1,130 @@
+import { Theme } from "theme.slint";
+import { Sidebar, NavItem } from "sidebar.slint";
+import { HomePage, QuickTile, AttentionRow } from "home.slint";
+import { AppearancePage } from "appearance.slint";
+
+export { Theme, NavItem, QuickTile, AttentionRow }
+
+export component AppWindow inherits Window {
+    title: "BOS Settings";
+    preferred-width: 1280px;
+    preferred-height: 840px;
+    min-width: 860px;
+    min-height: 640px;
+    background: Theme.bg;
+    default-font-family: "Varela Round";
+    default-font-size: 13.5px;
+    icon: @image-url("icons/home.png");
+    in-out property <string> page: "home";
+
+    in property <[NavItem]> nav-items;
+    in property <string> account-name;
+    in property <string> account-initial;
+    in property <string> account-host;
+    in property <image> search-icon;
+
+    in property <string> greeting;
+    in property <string> lede;
+    in property <[QuickTile]> tiles;
+    in property <[AttentionRow]> attention;
+    in property <string> battery-label;
+    in property <image> battery-ring;
+    in property <string> battery-detail;
+    in property <string> storage-detail;
+    in property <float> storage-used;
+    in property <string> home-status;
+
+    in-out property <float> gaps-in;
+    in-out property <float> gaps-out;
+    in-out property <float> border-size;
+    in-out property <float> rounding;
+    in-out property <bool> blur;
+    in-out property <float> blur-size;
+    in-out property <float> blur-passes;
+    in-out property <bool> shadows;
+    in-out property <float> shadow-range;
+    in-out property <bool> resize-on-border;
+    in-out property <int> layout-index;
+    in-out property <string> appearance-status;
+
+    callback tile-clicked(string);
+    callback appearance-changed();
+
+    HorizontalLayout {
+        Sidebar {
+            items: nav-items;
+            current <=> page;
+            account-name: account-name;
+            account-initial: account-initial;
+            account-host: account-host;
+            search-icon: search-icon;
+        }
+        Rectangle { width: 1px; background: Theme.line; }
+        Rectangle {
+            horizontal-stretch: 1;
+            background: Theme.bg;
+            Flickable {
+                VerticalLayout {
+                    alignment: start;
+                    HorizontalLayout {
+                        padding-top: 26px;
+                        padding-bottom: 48px;
+                        Rectangle { horizontal-stretch: 1; }
+                        VerticalLayout {
+                            width: 716px;
+                            spacing: 0px;
+                            alignment: start;
+                            if page == "home": HomePage {
+                                greeting: greeting;
+                                lede: lede;
+                                tiles: tiles;
+                                attention: attention;
+                                battery-label: battery-label;
+                                battery-ring: battery-ring;
+                                battery-detail: battery-detail;
+                                storage-detail: storage-detail;
+                                storage-used: storage-used;
+                                status: home-status;
+                                tile-clicked(id) => { root.tile-clicked(id); }
+                            }
+                            if page == "appearance": AppearancePage {
+                                gaps-in <=> gaps-in;
+                                gaps-out <=> gaps-out;
+                                border-size <=> border-size;
+                                rounding <=> rounding;
+                                blur <=> blur;
+                                blur-size <=> blur-size;
+                                blur-passes <=> blur-passes;
+                                shadows <=> shadows;
+                                shadow-range <=> shadow-range;
+                                resize-on-border <=> resize-on-border;
+                                layout-index <=> layout-index;
+                                status <=> appearance-status;
+                                changed => { root.appearance-changed(); }
+                            }
+                            if page != "home" && page != "appearance": VerticalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                Text {
+                                    text: "Not in this prototype";
+                                    font-family: Theme.display;
+                                    color: Theme.fg;
+                                    font-size: 26px;
+                                    font-weight: 500;
+                                }
+                                Text {
+                                    text: "Home and Appearance are the two wired pages. The rest of the sidebar is here so the shell matches; nothing on those pages writes settings.";
+                                    font-family: Theme.body;
+                                    color: Theme.muted;
+                                    font-size: 14px;
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
+                }
+            }
+        }
+    }
+}
