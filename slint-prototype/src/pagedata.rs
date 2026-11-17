@@ -1981,6 +1981,7 @@ fn power() -> Page {
         "Battery, performance, and what happens when you step away.",
     );
     let info = data_battery();
+    let idle = crate::power_settings::get();
     let mut h = hero(&info.headline, &info.detail);
     h.amount = info.percent.unwrap_or(-1.0);
     let (chart, area) = battery_chart();
@@ -2002,7 +2003,7 @@ fn power() -> Page {
             "auto-power-mode",
             "Switch automatically",
             "Performance when plugged in. Balanced on battery, Battery saver below 20%.",
-            false,
+            crate::power_settings::automatic_enabled(),
         ),
     ];
     p = p.push(performance);
@@ -2024,8 +2025,12 @@ fn power() -> Page {
         vec![toggle(
             "battery-protect",
             "Protect battery",
-            "Stops charging at about 80% so the battery lasts longer. Needs your password.",
-            false,
+            if crate::power_settings::protection_info().is_some() {
+                "Stops charging at about 80% so the battery lasts longer. Needs your password."
+            } else {
+                "This battery has no protection mode to switch."
+            },
+            crate::power_settings::protection_info().is_some_and(|info| info.enabled),
         )],
     );
     let mut away = group("When you step away");
@@ -2034,39 +2039,43 @@ fn power() -> Page {
             kind: "select".into(),
             id: "dim".into(),
             label: "Dim the screen after".into(),
-            value: "Never".into(),
+            value: timeout_label(idle.dim),
             options: timeout_options(),
+            selected: timeout_index(idle.dim),
             ..Row::default()
         },
         Row {
             kind: "select".into(),
             id: "screen-off".into(),
             label: "Turn off the screen after".into(),
-            value: "Never".into(),
+            value: timeout_label(idle.screen_off),
             options: timeout_options(),
+            selected: timeout_index(idle.screen_off),
             ..Row::default()
         },
         Row {
             kind: "select".into(),
             id: "lock-after".into(),
             label: "Lock after".into(),
-            value: "Never".into(),
+            value: timeout_label(idle.lock),
             options: timeout_options(),
+            selected: timeout_index(idle.lock),
             ..Row::default()
         },
         Row {
             kind: "select".into(),
             id: "sleep-after".into(),
             label: "Sleep after".into(),
-            value: "Never".into(),
+            value: timeout_label(idle.sleep),
             options: timeout_options(),
+            selected: timeout_index(idle.sleep),
             ..Row::default()
         },
         toggle(
             "sleep-on-battery",
             "Sleep only on battery",
             "Stay awake while plugged in.",
-            true,
+            idle.sleep_on_battery,
         ),
     ];
     p = p.push(away);
@@ -2078,7 +2087,11 @@ fn power() -> Page {
             id: "lid".into(),
             label: "When I close the lid".into(),
             options: vec!["Sleep".into(), "Lock".into(), "Do nothing".into()],
-            selected: 0,
+            selected: match idle.lid.as_str() {
+                "lock" => 1,
+                "ignore" => 2,
+                _ => 0,
+            },
             ..Row::default()
         },
         Row {
@@ -2091,7 +2104,12 @@ fn power() -> Page {
                 "Power off".into(),
                 "Do nothing".into(),
             ],
-            selected: 0,
+            selected: match idle.power_button.as_str() {
+                "suspend" => 1,
+                "poweroff" => 2,
+                "ignore" => 3,
+                _ => 0,
+            },
             ..Row::default()
         },
     ];
@@ -2108,6 +2126,84 @@ fn timeout_options() -> Vec<String> {
         "30 minutes".into(),
         "1 hour".into(),
     ]
+}
+
+const TIMEOUTS: [u32; 7] = [0, 60, 300, 600, 1200, 1800, 3600];
+
+fn timeout_index(seconds: u32) -> i32 {
+    TIMEOUTS
+        .iter()
+        .position(|value| *value == seconds)
+        .unwrap_or(0) as i32
+}
+
+fn timeout_label(seconds: u32) -> String {
+    match seconds {
+        0 => "Never".into(),
+        60 => "1 minute".into(),
+        300 => "5 minutes".into(),
+        600 => "10 minutes".into(),
+        1200 => "20 minutes".into(),
+        1800 => "30 minutes".into(),
+        3600 => "1 hour".into(),
+        other => format!("{other} seconds"),
+    }
+}
+
+fn power_action(id: &str, action: &str) -> Result<(), String> {
+    if id == "power-mode" && action.starts_with("seg:") {
+        let index = action
+            .strip_prefix("seg:")
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(1);
+        let profile = ["power-saver", "balanced", "performance"][index.min(2)];
+        return crate::data::set_power_mode(profile);
+    }
+    if id == "auto-power-mode" && action == "toggle" {
+        return crate::power_settings::set_automatic(!crate::power_settings::automatic_enabled());
+    }
+    if id == "battery-protect" && action == "toggle" {
+        let enabled = crate::power_settings::protection_info().is_some_and(|info| info.enabled);
+        crate::power_settings::set_battery_protection(!enabled)?;
+        return Ok(());
+    }
+    let mut idle = crate::power_settings::get();
+    if id == "sleep-on-battery" && action == "toggle" {
+        idle.sleep_on_battery = !idle.sleep_on_battery;
+        return crate::power_settings::save(&idle);
+    }
+    if let Some(text) = action.strip_prefix("seg:") {
+        let index = text.parse::<usize>().unwrap_or(0);
+        match id {
+            "lid" => {
+                idle.lid = ["suspend", "lock", "ignore"][index.min(2)].into();
+                return crate::power_settings::save(&idle);
+            }
+            "power-button" => {
+                idle.power_button = ["menu", "suspend", "poweroff", "ignore"][index.min(3)].into();
+                return crate::power_settings::save(&idle);
+            }
+            _ => return Ok(()),
+        }
+    }
+    if action == "select" {
+        let (field, current) = match id {
+            "dim" => (0, idle.dim),
+            "screen-off" => (1, idle.screen_off),
+            "lock-after" => (2, idle.lock),
+            "sleep-after" => (3, idle.sleep),
+            _ => return Ok(()),
+        };
+        let next = TIMEOUTS[(timeout_index(current) as usize + 1) % TIMEOUTS.len()];
+        match field {
+            0 => idle.dim = next,
+            1 => idle.screen_off = next,
+            2 => idle.lock = next,
+            _ => idle.sleep = next,
+        }
+        return crate::power_settings::save(&idle);
+    }
+    Ok(())
 }
 
 fn hours_minutes(hours: f64) -> String {
@@ -7383,24 +7479,40 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
             .and_then(|b| b.rows.get(row))
             .map(|r| r.id.clone())
             .unwrap_or_default();
-        let error = privacy_action(&id, action).err();
+        let error = firewall_action(&id, action)
+            .and_then(|_| privacy_action(&id, action))
+            .err();
         let mut reloaded = load(page);
         if let Some(message) = error {
             reloaded.status = format!("Could not save that setting: {message}");
         }
         return reloaded;
     }
-    if page == "privacy" {
+    if page == "power" {
         let id = current
             .blocks
             .get(block)
             .and_then(|b| b.rows.get(row))
             .map(|r| r.id.clone())
             .unwrap_or_default();
-        let error = firewall_action(&id, action).err();
+        let error = power_action(&id, action).err();
         let mut reloaded = load(page);
         if let Some(message) = error {
-            reloaded.status = format!("Could not change the firewall: {message}");
+            reloaded.status = format!("Could not change the power setting: {message}");
+        }
+        return reloaded;
+    }
+    if page == "users" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = users_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not change the account: {message}");
         }
         return reloaded;
     }

@@ -125,16 +125,16 @@ parity_check.py fails while any item is not [x].
 - [x] command `power::get_battery_history` -> slint-prototype/src/pagedata.rs
 - [x] command `power::get_brightness` -> slint-prototype/src/pagedata.rs
 - [x] command `power::get_power_info` -> slint-prototype/src/pagedata.rs
-- [ ] command `power::set_battery_protection`
+- [x] command `power::set_battery_protection` -> slint-prototype/src/power_settings.rs
 - [x] command `power::set_brightness` -> slint-prototype/src/pagedata.rs
-- [ ] command `power::set_charge_threshold`
-- [ ] command `power_settings::enable_tlp_power_profiles`
-- [ ] command `power_settings::get_automatic_power_mode`
+- [x] command `power::set_charge_threshold` -> slint-prototype/src/power_settings.rs
+- [x] command `power_settings::enable_tlp_power_profiles` -> slint-prototype/src/power_settings.rs
+- [x] command `power_settings::get_automatic_power_mode` -> slint-prototype/src/power_settings.rs
 - [x] command `power_settings::get_power_modes` -> slint-prototype/src/data.rs
-- [ ] command `power_settings::get_power_settings`
-- [ ] command `power_settings::run_power_action`
-- [ ] command `power_settings::save_power_settings`
-- [ ] command `power_settings::set_automatic_power_mode`
+- [x] command `power_settings::get_power_settings` -> slint-prototype/src/power_settings.rs
+- [x] command `power_settings::run_power_action` -> slint-prototype/src/power_settings.rs
+- [x] command `power_settings::save_power_settings` -> slint-prototype/src/power_settings.rs
+- [x] command `power_settings::set_automatic_power_mode` -> slint-prototype/src/power_settings.rs
 - [x] command `power_settings::set_power_mode` -> slint-prototype/src/data.rs
 - [~] view `Power`
 - [~] view `PowerMenu`
