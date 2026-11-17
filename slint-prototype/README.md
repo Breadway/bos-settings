@@ -73,7 +73,9 @@ app at the pixel level.
   comment-preserving TOML edit with an atomic write and a `.bak`, and refuses to
   write a file it cannot parse. Mouse and accessibility use the same managed
   Lua include, JSON and GTK sizes as the shipping app. Lock screen edits
-  `breadlock/breadlock.toml` and keeps its unmodelled keys.
+  `breadlock/breadlock.toml` and keeps its unmodelled keys. Startup toggles
+  `Hidden=true` in the login `.desktop` entry and its Edit button opens the
+  file.
   Every other toggle, select, slider and chip still only remembers its position
   in `~/.local/state/bos-settings-slint/state.toml`. Failures appear under the
   page lede instead of being swallowed.

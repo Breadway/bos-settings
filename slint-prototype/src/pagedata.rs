@@ -2946,6 +2946,41 @@ fn memory() -> Page {
     p.push(recent)
 }
 
+fn startup_action(id: &str, action: &str) -> Result<(), String> {
+    let Some(path) = id.strip_prefix("startup:") else {
+        return Ok(());
+    };
+    if action == "action" {
+        std::process::Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+    if action != "toggle" {
+        return Ok(());
+    }
+    let path = std::path::Path::new(path);
+    let text = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
+    let hidden = text.lines().any(|line| line.trim() == "Hidden=true");
+    let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
+    let target = format!("Hidden={}", !hidden);
+    if let Some(index) = lines
+        .iter()
+        .position(|line| line.trim_start().starts_with("Hidden="))
+    {
+        lines[index] = target;
+    } else if let Some(index) = lines
+        .iter()
+        .position(|line| line.trim() == "[Desktop Entry]")
+    {
+        lines.insert(index + 1, target);
+    } else {
+        return Err("not a desktop entry".into());
+    }
+    std::fs::write(path, lines.join("\n") + "\n").map_err(|error| error.to_string())
+}
+
 fn lock_action(id: &str, action: &str) -> Result<(), String> {
     let mut cfg = crate::lock::load()?;
     if let Some(index) = action.strip_prefix("seg:").and_then(|v| v.parse::<usize>().ok()) {
@@ -3931,6 +3966,20 @@ fn run_planned(planned: Option<Planned>) -> Result<(), String> {
 /// state comes from the system again. Errors are returned in Page.status.
 pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page {
     let current = load(page);
+    if page == "startup" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = startup_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not apply that setting: {message}");
+        }
+        return reloaded;
+    }
     if page == "lock" {
         let id = current
             .blocks
@@ -4199,5 +4248,32 @@ mod action_tests {
             );
         }
         assert!(planned_block("network", true, "toggle").is_some());
+    }
+}
+
+#[cfg(test)]
+mod startup_tests {
+    #[test]
+    fn toggling_hidden_keeps_the_entry() {
+        let dir = std::env::temp_dir().join(format!(
+            "bos-settings-slint-startup-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("thing.desktop");
+        std::fs::write(
+            &path,
+            "[Desktop Entry]\nType=Application\nName=Thing\nExec=thing\n",
+        )
+        .unwrap();
+        let id = format!("startup:{}", path.display());
+        super::startup_action(&id, "toggle").unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("Hidden=true"));
+        assert!(text.contains("Exec=thing"));
+        super::startup_action(&id, "toggle").unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("Hidden=true"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
