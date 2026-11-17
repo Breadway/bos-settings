@@ -9,6 +9,7 @@
 //! anything.
 
 mod apps;
+mod backup;
 mod bluetooth;
 mod bread;
 mod breadram;

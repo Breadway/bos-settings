@@ -224,30 +224,30 @@ parity_check.py fails while any item is not [x].
 - [x] view `UpdatesHub` -> slint-prototype/src/pagedata.rs
 
 ## Backup and restore
-- [ ] command `backup::default_restore_dir`
-- [ ] command `backup::get_backup_config`
-- [ ] command `backup::get_backup_schedule`
-- [ ] command `backup::list_restic_snapshots`
-- [ ] command `backup::load_secrets`
-- [ ] command `backup::restic_backup`
-- [ ] command `backup::restic_init`
-- [ ] command `backup::restic_restore`
-- [ ] command `backup::restic_restore_dry_run`
-- [ ] command `backup::save_backup_config`
+- [x] command `backup::default_restore_dir` -> slint-prototype/src/backup.rs
+- [x] command `backup::get_backup_config` -> slint-prototype/src/backup.rs
+- [x] command `backup::get_backup_schedule` -> slint-prototype/src/backup.rs
+- [x] command `backup::list_restic_snapshots` -> slint-prototype/src/backup.rs
+- [x] command `backup::load_secrets` -> slint-prototype/src/backup.rs
+- [x] command `backup::restic_backup` -> slint-prototype/src/backup.rs
+- [x] command `backup::restic_init` -> slint-prototype/src/backup.rs
+- [x] command `backup::restic_restore` -> slint-prototype/src/backup.rs
+- [x] command `backup::restic_restore_dry_run` -> slint-prototype/src/backup.rs
+- [x] command `backup::save_backup_config` -> slint-prototype/src/backup.rs
 - [ ] command `backup::scheduled_backup`
-- [ ] command `backup::set_backup_schedule`
-- [ ] command `backup::valid_repo`
-- [ ] command `backup::valid_restore_target`
+- [x] command `backup::set_backup_schedule` -> slint-prototype/src/backup.rs
+- [x] command `backup::valid_repo` -> slint-prototype/src/backup.rs
+- [x] command `backup::valid_restore_target` -> slint-prototype/src/backup.rs
 - [ ] command `snapshots::create_manual_snapshot`
 - [ ] command `snapshots::create_update_snapshot`
-- [ ] command `snapshots::delete_snapshot`
-- [ ] command `snapshots::get_snapshot_availability`
-- [ ] command `snapshots::get_snapshots`
-- [ ] command `snapshots::reboot_system`
+- [x] command `snapshots::delete_snapshot` -> slint-prototype/src/backup.rs
+- [x] command `snapshots::get_snapshot_availability` -> slint-prototype/src/backup.rs
+- [x] command `snapshots::get_snapshots` -> slint-prototype/src/backup.rs
+- [x] command `snapshots::reboot_system` -> slint-prototype/src/backup.rs
 - [ ] command `snapshots::restore_snapshot`
-- [ ] view `Backup`
+- [~] view `Backup`
 - [ ] view `RestoreHub`
-- [ ] view `Snapshots`
+- [~] view `Snapshots`
 
 ## Users
 - [ ] command `users::add_user`

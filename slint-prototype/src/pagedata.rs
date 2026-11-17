@@ -3955,72 +3955,166 @@ fn restore() -> Page {
         "Backup & restore",
         "Go back to an earlier system, or bring back your files.",
     );
-    let snapshots = snapshot_rows();
+    let (configured, live) = crate::backup::snapshot_available();
     let mut snaps = group("System snapshots");
-    snaps.hint = "Taken before every update and big change, so you can go back.".into();
-    snaps.rows = snapshots;
+    snaps.hint = if live {
+        "Snapshots aren't available in a live session. They start after you install BOS.".into()
+    } else if !configured {
+        "Snapshots aren't set up on this system yet, so an update can't be rolled back from one."
+            .into()
+    } else {
+        "Taken before every update and big change, so you can go back.".into()
+    };
+    match crate::backup::snapshots() {
+        Ok(rows) if !rows.is_empty() => {
+            for snapshot in rows {
+                snaps.rows.push(Row {
+                    kind: "line".into(),
+                    id: format!("snap:{}", snapshot.number),
+                    label: snapshot.description,
+                    hint: snapshot.date,
+                    action: "Delete".into(),
+                    ..Row::default()
+                });
+            }
+        }
+        Ok(_) => snaps.rows.push(Row {
+            kind: "hint".into(),
+            id: "snap-none".into(),
+            label: "No snapshots yet.".into(),
+            ..Row::default()
+        }),
+        Err(error) => snaps.rows.push(Row {
+            kind: "hint".into(),
+            id: "snap-error".into(),
+            label: error,
+            ..Row::default()
+        }),
+    }
     p = p.push(snaps);
 
-    let repo = config_dir().join("bread/backup.toml");
-    let repo_set = repo.exists();
-    let mut backup = group("Back up your files");
-    backup.rows = vec![
-        Row {
-            kind: "line".into(),
-            id: "repo".into(),
-            label: "Where backups go".into(),
-            hint: if repo_set {
-                "An external drive or network folder.".into()
-            } else {
-                "Not set up yet. Choose a folder on another drive.".into()
+    let cfg = crate::backup::load();
+    let repo_set = !cfg.repo.is_empty();
+    let schedule = match crate::backup::schedule().as_str() {
+        "daily" => 1,
+        "weekly" => 2,
+        _ => 0,
+    };
+    p = p.rows(
+        "Back up your files",
+        vec![
+            Row {
+                kind: "input".into(),
+                id: "backup-repo".into(),
+                label: "Where backups go".into(),
+                hint: if repo_set {
+                    "An external drive or network folder. Press Enter to change it."
+                } else {
+                    "An absolute path or sftp:user@host:path. Not set up yet."
+                }
+                .into(),
+                value: cfg.repo.clone(),
+                action: "Save".into(),
+                ..Row::default()
             },
-            action: "Choose a folder".into(),
-            ..Row::default()
-        },
-        toggle("backup-daily", "Back up every day", "", repo_set),
-        Row {
-            kind: "line".into(),
-            id: "backup-now".into(),
-            label: "Back up now".into(),
-            hint: "Only changes since the last backup.".into(),
-            action: "Back up now".into(),
-            primary: true,
-            ..Row::default()
-        },
-    ];
-    p.push(backup)
+            Row {
+                kind: "input".into(),
+                id: "backup-password".into(),
+                label: "Repository password".into(),
+                hint: if cfg.has_password {
+                    "A password is saved. Type a new one to replace it."
+                } else {
+                    "Needed to open the backup. Type one and press Enter."
+                }
+                .into(),
+                value: String::new(),
+                action: "Save".into(),
+                ..Row::default()
+            },
+            Row {
+                kind: "select".into(),
+                id: "backup-schedule".into(),
+                label: "Back up automatically".into(),
+                value: ["Off", "Every day", "Every week"][schedule].into(),
+                options: vec!["Off".into(), "Every day".into(), "Every week".into()],
+                ..Row::default()
+            },
+            Row {
+                kind: "line".into(),
+                id: "backup-now".into(),
+                label: "Back up now".into(),
+                hint: "Only changes since the last backup.".into(),
+                action: "Back up now".into(),
+                primary: true,
+                ..Row::default()
+            },
+            Row {
+                kind: "line".into(),
+                id: "backup-init".into(),
+                label: "Prepare a new backup folder".into(),
+                hint: "Run once before the first backup to a new place.".into(),
+                action: "Prepare".into(),
+                ..Row::default()
+            },
+        ],
+    );
+
+    match crate::backup::restic_snapshots() {
+        Ok(rows) if !rows.is_empty() => {
+            let mut block = group("Your files");
+            block.hint = "Backups already in the repository.".into();
+            for snapshot in rows {
+                block.rows.push(Row {
+                    kind: "line".into(),
+                    id: format!("restic:{}", snapshot.id),
+                    label: format!("Backup {}", snapshot.id),
+                    hint: snapshot.time,
+                    action: "Check".into(),
+                    ..Row::default()
+                });
+            }
+            p = p.push(block);
+        }
+        _ => {}
+    }
+    p
 }
 
-fn snapshot_rows() -> Vec<Row> {
-    let out = run("snapper", &["-c", "root", "list", "--columns", "number,date,description"]);
-    let mut rows = vec![Row {
-        kind: "line".into(),
-        id: "now".into(),
-        label: "Now".into(),
-        hint: "The system as it is today.".into(),
-        ..Row::default()
-    }];
-    if let Some(text) = out {
-        for line in text.lines().skip(2) {
-            let mut parts = line.split('|').map(str::trim);
-            let (Some(number), Some(date)) = (parts.next(), parts.next()) else {
-                continue;
-            };
-            let description = parts.next().unwrap_or("Snapshot");
-            if number.is_empty() {
-                continue;
-            }
-            rows.push(Row {
-                kind: "line".into(),
-                id: format!("snap:{number}"),
-                label: description.to_string(),
-                hint: date.to_string(),
-                action: "Restore".into(),
-                ..Row::default()
-            });
+fn backup_action(id: &str, action: &str) -> Result<(), String> {
+    if id == "backup-repo" && action.starts_with("input:") {
+        return crate::backup::save(action.trim_start_matches("input:"), None);
+    }
+    if id == "backup-password" && action.starts_with("input:") {
+        let password = action.trim_start_matches("input:");
+        let cfg = crate::backup::load();
+        return crate::backup::save(&cfg.repo, Some(password));
+    }
+    if id == "backup-schedule" && action == "select" {
+        let next = match crate::backup::schedule().as_str() {
+            "off" => "daily",
+            "daily" => "weekly",
+            _ => "off",
+        };
+        return crate::backup::set_schedule(next);
+    }
+    if id == "backup-now" && action == "action" {
+        return crate::backup::restic_backup();
+    }
+    if id == "backup-init" && action == "action" {
+        return crate::backup::restic_init();
+    }
+    if let Some(number) = id.strip_prefix("snap:") {
+        if action == "action" {
+            return crate::backup::delete_snapshot(number);
         }
     }
-    rows
+    if let Some(snapshot) = id.strip_prefix("restic:") {
+        if action == "action" {
+            let target = crate::backup::default_restore_dir(snapshot);
+            return crate::backup::restic_restore(snapshot, &target, true);
+        }
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------- memory
@@ -6043,6 +6137,20 @@ pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page 
         let mut reloaded = load(page);
         if let Some(message) = error {
             reloaded.status = format!("Could not apply that setting: {message}");
+        }
+        return reloaded;
+    }
+    if page == "restore" {
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let error = backup_action(&id, action).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not change the backup: {message}");
         }
         return reloaded;
     }
