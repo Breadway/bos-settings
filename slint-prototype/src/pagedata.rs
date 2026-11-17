@@ -1864,127 +1864,270 @@ fn network() -> Page {
         "Wi-Fi & network",
         "Connected networks, places that switch settings for you, and VPN.",
     );
-    let wifi_on = run("nmcli", &["radio", "wifi"])
-        .map(|s| s.trim() == "enabled")
-        .unwrap_or(false);
-    let wired = run("nmcli", &["-t", "-f", "TYPE", "device", "status"])
-        .map(|s| s.lines().any(|l| l == "ethernet"))
-        .unwrap_or(false);
-    let saved = run("nmcli", &["-t", "-f", "NAME", "connection", "show"])
-        .map(|s| s.lines().filter(|l| !l.trim().is_empty()).count())
-        .unwrap_or(0);
-    let mut h = if wired {
+    let info = crate::network::info();
+    let (places, current_place) = crate::network::places();
+    let scans = if info.radio {
+        crate::network::scan()
+    } else {
+        Vec::new()
+    };
+    let active = scans.iter().find(|net| net.active);
+    let mut h = if let Some(ssid) = &info.ssid {
+        hero(
+            ssid,
+            &format!(
+                "Connected{} · {}",
+                active
+                    .map(|net| if net.secured { " · secured" } else { " · open network" })
+                    .unwrap_or(""),
+                current_place.as_deref().unwrap_or("")
+            ),
+        )
+    } else if let Some(ethernet) = &info.ethernet {
         hero(
             "Wired connection",
-            &format!("Connected by cable{}", if wifi_on { " · Wi-Fi is on" } else { "" }),
+            &format!(
+                "Connected by cable{}{}",
+                if info.radio { " · Wi-Fi is on" } else { "" },
+                current_place
+                    .as_deref()
+                    .map(|place| format!(" · {place}"))
+                    .unwrap_or_default()
+            ),
         )
+    } else if info.radio {
+        hero("Not connected", "Pick a network below.")
     } else {
-        hero(
-            if wifi_on { "Wi-Fi is on" } else { "Wi-Fi is off" },
-            &format!("{} saved networks", saved),
-        )
+        hero("Wi-Fi is off", "Turn it on to see networks.")
     };
-    h.icon = crate::icons::commands(if wired { "cable" } else { "wifi" }).into();
+    h.icon = crate::icons::commands(if info.ethernet.is_some() {
+        "cable"
+    } else {
+        "wifi"
+    })
+    .into();
     h.tag = "toggle".into();
-    h.on = wifi_on;
+    h.on = info.radio;
     p = p.push(h);
 
-    let mut places = group("Places");
-    places.hint = "A place is a set of networks and rules. BOS picks the right one when it sees a familiar network nearby.".into();
-    places.rows = vec![
-        Row {
-            kind: "chips".into(),
-            id: "place-tabs".into(),
-            options: vec![
-                "Away".into(),
-                "Home".into(),
-                "School".into(),
-                "Add a place".into(),
-            ],
-            chip_icons: vec![
-                crate::icons::commands("globe").into(),
-                crate::icons::commands("home").into(),
-                crate::icons::commands("map-pin").into(),
-                crate::icons::commands("plus").into(),
-            ],
-            selected: 1,
-            ..Row::default()
-        },
-        Row {
-            kind: "place".into(),
-            id: "place-away".into(),
-            label: "Away".into(),
-            hint: "Join Totally NCC, or any other saved network.".into(),
-            action: "Edit".into(),
-            ..Row::default()
-        },
-        Row {
-            kind: "place".into(),
-            id: "place-home".into(),
-            label: "Home".into(),
-            badges: vec!["in use".into(), "Fallback".into()],
-            hint: "Join Totally NCC, NetComm 4887_5G or NetComm 4887. Recognised when NetComm 4887 is nearby.".into(),
-            action: "Edit".into(),
-            ..Row::default()
-        },
-        Row {
-            kind: "place".into(),
-            id: "place-school".into(),
-            label: "School".into(),
-            hint: "Join NCC. Recognised when NCC is nearby.".into(),
-            action: "Edit".into(),
-            ..Row::default()
-        },
-    ];
-    p = p.push(places);
-
-    let mut nearby = group("Nearby networks");
-    nearby.hint = "Looking for networks...".into();
-    nearby.rows = vec![
-        Row {
-            kind: "tagbutton".into(),
-            id: "scanning".into(),
-            label: "Scanning...".into(),
-            ..Row::default()
-        },
-        Row {
-            kind: "disclosure".into(),
-            id: "saved".into(),
-            label: format!("Saved networks ({saved})"),
-            ..Row::default()
-        },
-    ];
-    p = p.push(nearby);
-
-    let vpns = run("nmcli", &["-t", "-f", "NAME,TYPE", "connection", "show"])
-        .map(|s| {
-            s.lines()
-                .filter_map(|l| l.rsplit_once(':'))
-                .filter(|(_, kind)| *kind == "wireguard" || *kind == "vpn")
-                .map(|(name, _)| name.to_string())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let mut vpn = group("VPN");
-    for name in &vpns {
-        let active = run("nmcli", &["-t", "-f", "NAME", "connection", "show", "--active"])
-            .map(|s| s.lines().any(|l| l == name))
-            .unwrap_or(false);
-        vpn.rows.push(Row {
+    let mut places_block = group("Places");
+    places_block.hint =
+        "A place is a set of networks and rules. BOS picks the right one when it sees a familiar network nearby."
+            .into();
+    let mut chip_options: Vec<String> = places.iter().map(|place| place.name.clone()).collect();
+    chip_options.push("Add a place".into());
+    places_block.rows.push(Row {
+        kind: "chips".into(),
+        id: "place-tabs".into(),
+        options: chip_options,
+        selected: places
+            .iter()
+            .position(|place| Some(place.name.as_str()) == current_place.as_deref())
+            .map(|index| index as i32)
+            .unwrap_or(-1),
+        ..Row::default()
+    });
+    let default_profile = crate::network::advanced().default_profile;
+    for place in &places {
+        let in_use = current_place.as_deref() == Some(place.name.as_str());
+        let mut badges = Vec::new();
+        if in_use {
+            badges.push("in use".into());
+        }
+        if place.name == default_profile {
+            badges.push("Fallback".into());
+        }
+        places_block.rows.push(Row {
             kind: "line".into(),
-            id: format!("vpn:{name}"),
-            label: name.clone(),
-            hint: "WireGuard".into(),
-            tag: "toggle".into(),
-            checked: active,
+            id: format!("place:{}", place.name),
+            label: place.name.clone(),
+            hint: if place.networks.is_empty() {
+                "No networks yet.".into()
+            } else {
+                format!("Join {}.", place.networks.join(", "))
+            },
+            action: "Edit".into(),
+            badges,
             ..Row::default()
         });
     }
-    if vpn.rows.is_empty() {
+    if let Some(editing_name) = network_editing() {
+        if let Some(place) = places.iter().find(|place| place.name == editing_name) {
+            places_block.rows.extend(place_editor_rows(place, &default_profile));
+        }
+    }
+    places_block.rows.push(Row {
+        kind: "leftbutton".into(),
+        id: "add-place".into(),
+        action: "Add a place".into(),
+        icon: crate::icons::commands("plus").into(),
+        ..Row::default()
+    });
+    p = p.push(places_block);
+
+    let mut nearby = group("Nearby networks");
+    nearby.hint = if !info.radio {
+        "Turn on Wi-Fi to see networks.".into()
+    } else if scans.is_empty() {
+        "No networks found.".into()
+    } else {
+        "".into()
+    };
+    let pending = network_pending();
+    if let Some(ssid) = pending.as_deref() {
+        nearby.rows.push(Row {
+            kind: "input".into(),
+            id: "password".into(),
+            label: format!("Password for {ssid}"),
+            hint: "Press Enter to join.".into(),
+            action: "Join".into(),
+            ..Row::default()
+        });
+    }
+    for net in scans.iter().filter(|net| !net.active) {
+        let strength = match net.signal {
+            value if value >= 75 => "strong signal",
+            value if value >= 50 => "good signal",
+            value if value >= 25 => "weak signal",
+            _ => "very weak signal",
+        };
+        nearby.rows.push(Row {
+            kind: "line".into(),
+            id: format!("wifi:{}", net.ssid),
+            label: net.ssid.clone(),
+            hint: format!(
+                "{}{} · {} · {}%",
+                if net.known { "Saved · " } else { "" },
+                if net.secured { "Secured" } else { "Open" },
+                strength,
+                net.signal
+            ),
+            action: "Connect".into(),
+            ..Row::default()
+        });
+    }
+    nearby.rows.push(Row {
+        kind: "line".into(),
+        id: "scan".into(),
+        label: "Scan again".into(),
+        hint: "Look for networks that appeared since this page opened.".into(),
+        action: "Scan".into(),
+        enabled: info.radio,
+        ..Row::default()
+    });
+    p = p.push(nearby);
+
+    let saved = crate::network::breadcrumbs_networks();
+    let mut saved_block = group(&format!("Saved networks ({})", saved.len()));
+    if saved.is_empty() {
+        saved_block.rows.push(Row {
+            kind: "hint".into(),
+            id: "no-saved".into(),
+            label: "No saved networks.".into(),
+            ..Row::default()
+        });
+    }
+    for network in &saved {
+        saved_block.rows.push(Row {
+            kind: "line".into(),
+            id: format!("saved:{}", network.ssid),
+            label: network.ssid.clone(),
+            hint: format!(
+                "{}{}",
+                if network.hidden { "Hidden network" } else { "Saved" },
+                if network.has_password {
+                    " · password saved"
+                } else {
+                    ""
+                }
+            ),
+            action: "Edit".into(),
+            ..Row::default()
+        });
+    }
+    if let Some(editing) = network_saved_edit() {
+        let current = saved.iter().find(|network| network.ssid == editing);
+        saved_block.rows.push(Row {
+            kind: "input".into(),
+            id: "sn-ssid".into(),
+            label: "Network name".into(),
+            value: current.map(|network| network.ssid.clone()).unwrap_or_default(),
+            action: "Save".into(),
+            ..Row::default()
+        });
+        saved_block.rows.push(Row {
+            kind: "input".into(),
+            id: "sn-password".into(),
+            label: "Password".into(),
+            hint: "Leave empty to keep the current one.".into(),
+            action: "Save".into(),
+            ..Row::default()
+        });
+        saved_block.rows.push(Row {
+            kind: "line".into(),
+            id: "sn-hidden".into(),
+            label: "Hidden network".into(),
+            hint: "It doesn't announce its name.".into(),
+            tag: "toggle".into(),
+            checked: current.map(|network| network.hidden).unwrap_or(false),
+            ..Row::default()
+        });
+        if current.is_some() {
+            saved_block.rows.push(Row {
+                kind: "line".into(),
+                id: "sn-remove".into(),
+                label: "Forget this network".into(),
+                action: "Remove".into(),
+                ..Row::default()
+            });
+        }
+        saved_block.rows.push(Row {
+            kind: "leftbutton".into(),
+            id: "sn-done".into(),
+            action: "Done".into(),
+            primary: true,
+            ..Row::default()
+        });
+    }
+    saved_block.rows.push(Row {
+        kind: "leftbutton".into(),
+        id: "add-network".into(),
+        action: "Add a network".into(),
+        icon: crate::icons::commands("plus").into(),
+        ..Row::default()
+    });
+    p = p.push(saved_block);
+
+    let mut vpn = group("VPN");
+    let vpns = crate::network::vpns();
+    if vpns.is_empty() {
         vpn.rows.push(Row {
             kind: "hint".into(),
             id: "no-vpn".into(),
-            label: "No VPNs set up.".into(),
+            label: "No VPNs set up. Add a WireGuard .conf or OpenVPN .ovpn file.".into(),
+            ..Row::default()
+        });
+    }
+    for connection in vpns {
+        vpn.rows.push(Row {
+            kind: "line".into(),
+            id: format!("vpn:{}", connection.name),
+            label: connection.name,
+            hint: format!(
+                "{}{}",
+                match connection.kind.as_str() {
+                    "wireguard" => "WireGuard",
+                    "vpn" => "VPN",
+                    other => other,
+                },
+                if connection.autoconnect {
+                    " · connects by itself"
+                } else {
+                    ""
+                }
+            ),
+            tag: "toggle".into(),
+            checked: connection.active,
             ..Row::default()
         });
     }
@@ -1997,14 +2140,451 @@ fn network() -> Page {
     });
     p = p.push(vpn);
 
-    let mut advanced = group("Advanced network settings");
-    advanced.rows = vec![Row {
-        kind: "disclosure".into(),
-        id: "advanced".into(),
-        label: "DNS, Tailscale and connection checks".into(),
+    let advanced = crate::network::advanced();
+    let service = crate::network::breadcrumbs_service();
+    p = p.rows(
+        "Advanced network settings",
+        vec![
+            Row {
+                kind: "input".into(),
+                id: "adv-dns".into(),
+                label: "DNS servers".into(),
+                hint: "Separate several with commas. Empty leaves each network's own DNS alone."
+                    .into(),
+                value: advanced.dns,
+                action: "Save".into(),
+                ..Row::default()
+            },
+            Row {
+                kind: "input".into(),
+                id: "adv-exit-node".into(),
+                label: "Tailscale exit node".into(),
+                hint: "Used by places that send traffic through Tailscale.".into(),
+                value: advanced.exit_node,
+                action: "Save".into(),
+                ..Row::default()
+            },
+            Row {
+                kind: "input".into(),
+                id: "adv-connectivity".into(),
+                label: "Sign-in page check".into(),
+                hint: "An address that answers when the internet works.".into(),
+                value: advanced.connectivity_url,
+                action: "Save".into(),
+                ..Row::default()
+            },
+            Row {
+                kind: "input".into(),
+                id: "adv-ping".into(),
+                label: "Reachability check".into(),
+                hint: "An address BOS pings to confirm the connection is alive.".into(),
+                value: advanced.ping_host,
+                action: "Save".into(),
+                ..Row::default()
+            },
+            Row {
+                kind: "input".into(),
+                id: "adv-wait".into(),
+                label: "Give up joining after (seconds)".into(),
+                value: advanced.connect_wait.to_string(),
+                action: "Save".into(),
+                ..Row::default()
+            },
+            Row {
+                kind: "input".into(),
+                id: "adv-watch".into(),
+                label: "Check the connection every (seconds)".into(),
+                value: advanced.watch_interval.to_string(),
+                action: "Save".into(),
+                ..Row::default()
+            },
+            Row {
+                kind: "line".into(),
+                id: "svc-toggle".into(),
+                label: "Automatic network switching".into(),
+                hint: format!(
+                    "{} · {}",
+                    if service.active { "Running" } else { "Stopped" },
+                    if service.enabled {
+                        "starts at login"
+                    } else {
+                        "doesn't start at login"
+                    }
+                ),
+                action: if service.active { "Stop" } else { "Start" }.into(),
+                ..Row::default()
+            },
+            Row {
+                kind: "line".into(),
+                id: "svc-restart".into(),
+                label: "Restart automatic network switching".into(),
+                action: "Restart".into(),
+                enabled: service.active,
+                ..Row::default()
+            },
+            Row {
+                kind: "line".into(),
+                id: "advanced-editor".into(),
+                label: "More connection settings".into(),
+                hint: "IP addresses, proxies, wired and mobile connections.".into(),
+                action: "Open".into(),
+                ..Row::default()
+            },
+        ],
+    );
+    p
+}
+
+fn place_editor_rows(place: &crate::network::Place, default_profile: &str) -> Vec<Row> {
+    let mut rows = vec![
+        Row {
+            kind: "input".into(),
+            id: "pe-name".into(),
+            label: "Name".into(),
+            value: place.name.clone(),
+            action: "Rename".into(),
+            ..Row::default()
+        },
+        Row {
+            kind: "tags".into(),
+            id: "pe-networks".into(),
+            label: "Join these networks, in this order".into(),
+            options: place.networks.clone(),
+            ..Row::default()
+        },
+        Row {
+            kind: "tags".into(),
+            id: "pe-detect".into(),
+            label: "Recognise this place when these are nearby".into(),
+            options: place.detect.clone(),
+            ..Row::default()
+        },
+        Row {
+            kind: "line".into(),
+            id: "pe-tailscale".into(),
+            label: "Send traffic through Tailscale".into(),
+            hint: "Waits for Tailscale before using the network.".into(),
+            tag: "toggle".into(),
+            checked: place.tailscale,
+            ..Row::default()
+        },
+    ];
+    if place.tailscale {
+        rows.push(Row {
+            kind: "input".into(),
+            id: "pe-exit".into(),
+            label: "Exit node".into(),
+            value: place.exit_node.clone(),
+            action: "Save".into(),
+            ..Row::default()
+        });
+        rows.push(Row {
+            kind: "input".into(),
+            id: "pe-bootstrap".into(),
+            label: "Sign in through first".into(),
+            hint: "A network BOS joins first so Tailscale can start.".into(),
+            value: place.bootstrap.clone(),
+            action: "Save".into(),
+            ..Row::default()
+        });
+    }
+    rows.push(Row {
+        kind: "line".into(),
+        id: "pe-include".into(),
+        label: "Also try any other saved network".into(),
+        hint: "When none of the networks above are around.".into(),
+        tag: "toggle".into(),
+        checked: place.include_all,
         ..Row::default()
-    }];
-    p.push(advanced)
+    });
+    rows.push(Row {
+        kind: "line".into(),
+        id: "pe-default".into(),
+        label: "Use when no place is recognised".into(),
+        hint: "The fallback place.".into(),
+        tag: "toggle".into(),
+        checked: place.name == default_profile,
+        ..Row::default()
+    });
+    rows.push(Row {
+        kind: "line".into(),
+        id: "pe-remove".into(),
+        label: "Remove place".into(),
+        hint: "Saved networks and other places are left alone.".into(),
+        action: "Remove".into(),
+        ..Row::default()
+    });
+    rows.push(Row {
+        kind: "leftbutton".into(),
+        id: "pe-done".into(),
+        action: "Done".into(),
+        primary: true,
+        ..Row::default()
+    });
+    rows
+}
+
+fn network_saved_edit_cell() -> &'static Mutex<Option<String>> {
+    static SAVED: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    SAVED.get_or_init(|| Mutex::new(None))
+}
+
+fn network_saved_edit() -> Option<String> {
+    network_saved_edit_cell()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+fn network_editing_cell() -> &'static Mutex<Option<String>> {
+    static EDITING: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    EDITING.get_or_init(|| Mutex::new(None))
+}
+
+fn network_editing() -> Option<String> {
+    network_editing_cell()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+fn network_pending_cell() -> &'static Mutex<Option<String>> {
+    static PENDING: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    PENDING.get_or_init(|| Mutex::new(None))
+}
+
+fn network_pending() -> Option<String> {
+    network_pending_cell().lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+fn network_action(id: &str, action: &str, checked: bool) -> Result<(), String> {
+    if id == "wifi-radio" && action == "toggle" {
+        return crate::network::set_radio(!checked);
+    }
+    if id == "scan" {
+        return Ok(());
+    }
+    if let Some(ssid) = id.strip_prefix("wifi:") {
+        if action == "action" {
+            let net = crate::network::scan()
+                .into_iter()
+                .find(|net| net.ssid == ssid);
+            if net.is_some_and(|net| net.secured && !net.known) {
+                *network_pending_cell()
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = Some(ssid.to_string());
+                return Ok(());
+            }
+            return crate::network::connect(ssid, None);
+        }
+        return Ok(());
+    }
+    if let Some(ssid) = id.strip_prefix("saved:") {
+        if action == "action" {
+            *network_saved_edit_cell()
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = Some(ssid.to_string());
+        }
+        return Ok(());
+    }
+    if id == "add-network" && action == "action" {
+        *network_saved_edit_cell()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(String::new());
+        return Ok(());
+    }
+    if id == "sn-done" {
+        *network_saved_edit_cell()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+        return Ok(());
+    }
+    if id.starts_with("sn-") {
+        let editing = network_saved_edit().unwrap_or_default();
+        let current = crate::network::breadcrumbs_networks()
+            .into_iter()
+            .find(|network| network.ssid == editing);
+        match id {
+            "sn-remove" if action == "action" => {
+                crate::network::forget_network(&editing)?;
+                *network_saved_edit_cell()
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = None;
+                return Ok(());
+            }
+            "sn-hidden" if action == "toggle" => {
+                let hidden = current.as_ref().is_some_and(|network| network.hidden);
+                return crate::network::save_network(
+                    &editing,
+                    None,
+                    !hidden,
+                    Some(&editing),
+                );
+            }
+            "sn-ssid" => {
+                if let Some(text) = action.strip_prefix("input:") {
+                    crate::network::save_network(
+                        text,
+                        None,
+                        current.as_ref().is_some_and(|network| network.hidden),
+                        Some(&editing),
+                    )?;
+                    *network_saved_edit_cell()
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner()) = Some(text.trim().to_string());
+                }
+                return Ok(());
+            }
+            "sn-password" => {
+                if let Some(text) = action.strip_prefix("input:") {
+                    return crate::network::save_network(
+                        &editing,
+                        Some(text),
+                        current.as_ref().is_some_and(|network| network.hidden),
+                        Some(&editing),
+                    );
+                }
+                return Ok(());
+            }
+            _ => {}
+        }
+    }
+    if id == "password" && action.starts_with("input:") {
+        let password = action.trim_start_matches("input:");
+        let ssid = network_pending_cell()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+            .ok_or("no network is waiting for a password")?;
+        return crate::network::connect(&ssid, Some(password));
+    }
+    if let Some(name) = id.strip_prefix("vpn:") {
+        if action == "toggle" {
+            return crate::network::vpn_toggle(name, !checked);
+        }
+        return Ok(());
+    }
+    if id == "add-vpn" && action == "action" {
+        return crate::network::import_vpn_dialog().map(|_| ());
+    }
+    if let Some(name) = id.strip_prefix("place:") {
+        if action == "action" {
+            *network_editing_cell()
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = Some(name.to_string());
+        }
+        return Ok(());
+    }
+    if id == "pe-done" {
+        *network_editing_cell()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+        return Ok(());
+    }
+    if id == "pe-remove" && action == "action" {
+        let name = network_editing();
+        if let Some(name) = name {
+            crate::network::remove_place(&name)?;
+            *network_editing_cell()
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = None;
+        }
+        return Ok(());
+    }
+    if id.starts_with("pe-") {
+        let Some(place) = network_editing() else {
+            return Ok(());
+        };
+        let key = match id {
+            "pe-tailscale" => Some(("tailscale", true)),
+            "pe-include" => Some(("include_all_known", true)),
+            _ => None,
+        };
+        if let Some((key, _)) = key {
+            if action == "toggle" {
+                let current = crate::network::places()
+                    .0
+                    .into_iter()
+                    .find(|candidate| candidate.name == place)
+                    .map(|candidate| {
+                        if key == "tailscale" {
+                            candidate.tailscale
+                        } else {
+                            candidate.include_all
+                        }
+                    })
+                    .unwrap_or(false);
+                return crate::network::set_place_bool(&place, key, !current);
+            }
+        }
+        if id == "pe-default" && action == "toggle" {
+            return crate::network::set_default_place(&place);
+        }
+        if let Some(text) = action.strip_prefix("tag-add:") {
+            let key = match id {
+                "pe-networks" => "networks",
+                "pe-detect" => "detect",
+                _ => return Ok(()),
+            };
+            return crate::network::add_place_list(&place, key, text);
+        }
+        if let Some(index) = action
+            .strip_prefix("tag-remove:")
+            .and_then(|value| value.parse::<usize>().ok())
+        {
+            let key = match id {
+                "pe-networks" => "networks",
+                "pe-detect" => "detect",
+                _ => return Ok(()),
+            };
+            return crate::network::remove_place_list(&place, key, index);
+        }
+        if let Some(text) = action.strip_prefix("input:") {
+            return match id {
+                "pe-name" => {
+                    crate::network::rename_place(&place, text)?;
+                    *network_editing_cell()
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner()) = Some(text.trim().to_string());
+                    Ok(())
+                }
+                "pe-exit" => crate::network::set_place_string(&place, "exit_node", text),
+                "pe-bootstrap" => crate::network::set_place_string(&place, "bootstrap", text),
+                _ => Ok(()),
+            };
+        }
+    }
+    if id == "add-place" && action == "action" {
+        let name = crate::network::add_place()?;
+        return crate::network::switch_place(&name);
+    }
+    if id == "svc-toggle" && action == "action" {
+        let active = crate::network::breadcrumbs_service().active;
+        return crate::network::service_action(if active { "stop" } else { "start" });
+    }
+    if id == "svc-restart" && action == "action" {
+        return crate::network::service_action("restart");
+    }
+    if id == "advanced-editor" && action == "action" {
+        crate::network::open_editor();
+        return Ok(());
+    }
+    if action.starts_with("input:") {
+        let value = action.trim_start_matches("input:");
+        let key = match id {
+            "adv-dns" => Some("dns"),
+            "adv-exit-node" => Some("exit_node"),
+            "adv-connectivity" => Some("connectivity_url"),
+            "adv-ping" => Some("ping_host"),
+            "adv-wait" => Some("connect_wait"),
+            "adv-watch" => Some("watch_interval"),
+            _ => None,
+        };
+        if let Some(key) = key {
+            return crate::network::save_setting(key, value);
+        }
+    }
+    Ok(())
 }
 
 // ----------------------------------------------------------------------- mouse
@@ -4101,6 +4681,42 @@ fn run_planned(planned: Option<Planned>) -> Result<(), String> {
 /// state comes from the system again. Errors are returned in Page.status.
 pub fn apply_action(page: &str, block: usize, row: usize, action: &str) -> Page {
     let current = load(page);
+    if page == "network" {
+        if let Some(index) = action
+            .strip_prefix("chip:")
+            .and_then(|value| value.parse::<usize>().ok())
+        {
+            return select_chip(page, block, index);
+        }
+        if action == "toggle" {
+            if let Some(hero) = current.blocks.get(block).filter(|b| b.kind == "hero") {
+                let error = crate::network::set_radio(!hero.on).err();
+                let mut reloaded = load(page);
+                if let Some(message) = error {
+                    reloaded.status = format!("Could not apply that setting: {message}");
+                }
+                return reloaded;
+            }
+        }
+        let id = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.id.clone())
+            .unwrap_or_default();
+        let checked = current
+            .blocks
+            .get(block)
+            .and_then(|b| b.rows.get(row))
+            .map(|r| r.checked)
+            .unwrap_or(false);
+        let error = network_action(&id, action, checked).err();
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not apply that setting: {message}");
+        }
+        return reloaded;
+    }
     if page == "keyboard" {
         let id = current
             .blocks
@@ -4256,7 +4872,27 @@ pub fn apply_block_action(page: &str, block: usize, action: &str) -> Page {
     reloaded
 }
 
-pub fn select_chip(page: &str, _block: usize, _chip: usize) -> Page {
+pub fn select_chip(page: &str, _block: usize, chip: usize) -> Page {
+    if page == "network" {
+        let (places, _) = crate::network::places();
+        let error = if chip < places.len() {
+            crate::network::switch_place(&places[chip].name).err()
+        } else {
+            crate::network::add_place()
+                .and_then(|name| {
+                    *network_editing_cell()
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner()) = Some(name.clone());
+                    crate::network::switch_place(&name)
+                })
+                .err()
+        };
+        let mut reloaded = load(page);
+        if let Some(message) = error {
+            reloaded.status = format!("Could not switch place: {message}");
+        }
+        return reloaded;
+    }
     load(page)
 }
 
