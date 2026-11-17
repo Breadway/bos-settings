@@ -132,13 +132,15 @@ component CornerMask inherits Path {
     viewbox-width: 1;
     viewbox-height: 1;
     fill: fill-color;
+    // The arc must bulge toward the corner itself (sweep flags below), or
+    // the mask eats a disc out of the image instead of its corner.
     commands: corner == 0
-        ? "M 0 0 L 1 0 A 1 1 0 0 1 0 1 Z"
+        ? "M 0 0 L 1 0 A 1 1 0 0 0 0 1 Z"
         : (corner == 1
-            ? "M 1 0 L 0 0 A 1 1 0 0 0 1 1 Z"
+            ? "M 1 0 L 0 0 A 1 1 0 0 1 1 1 Z"
             : (corner == 2
-                ? "M 0 1 L 1 1 A 1 1 0 0 0 0 0 Z"
-                : "M 1 1 L 0 1 A 1 1 0 0 1 1 0 Z"));
+                ? "M 0 1 L 1 1 A 1 1 0 0 1 0 0 Z"
+                : "M 1 1 L 0 1 A 1 1 0 0 0 1 0 Z"));
 }
 
 component RoundedImage inherits Rectangle {
