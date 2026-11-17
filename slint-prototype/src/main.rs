@@ -8,6 +8,7 @@
 //! navigation, shown so the shell matches, and those pages do not write
 //! anything.
 
+mod bluetooth;
 mod breadram;
 mod lock;
 mod network;

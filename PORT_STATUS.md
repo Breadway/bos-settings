@@ -45,17 +45,17 @@ parity_check.py fails while any item is not [x].
 - [x] view `Vpn` -> slint-prototype/src/pagedata.rs
 
 ## Bluetooth
-- [ ] command `bluetooth::bt_connect`
-- [ ] command `bluetooth::bt_disconnect`
-- [ ] command `bluetooth::bt_forget`
-- [ ] command `bluetooth::bt_pair`
-- [ ] command `bluetooth::get_adapter_powered`
-- [ ] command `bluetooth::get_bluetooth_state`
-- [ ] command `bluetooth::get_paired_devices`
-- [ ] command `bluetooth::scan_bluetooth`
-- [ ] command `bluetooth::set_adapter_powered`
-- [ ] command `bluetooth::start_bluetooth_service`
-- [ ] view `Bluetooth`
+- [x] command `bluetooth::bt_connect` -> slint-prototype/src/bluetooth.rs
+- [x] command `bluetooth::bt_disconnect` -> slint-prototype/src/bluetooth.rs
+- [x] command `bluetooth::bt_forget` -> slint-prototype/src/bluetooth.rs
+- [x] command `bluetooth::bt_pair` -> slint-prototype/src/bluetooth.rs
+- [x] command `bluetooth::get_adapter_powered` -> slint-prototype/src/bluetooth.rs
+- [x] command `bluetooth::get_bluetooth_state` -> slint-prototype/src/bluetooth.rs
+- [x] command `bluetooth::get_paired_devices` -> slint-prototype/src/bluetooth.rs
+- [x] command `bluetooth::scan_bluetooth` -> slint-prototype/src/bluetooth.rs
+- [x] command `bluetooth::set_adapter_powered` -> slint-prototype/src/bluetooth.rs
+- [x] command `bluetooth::start_bluetooth_service` -> slint-prototype/src/bluetooth.rs
+- [x] view `Bluetooth` -> slint-prototype/src/pagedata.rs
 
 ## Sharing
 - [ ] command `sharing::get_sharing_status`
