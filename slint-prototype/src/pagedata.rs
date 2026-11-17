@@ -4107,8 +4107,17 @@ fn privacy() -> Page {
     p = p.push(firewall);
 
     let bug = bug_prefs();
+    let installed = crate::breadbug::load().installed;
     let mut reports = group("Bug reports");
-    reports.rows = vec![
+    if !installed {
+        reports.rows.push(Row {
+            kind: "hint".into(),
+            id: "bug-missing".into(),
+            label: "breadbug is not installed. Update bread from Updates to get the bug reporter.".into(),
+            ..Row::default()
+        });
+    }
+    reports.rows.extend([
         toggle(
             "bug-upload",
             "Send bug reports",
@@ -4125,11 +4134,16 @@ fn privacy() -> Page {
             kind: "line".into(),
             id: "bug-open".into(),
             label: "Report a problem".into(),
-            hint: "Attach a screenshot and the last few minutes of logs.".into(),
+            hint: if installed {
+                "The same as pressing Super + Shift + B.".into()
+            } else {
+                "breadbug is not installed.".into()
+            },
             action: "Open".into(),
+            enabled: installed,
             ..Row::default()
         },
-    ];
+    ]);
     p = p.push(reports);
 
     let mut included = group("Apps included in reports");
@@ -4172,16 +4186,31 @@ fn privacy() -> Page {
             .into_iter()
             .take(12)
             .map(|report| {
-                let mut detail = vec![report.kind];
+                let mut detail: Vec<String> = vec![report.kind.clone()];
                 if !report.status.is_empty() {
-                    detail.push(report.status);
+                    detail.push(report.status.clone());
                 }
+                if let Some(receipt) = &report.receipt {
+                    detail.push(receipt[..receipt.len().min(8)].to_string());
+                }
+                if let Some(path) = &report.path {
+                    detail.push(path.clone());
+                }
+                let can_delete = report.kind == "sent" && report.receipt.is_some();
                 Row {
                     kind: "value".into(),
-                    id: format!("bug-report-{}", report.when),
+                    id: match &report.receipt {
+                        Some(receipt) if can_delete => format!("bug-delete-{receipt}"),
+                        _ => format!("bug-report-{}", report.when),
+                    },
                     label: report.app,
                     hint: detail.join(" · "),
-                    value: unix_stamp(report.when),
+                    value: if can_delete {
+                        "Delete from server".into()
+                    } else {
+                        unix_stamp(report.when)
+                    },
+                    action: if can_delete { "action".into() } else { String::new() },
                     ..Row::default()
                 }
             })
@@ -4208,7 +4237,10 @@ fn privacy() -> Page {
             kind: "line".into(),
             id: "bug-folder".into(),
             label: "Saved reports".into(),
-            hint: "~/.local/state/bread/breadbug".into(),
+            hint: format!(
+                "{} stored. ~/.local/state/bread/breadbug",
+                size(Some(crate::breadbug::store_bytes()))
+            ),
             action: "Open".into(),
             ..Row::default()
         },
@@ -5646,6 +5678,12 @@ fn privacy_action(id: &str, action: &str) -> Result<(), String> {
     if id == "bug-excluded" && action.starts_with("input:") {
         let list = crate::breadbox::split_list(action.trim_start_matches("input:"));
         return crate::breadbug::save_exclusions(&list);
+    }
+    if action == "action" {
+        if let Some(receipt) = id.strip_prefix("bug-delete-") {
+            crate::breadbug::delete_report(receipt)?;
+            return Ok(());
+        }
     }
     if action == "action" && id == "bug-folder" {
         let dir = crate::breadbug::state_dir();

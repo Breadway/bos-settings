@@ -217,7 +217,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `firmware::get_updatable_firmware` -> slint-prototype/src/updates.rs
 - [x] command `updates::get_updates_status` -> slint-prototype/src/updates.rs
 - [~] view `Bread`
-- [ ] view `BugReports`
+- [x] view `BugReports` -> slint-prototype/src/pagedata.rs
 - [x] view `Channel` -> slint-prototype/src/pagedata.rs
 - [~] view `Firmware`
 - [x] view `Updates` -> slint-prototype/src/pagedata.rs
@@ -330,7 +330,7 @@ parity_check.py fails while any item is not [x].
 ## Privacy and security
 - [x] command `breadbug::apply_settings` -> slint-prototype/src/breadbug.rs
 - [x] command `breadbug::breadbug_clear_queue` -> slint-prototype/src/breadbug.rs
-- [ ] command `breadbug::breadbug_delete_report`
+- [x] command `breadbug::breadbug_delete_report` -> slint-prototype/src/breadbug.rs
 - [x] command `breadbug::breadbug_history` -> slint-prototype/src/breadbug.rs
 - [x] command `breadbug::breadbug_wipe_local` -> slint-prototype/src/breadbug.rs
 - [x] command `breadbug::clean_exclusions` -> slint-prototype/src/breadbug.rs

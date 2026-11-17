@@ -138,6 +138,7 @@ pub struct Report {
     pub app: String,
     pub status: String,
     pub path: Option<String>,
+    pub receipt: Option<String>,
 }
 
 pub fn history() -> Vec<Report> {
@@ -166,10 +167,122 @@ pub fn history() -> Vec<Report> {
                 .get("path")
                 .and_then(|v| v.as_str())
                 .map(str::to_string),
+            receipt: value
+                .get("receipt")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
         })
         .collect();
     rows.reverse();
     rows
+}
+
+fn endpoint() -> String {
+    let text = std::fs::read_to_string(config_path()).unwrap_or_default();
+    text.parse::<toml_edit::DocumentMut>()
+        .ok()
+        .and_then(|doc| doc.get("endpoint").and_then(|item| item.as_str()).map(str::to_string))
+        .filter(|value| value.starts_with("https://") || value.starts_with("http://"))
+        .unwrap_or_else(|| "https://bugs.breadway.dev".into())
+}
+
+/// Deletes a sent report through the server, then drops it from history.
+/// Needs sending enabled, like every network action in breadbug.
+pub fn delete_report(receipt: &str) -> Result<String, String> {
+    if !load().upload {
+        return Err("Sending is turned off, so breadbug will not contact the server. Turn it on first.".into());
+    }
+    if receipt.len() != 32 || !receipt.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("That is not a report receipt.".into());
+    }
+    let path = state_dir().join("history.jsonl");
+    let text = std::fs::read_to_string(&path).map_err(|error| error.to_string())?;
+    let mut token = None;
+    for line in text.lines() {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if value.get("receipt").and_then(|v| v.as_str()) == Some(receipt) {
+            token = value
+                .get("deletion_token")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            break;
+        }
+    }
+    let token = token.ok_or("This report has no deletion token on this computer.")?;
+    let url = format!("{}/v1/reports/{receipt}", endpoint().trim_end_matches('/'));
+    let output = Command::new("curl")
+        .args([
+            "-sS",
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{http_code}",
+            "-X",
+            "DELETE",
+            "-H",
+            &format!("Authorization: Bearer {token}"),
+            &url,
+        ])
+        .output()
+        .map_err(|error| format!("could not reach the server: {error}"))?;
+    let code: u16 = String::from_utf8_lossy(&output.stdout).trim().parse().unwrap_or(0);
+    let found = match code {
+        200 | 204 => true,
+        404 => false,
+        _ => {
+            return Err(format!(
+                "The server refused the delete ({code}). {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ))
+        }
+    };
+    let kept: Vec<&str> = text
+        .lines()
+        .filter(|line| {
+            serde_json::from_str::<serde_json::Value>(line)
+                .ok()
+                .and_then(|value| {
+                    value
+                        .get("receipt")
+                        .and_then(|v| v.as_str())
+                        .map(|value| value != receipt)
+                })
+                .unwrap_or(true)
+        })
+        .collect();
+    let mut body = kept.join("\n");
+    if !body.is_empty() {
+        body.push('\n');
+    }
+    std::fs::write(&path, body).map_err(|error| error.to_string())?;
+    Ok(if found {
+        "Deleted from the server.".into()
+    } else {
+        "The server no longer had it. Removed from your history.".into()
+    })
+}
+
+pub fn store_bytes() -> u64 {
+    fn walk(dir: &std::path::Path) -> u64 {
+        std::fs::read_dir(dir)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .map(|entry| {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            walk(&path)
+                        } else {
+                            entry.metadata().map(|meta| meta.len()).unwrap_or(0)
+                        }
+                    })
+                    .sum()
+            })
+            .unwrap_or(0)
+    }
+    walk(&state_dir().join("bugstore"))
 }
 
 pub fn queued() -> usize {
