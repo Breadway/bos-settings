@@ -79,7 +79,9 @@ app at the pixel level.
   `hyprsunset` with an autostart entry (Always mode; the shipping page's
   schedule modes and temperature control are not ported yet). Notifications
   writes do-not-disturb, schedule, lock-screen, sound and per-app policies back
-  to the bar's D-Bus API, preserving unknown keys.
+  to the bar's D-Bus API, preserving unknown keys. Privacy writes the breadbug
+  upload and notify flags in `bread/breadbug.toml`, and Keyboard cycles the
+  compositor layout through `hypr/settings.json` and reloads it.
   Every other toggle, select, slider and chip still only remembers its position
   in `~/.local/state/bos-settings-slint/state.toml`. Failures appear under the
   page lede instead of being swallowed.
