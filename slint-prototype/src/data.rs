@@ -541,6 +541,9 @@ mod tests {
 pub struct ThemeInfo {
     pub id: String,
     pub name: String,
+    /// Base theme whose look the preview should show: the first id in the
+    /// `extends` chain that names a real theme.
+    pub preview: String,
     pub custom: bool,
 }
 
@@ -631,10 +634,12 @@ fn themes() -> (Vec<ThemeInfo>, String) {
                 .and_then(|n| n.as_str())
                 .unwrap_or(&id)
                 .to_string();
+            let preview = base_theme(&value, &id, 0);
             seen.push(id.clone());
             out.push(ThemeInfo {
                 id,
                 name,
+                preview,
                 custom: true,
             });
         }
@@ -644,11 +649,36 @@ fn themes() -> (Vec<ThemeInfo>, String) {
             out.push(ThemeInfo {
                 id: (*id).into(),
                 name: (*name).into(),
+                preview: (*id).into(),
                 custom: false,
             });
         }
     }
     (out, active_theme())
+}
+
+/// A theme that only overrides tokens (spotlight-varela) should preview as
+/// the theme it extends, not as the generic bar.
+fn base_theme(value: &toml::Value, fallback: &str, depth: usize) -> String {
+    if depth > 8 {
+        return fallback.into();
+    }
+    let Some(base) = value.get("extends").and_then(|e| e.as_str()) else {
+        return fallback.into();
+    };
+    // Follow the chain through this machine's theme dirs if the parent is a
+    // user theme too.
+    for dir in [
+        config_dir().join("bread/themes"),
+        PathBuf::from("/usr/share/bread/themes"),
+    ] {
+        if let Ok(text) = std::fs::read_to_string(dir.join(base).join("theme.toml")) {
+            if let Ok(parent) = text.parse::<toml::Value>() {
+                return base_theme(&parent, base, depth + 1);
+            }
+        }
+    }
+    base.into()
 }
 
 fn active_theme() -> String {
