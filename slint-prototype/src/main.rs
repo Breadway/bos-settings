@@ -472,8 +472,12 @@ fn main() -> anyhow::Result<()> {
         let Some(window) = act_weak.upgrade() else {
             return;
         };
-        let page = window.get_page().to_string();
         let action = action.to_string();
+        if let Some(target) = action.strip_prefix("open:") {
+            window.set_page(target.into());
+            return;
+        }
+        let page = window.get_page().to_string();
         let weak = window.as_weak();
         std::thread::spawn(move || {
             let data = pagedata::apply_action(&page, block as usize, row as usize, &action);

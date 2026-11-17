@@ -150,10 +150,10 @@ parity_check.py fails while any item is not [x].
 - [x] command `ime::set_ime_enabled` -> slint-prototype/src/ime.rs
 - [x] command `keybinds::get_keybinds` -> slint-prototype/src/pagedata.rs
 - [x] command `keybinds::save_keybinds` -> slint-prototype/src/pagedata.rs
-- [~] view `InputHub`
+- [x] view `InputHub` -> slint-prototype/src/pagedata.rs
 - [~] view `InputMethod`
 - [~] view `Keybinds`
-- [~] view `KeyboardHub`
+- [x] view `KeyboardHub` -> slint-prototype/src/pagedata.rs
 - [x] view `KeyboardLayout` -> slint-prototype/src/pagedata.rs
 
 ## Printers
@@ -191,11 +191,11 @@ parity_check.py fails while any item is not [x].
 - [x] command `optional::enable_flathub` -> slint-prototype/src/apps.rs
 - [x] command `optional::get_optional_software` -> slint-prototype/src/apps.rs
 - [x] command `packages::get_installed_packages` -> slint-prototype/src/apps.rs
-- [~] view `AppsHub`
-- [~] view `Aur`
+- [x] view `AppsHub` -> slint-prototype/src/pagedata.rs
+- [x] view `Aur` -> slint-prototype/src/pagedata.rs
 - [x] view `GetAppsHub` -> slint-prototype/src/pagedata.rs
 - [~] view `Optional`
-- [~] view `Packages`
+- [x] view `Packages` -> slint-prototype/src/pagedata.rs
 
 ## Startup
 - [x] command `autostart::command` -> slint-prototype/src/pagedata.rs
@@ -219,7 +219,7 @@ parity_check.py fails while any item is not [x].
 - [~] view `Bread`
 - [x] view `BugReports` -> slint-prototype/src/pagedata.rs
 - [x] view `Channel` -> slint-prototype/src/pagedata.rs
-- [~] view `Firmware`
+- [x] view `Firmware` -> slint-prototype/src/pagedata.rs
 - [x] view `Updates` -> slint-prototype/src/pagedata.rs
 - [x] view `UpdatesHub` -> slint-prototype/src/pagedata.rs
 
@@ -245,9 +245,9 @@ parity_check.py fails while any item is not [x].
 - [x] command `snapshots::get_snapshots` -> slint-prototype/src/backup.rs
 - [x] command `snapshots::reboot_system` -> slint-prototype/src/backup.rs
 - [x] command `snapshots::restore_snapshot` -> slint-prototype/src/backup.rs
-- [~] view `Backup`
-- [ ] view `RestoreHub`
-- [~] view `Snapshots`
+- [x] view `Backup` -> slint-prototype/src/pagedata.rs
+- [x] view `RestoreHub` -> slint-prototype/src/pagedata.rs
+- [x] view `Snapshots` -> slint-prototype/src/pagedata.rs
 
 ## Users
 - [x] command `users::add_user` -> slint-prototype/src/users.rs
@@ -325,7 +325,7 @@ parity_check.py fails while any item is not [x].
 - [x] view `Breadpaper` -> slint-prototype/ui/appearance.slint
 - [x] view `Breadsearch` -> slint-prototype/src/pagedata.rs
 - [~] view `Breadshot`
-- [~] view `DesktopHub`
+- [x] view `DesktopHub` -> slint-prototype/src/pagedata.rs
 
 ## Privacy and security
 - [x] command `breadbug::apply_settings` -> slint-prototype/src/breadbug.rs
@@ -344,7 +344,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `firewall::remove_firewall_rule` -> slint-prototype/src/firewall.rs
 - [x] command `firewall::set_firewall_enabled` -> slint-prototype/src/firewall.rs
 - [~] view `Firewall`
-- [~] view `PrivacyHub`
+- [x] view `PrivacyHub` -> slint-prototype/src/pagedata.rs
 
 ## About
 - [x] command `about::get_system_info` -> slint-prototype/src/data.rs
@@ -405,7 +405,7 @@ parity_check.py fails while any item is not [x].
 - [x] command `util::valid_pkg_name` -> slint-prototype/src/util.rs
 - [x] command `util::valid_printer_name` -> slint-prototype/src/util.rs
 - [x] command `util::write_secure` -> slint-prototype/src/util.rs
-- [ ] view `SystemHub`
+- [x] view `SystemHub` -> slint-prototype/src/pagedata.rs
 
 ## Other
 - [x] view `Accessibility` -> slint-prototype/src/pagedata.rs
