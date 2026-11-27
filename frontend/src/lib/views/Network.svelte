@@ -57,6 +57,9 @@
 	let heroSsid = $derived(connectedSsid ?? activeNet?.ssid);
 	let heroNet = $derived(networks?.find((n) => n.ssid === heroSsid) ?? null);
 	let nearby = $derived(networks?.filter((n) => !n.active && n.ssid !== heroSsid) ?? []);
+	// Places has to offer the connected network even when the scan missed it:
+	// the same gap that makes the hero card fall back to connectedSsid.
+	let placeSsids = $derived([...new Set([...(heroSsid ? [heroSsid] : []), ...(networks?.map((n) => n.ssid) ?? [])])]);
 	let saved = $derived(crumbs.cfg?.networks ?? []);
 	let shownSaved = $derived(saved.filter((n) => n.ssid.toLowerCase().includes(savedQuery.trim().toLowerCase())));
 
@@ -205,7 +208,7 @@
 		</div>
 	</div>
 
-	<div data-tab="breadcrumbs"><Places nearbySsids={networks?.map((n) => n.ssid) ?? []} /></div>
+	<div data-tab="breadcrumbs"><Places nearbySsids={placeSsids} /></div>
 
 	<Group title={scanning ? "Nearby networks · scanning…" : "Nearby networks"}>
 		{#if !radioEnabled}
