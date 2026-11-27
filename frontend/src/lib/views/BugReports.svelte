@@ -8,6 +8,7 @@
 	import Row from "$lib/components/Row.svelte";
 	import SwitchField from "$lib/components/SwitchField.svelte";
 	import EmptyState from "$lib/components/EmptyState.svelte";
+	import NumberField from "$lib/components/NumberField.svelte";
 	import Bug from "@lucide/svelte/icons/bug";
 
 	interface AppChoice {
@@ -22,6 +23,8 @@
 		endpoint: string;
 		apps: AppChoice[];
 		store_bytes: number;
+		store_cap_bytes: number;
+		store_cap_default_bytes: number;
 		queued: number;
 		consent_text: string;
 	}
@@ -39,6 +42,8 @@
 	/** Per app: included in reports (the inverse of "excluded"), so a switch can bind it. */
 	let included = $state<Record<string, boolean>>({});
 	let history = $state<HistoryRow[]>([]);
+	/** Store cap in MiB: the TOML value is bytes, which a number field cannot show. */
+	let capMib = $state(32);
 	let error = $state("");
 	let notice = $state("");
 	let busy = $state(false);
@@ -47,6 +52,7 @@
 		try {
 			s = await invoke<Settings>("get_breadbug_settings");
 			included = Object.fromEntries(s.apps.map((a) => [a.id, !a.excluded]));
+			capMib = Math.round(s.store_cap_bytes / (1024 * 1024));
 			history = await invoke<HistoryRow[]>("breadbug_history");
 		} catch (e) {
 			error = String(e);
@@ -76,10 +82,11 @@
 			excludedApps: Object.entries(included)
 				.filter(([, inc]) => !inc)
 				.map(([id]) => id),
+			storeCapBytes: Math.round(capMib * 1024 * 1024),
 		});
 	}
 	useDraft(
-		() => s && { u: s.upload_enabled, n: s.notify_fixed, x: { ...included } },
+		() => s && { u: s.upload_enabled, n: s.notify_fixed, x: { ...included }, c: capMib },
 		save,
 		() => s !== null,
 	);
@@ -146,6 +153,14 @@
 		}
 	}
 
+	async function openPrivacy() {
+		try {
+			await invoke("open_breadbug_privacy");
+		} catch (e) {
+			error = String(e);
+		}
+	}
+
 	const intro = $derived(s ? s.consent_text.split("\n\n") : []);
 </script>
 
@@ -192,6 +207,9 @@
 
 		<Group title="What a report contains">
 			{#each intro as para}<p>{para}</p>{/each}
+			<Row label="Full privacy statement" hint="What is collected, what is removed, and what happens after you send.">
+				<button class="btn small ghost" onclick={openPrivacy}>Read it</button>
+			</Row>
 		</Group>
 
 		<Group title="Your reports">
@@ -219,6 +237,18 @@
 			<Row label="Stored logs and crash information" hint={`${size(s.store_bytes)}. Kept only on this computer until you send a report.`}>
 				<button class="btn small ghost" onclick={wipe}>Delete local data</button>
 			</Row>
+			<NumberField
+				label="Storage cap (MiB)"
+				bind:value={capMib}
+				min={1}
+				max={1024}
+				step={1}
+			/>
+			<p class="muted">
+				Older logs are dropped first once the store reaches this size. The default is {Math.round(
+					s.store_cap_default_bytes / (1024 * 1024),
+				)} MiB; deleting local data is the way to free space now.
+			</p>
 			<Row label="Waiting to be sent" hint={s.queued ? `${s.queued} report(s) will be retried while sending is on.` : "Nothing is waiting."}>
 				{#if s.queued}<button class="btn small ghost" onclick={discardQueue}>Discard</button>{/if}
 			</Row>

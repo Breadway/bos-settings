@@ -128,6 +128,7 @@ pub fn run() {
             commands::breadbug::breadbug_clear_queue,
             commands::breadbug::breadbug_wipe_local,
             commands::breadbug::open_breadbug,
+            commands::breadbug::open_breadbug_privacy,
             commands::breadpad::get_breadpad_config,
             commands::breadpad::save_breadpad_config,
             commands::breadsearch::get_breadsearch_config,

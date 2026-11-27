@@ -7,14 +7,16 @@
 
 use std::path::PathBuf;
 
-use bread_bug::config::{store_root, DEFAULT_ENDPOINT};
+use bread_bug::config::{store_root, StoreLimits, DEFAULT_ENDPOINT};
 use bread_bug::consent::CONSENT_TEXT;
 use bread_bug::store::{valid_app_id, Reader};
 use bread_bug::system::installed_apps;
 use bread_bug::upload::{state_dir, Client, History, HistoryKind, Queue};
 use serde::Serialize;
 
-use super::config::{get_bool, get_str, get_str_list, load_doc, save_doc, set_bool, set_str_list};
+use super::config::{
+    get_bool, get_i64, get_str, get_str_list, load_doc, save_doc, set_bool, set_i64, set_str_list,
+};
 
 fn breadbug_toml() -> PathBuf {
     bread_utils::xdg::config_home()
@@ -37,8 +39,31 @@ pub struct BreadbugSettings {
     pub endpoint: String,
     pub apps: Vec<AppChoice>,
     pub store_bytes: u64,
+    /// Current total store cap in bytes (`store.max_total_bytes`).
+    pub store_cap_bytes: u64,
+    /// The default cap, so the page can say what "default" means.
+    pub store_cap_default_bytes: u64,
     pub queued: usize,
     pub consent_text: String,
+}
+
+// A cap outside this range is not a useful local bound: under 1 MiB breadbug
+// could not hold a single report's logs, and above 1 GiB it competes with the
+// user's actual work. The config file itself accepts any value; this is the
+// settings page's guard against a typo.
+pub const STORE_CAP_MIN: u64 = 1 << 20;
+pub const STORE_CAP_MAX: u64 = 1 << 30;
+
+/// Validate a requested store cap and return it in bytes.
+pub fn clean_store_cap(bytes: u64) -> Result<u64, String> {
+    if !(STORE_CAP_MIN..=STORE_CAP_MAX).contains(&bytes) {
+        return Err(format!(
+            "The storage cap must be between {} and {} MiB.",
+            STORE_CAP_MIN >> 20,
+            STORE_CAP_MAX >> 20
+        ));
+    }
+    Ok(bytes)
 }
 
 #[derive(Serialize)]
@@ -94,9 +119,19 @@ pub fn get_breadbug_settings() -> BreadbugSettings {
             .usage()
             .map(|u| u.total_bytes)
             .unwrap_or(0),
+        // breadd applies the same default when the key is absent.
+        store_cap_bytes: stored_cap(&doc).unwrap_or_else(|| StoreLimits::default().max_total_bytes),
+        store_cap_default_bytes: StoreLimits::default().max_total_bytes,
         queued,
         consent_text: CONSENT_TEXT.to_string(),
     }
+}
+
+/// The cap recorded in breadbug.toml, when it is a usable positive number.
+fn stored_cap(doc: &toml_edit::DocumentMut) -> Option<u64> {
+    get_i64(doc, &["store", "max_total_bytes"])
+        .filter(|v| *v > 0)
+        .map(|v| v as u64)
 }
 
 /// Validate and normalise an exclusion list: valid app ids only, sorted,
@@ -114,16 +149,19 @@ pub fn clean_exclusions(apps: &[String]) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-/// Edit `breadbug.toml` in place: only the three keys the page models change.
+/// Edit `breadbug.toml` in place: only the keys the page models change. The
+/// other `[store]` bounds keep their values, and their comments.
 pub fn apply_settings(
     doc: &mut toml_edit::DocumentMut,
     upload_enabled: bool,
     notify_fixed: bool,
     excluded: &[String],
+    store_cap_bytes: u64,
 ) {
     set_bool(doc, &["upload_enabled"], upload_enabled);
     set_bool(doc, &["notify_fixed"], notify_fixed);
     set_str_list(doc, &["excluded_apps"], excluded);
+    set_i64(doc, &["store", "max_total_bytes"], store_cap_bytes as i64);
 }
 
 /// Ask breadd to apply the exclusions now. Best effort: without a running
@@ -143,11 +181,13 @@ pub fn save_breadbug_settings(
     upload_enabled: bool,
     notify_fixed: bool,
     excluded_apps: Vec<String>,
+    store_cap_bytes: u64,
 ) -> Result<(), String> {
     let excluded = clean_exclusions(&excluded_apps)?;
+    let cap = clean_store_cap(store_cap_bytes)?;
     let path = breadbug_toml();
     let mut doc = load_doc(&path);
-    apply_settings(&mut doc, upload_enabled, notify_fixed, &excluded);
+    apply_settings(&mut doc, upload_enabled, notify_fixed, &excluded, cap);
     save_doc(&path, &doc).map_err(|e| e.to_string())?;
     tell_daemon();
     Ok(())
@@ -260,6 +300,19 @@ pub fn open_breadbug() -> Result<(), String> {
         .map_err(|e| format!("Could not open a terminal: {e}"))
 }
 
+/// Open the plain-language statement of what a report contains, what is
+/// replaced and what is never collected. It lives on the BOS site; there is no
+/// in-app copy to drift from it.
+pub const PRIVACY_URL: &str = "https://bos.breadway.dev/#reports";
+
+#[tauri::command]
+pub fn open_breadbug_privacy(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_url(PRIVACY_URL, None::<&str>)
+        .map_err(|e| format!("Could not open the browser: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,14 +332,39 @@ mod tests {
             "# my notes\nendpoint = \"https://example.test\"\n\n[store]\nmax_apps = 5\n"
                 .parse()
                 .unwrap();
-        apply_settings(&mut doc, true, false, &["clip".into()]);
+        apply_settings(&mut doc, true, false, &["clip".into()], 8 << 20);
         let text = doc.to_string();
         assert!(text.contains("# my notes"));
         assert!(text.contains("endpoint = \"https://example.test\""));
         assert!(text.contains("max_apps = 5"));
+        assert!(text.contains("max_total_bytes = 8388608"));
         assert!(text.contains("upload_enabled = true"));
         assert!(text.contains("notify_fixed = false"));
         assert!(text.contains("excluded_apps = [\"clip\"]"));
+    }
+
+    #[test]
+    fn store_cap_is_bounded() {
+        assert_eq!(clean_store_cap(8 << 20).unwrap(), 8 << 20);
+        assert_eq!(clean_store_cap(STORE_CAP_MIN).unwrap(), STORE_CAP_MIN);
+        assert_eq!(clean_store_cap(STORE_CAP_MAX).unwrap(), STORE_CAP_MAX);
+        for bad in [0, STORE_CAP_MIN - 1, STORE_CAP_MAX + 1, u64::MAX] {
+            assert!(clean_store_cap(bad).is_err(), "{bad} was accepted");
+        }
+    }
+
+    #[test]
+    fn stored_cap_reads_a_positive_value_only() {
+        let doc: toml_edit::DocumentMut = "[store]\nmax_total_bytes = 4194304\n".parse().unwrap();
+        assert_eq!(stored_cap(&doc), Some(4 << 20));
+        for text in [
+            "[store]\nmax_total_bytes = 0\n",
+            "[store]\nmax_total_bytes = -1\n",
+            "",
+        ] {
+            let doc: toml_edit::DocumentMut = text.parse().unwrap();
+            assert_eq!(stored_cap(&doc), None, "{text:?}");
+        }
     }
 
     #[test]
