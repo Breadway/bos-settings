@@ -127,17 +127,19 @@
 
 {#if editing && cfg}
 	{@const place = editing}
+	{@const joinOptions = [...new Set([...savedSsids, ...place.networks])]}
+	{@const recogniseOptions = [...new Set([...detectOptions, ...place.networks])]}
 	<Sheet title="Edit {place.name}" onClose={() => { commitName(); editing = null; }}>
 		<label class="field">
 			<span>Name</span>
 			<input class="ui-input" bind:value={draftName} onblur={commitName} onkeydown={(e) => e.key === "Enter" && commitName()} />
 		</label>
-		<ChipPickerField label="Join these networks, in this order" bind:value={place.networks} options={savedSsids} emptyOptionsHint="Save a network first." />
+		<ChipPickerField label="Join these networks, in this order" bind:value={place.networks} options={joinOptions} emptyOptionsHint="Save a network first." />
 		<div class="toggle">
 			<div><b>Also try any other saved network</b><small>When none of the networks above are around.</small></div>
 			<Switch bind:value={place.include_all_known} ariaLabel="Also try any other saved network" />
 		</div>
-		<ChipPickerField label="Recognise this place when these are nearby" bind:value={place.detect_ssids} options={detectOptions} emptyOptionsHint="No networks to pick from yet." />
+		<ChipPickerField label="Recognise this place when these are nearby" bind:value={place.detect_ssids} options={recogniseOptions} emptyOptionsHint="No networks to pick from yet." />
 		<div class="toggle">
 			<div><b>Send traffic through Tailscale</b><small>Waits for Tailscale before using the network, for example where sites are filtered.</small></div>
 			<Switch bind:value={place.tailscale} ariaLabel="Send traffic through Tailscale" />
